@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+coverage/
+.env
+.env.*
+!.env.example
+
+# Estado local das ferramentas e notas desta máquina
+.omp/
+.serena/
+/HANDOFF.md
+/nul
+
+# Capturas geradas pelos testes (podem conter dados da área de trabalho)
+e2e/screenshots/
+/packages/daemon/so-no-worktree.txt

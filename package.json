@@ -1,0 +1,32 @@
+{
+  "name": "nanachi-remote",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Controle remoto de agentes de IA em PCs Windows a partir do iPhone (PWA).",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -w @nanachi/shared && npm run build --workspaces --if-present",
+    "supervise": "npm run build && node packages/daemon/dist/supervisor.js",
+    "e2e": "node e2e/run.mjs",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "e2e:34": "node e2e/run-phase34.mjs",
+    "e2e:5": "node e2e/run-phase5.mjs",
+    "e2e:resume": "node e2e/run-resume.mjs",
+    "e2e:images": "node e2e/run-images.mjs",
+    "e2e:commands": "node e2e/run-commands.mjs",
+    "e2e:chatperf": "node e2e/run-chat-perf.mjs"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2",
+    "playwright-core": "^1.64.1",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0",
+    "ws": "^8.22.1"
+  }
+}
