@@ -1,0 +1,25 @@
+name: PR title
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Conventional Commits title
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^()[:cntrl:]]+\))?!?: [^[:space:]].*$'
+          if [[ "$PR_TITLE" == *$'\n'* || "$PR_TITLE" == *$'\r'* || ! "$PR_TITLE" =~ $pattern ]]; then
+            printf '%s\n' 'PR title must be one line: type(scope)!: description. Scope and ! are optional; use an allowed type, exactly one space after the colon, and a description starting with a non-whitespace character.' >&2
+            exit 1
+          fi
+          printf '%s\n' 'PR title follows the Conventional Commits format.'

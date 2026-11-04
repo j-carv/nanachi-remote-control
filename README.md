@@ -1,77 +1,77 @@
 <div align="center">
-  <img src="packages/pwa/public/icon-512.png" alt="Logo do Nanachi Remote" width="160" />
+  <img src="packages/pwa/public/icon-512.png" alt="Nanachi Remote logo" width="160" />
 
   <h1>Nanachi Remote</h1>
 
-  <p><strong>Seus agentes no PC. Você no celular.</strong></p>
-  <p>Converse com seus agentes de código, acompanhe o trabalho e aprove ações sem ficar preso à mesa.</p>
+  <p><strong>Your agents keep building. You keep moving.</strong></p>
+  <p>Pick up your coding sessions from your phone. Review changes, talk to your agents, and approve the next step—away from your desk.</p>
 
   <p>
-    <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-22%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 22 ou superior" /></a>
-    <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/PC-Windows-0078D4?style=flat-square" alt="Daemon para Windows" /></a>
-    <a href="#instalar-no-celular"><img src="https://img.shields.io/badge/PWA-Android%20%2B%20iPhone-8B5CF6?style=flat-square&logo=pwa&logoColor=white" alt="Web app para Android e iPhone" /></a>
-    <a href="https://www.tailscale.com/"><img src="https://img.shields.io/badge/Rede-Tailscale-242424?style=flat-square&logo=tailscale&logoColor=white" alt="Conexão via Tailscale" /></a>
+    <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-22%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 22 or later" /></a>
+    <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/PC-Windows-0078D4?style=flat-square" alt="Windows daemon" /></a>
+    <a href="#install-on-your-phone"><img src="https://img.shields.io/badge/PWA-Android%20%2B%20iPhone-8B5CF6?style=flat-square&logo=pwa&logoColor=white" alt="Web app for Android and iPhone" /></a>
+    <a href="https://www.tailscale.com/"><img src="https://img.shields.io/badge/Network-Tailscale-242424?style=flat-square&logo=tailscale&logoColor=white" alt="Connection through Tailscale" /></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.9" /></a>
   </p>
 
-  <p><a href="#começar-no-pc">Instalação</a> · <a href="#instalar-no-celular">Android e iPhone</a> · <a href="#no-dia-a-dia">Como usar</a> · <a href="#quando-algo-não-funcionar">Ajuda</a></p>
+  <p><a href="#get-started-on-your-pc">Setup</a> · <a href="#install-on-your-phone">Android and iPhone</a> · <a href="#everyday-use">How to use it</a> · <a href="#troubleshooting">Help</a></p>
 </div>
 
 ---
 
-## A ideia
+## The idea
 
-Você deixa um agente trabalhando no Windows e continua a conversa pelo celular. O Nanachi é a ponte: organiza projetos e sessões, mostra o chat e o terminal, recebe anexos e avisa quando precisa de você.
+Leave an agent working on Windows and continue the conversation from your phone. Nanachi is the bridge: it organizes projects and sessions, displays chat and terminal output, accepts attachments, and lets you know when you are needed.
 
-O painel é servido pelo seu próprio PC, dentro da sua rede Tailscale. **Não precisa hospedar um backend na nuvem, abrir portas no roteador ou usar WSL.** Os agentes continuam usando os serviços e as contas de IA deles — o Nanachi não substitui essas contas nem torna os modelos locais.
+Your own PC serves the dashboard inside your Tailscale network. **There is no need to host a cloud backend, forward router ports, or use WSL.** Agents still use their own AI services and accounts—Nanachi does not replace those accounts or make the models run locally.
 
-> O PC precisa estar ligado, conectado ao Tailscale e com o daemon rodando. O celular é o controle remoto, não o lugar onde o agente executa.
+> Your PC must be powered on, connected to Tailscale, and running the daemon. Your phone is the remote control, not where the agent runs.
 
-### O que dá para fazer
+### What you can do
 
-- **Conversar com os agentes** com respostas em tempo real, Markdown, código e detalhes das ferramentas.
-- **Escolher modelo, acesso e esforço** quando o agente oferece essas opções, e responder pedidos de permissão pelo chat.
-- **Usar comandos `/`** anunciados pelo agente, com busca no próprio campo de mensagem.
-- **Retomar sessões do PC** quando o agente suporta listar e reabrir o histórico.
-- **Mandar fotos e arquivos** e receber arquivos ou capturas de tela do PC no chat.
-- **Ver alterações Git** e abrir sessões em worktrees separados para não mexer no checkout principal.
-- **Alternar entre PCs**, silenciar projetos e revogar aparelhos pareados.
-- **Receber notificações**, inclusive com o app fora de foco, se o sistema e o navegador permitirem.
+- **Chat with agents** with real-time responses, Markdown, code, and tool details.
+- **Choose model, access, and effort settings** when the agent supports them, and respond to permission requests in chat.
+- **Use `/` commands** advertised by the agent, with search built into the message field.
+- **Resume PC sessions** when the agent supports listing and reopening its history.
+- **Send photos and files** and receive files or PC screenshots in chat.
+- **View Git changes** and open sessions in separate worktrees without changing the main checkout.
+- **Switch between PCs**, mute projects, and revoke paired devices.
+- **Receive notifications**, even when the app is not focused, if the operating system and browser allow it.
 
-### Agentes
+### Agents
 
-| Agente | Como aparece no app | O que preparar no PC |
+| Agent | How it appears in the app | What to prepare on your PC |
 | --- | --- | --- |
-| Oh My Pi (`omp`) | Chat via ACP | Instalar o `omp`, deixar no PATH e configurar a conta. |
-| Claude Code | Chat via ACP | Fazer o login local; o adaptador `claude-agent-acp` vem com o daemon. |
-| Codex | Chat via ACP | Fazer o login local; o adaptador `codex-acp` vem com o daemon. |
-| Antigravity (`agy`) | Terminal interativo | Instalar o `agy`, fazer login e aceitar a confiança nas pastas que vai usar. |
+| Oh My Pi (`omp`) | Chat through ACP | Install `omp`, add it to PATH, and configure your account. |
+| Claude Code | Chat through ACP | Sign in locally; the `claude-agent-acp` adapter is included with the daemon. |
+| Codex | Chat through ACP | Sign in locally; the `codex-acp` adapter is included with the daemon. |
+| Antigravity (`agy`) | Interactive terminal | Install `agy`, sign in, and accept the trust prompts for the folders you will use. |
 
-ACP é o protocolo de conversa com os agentes. O Antigravity usa um terminal de verdade; por isso algumas funções de chat e retomada não se aplicam a ele.
+ACP is the protocol used to communicate with agents. Antigravity uses a real terminal, so some chat and resume features do not apply to it.
 
-## Antes de instalar
+## Before you install
 
-No **PC**:
+On your **PC**:
 
-- Windows — o ambiente de desenvolvimento do projeto é Windows 11.
-- [Node.js](https://nodejs.org/) **22 ou superior**, com npm.
-- [Git](https://git-scm.com/) no PATH, para clonar o projeto, ver alterações e usar worktrees.
-- [Tailscale](https://tailscale.com/download) instalado e conectado.
-- Pelo menos um dos agentes que você quer usar, com a conta configurada no terminal.
+- Windows—the project's development environment is Windows 11.
+- [Node.js](https://nodejs.org/) **22 or later**, with npm.
+- [Git](https://git-scm.com/) on PATH, to clone the project, view changes, and use worktrees.
+- [Tailscale](https://tailscale.com/download), installed and connected.
+- At least one agent you want to use, with its account configured in the terminal.
 
-No **celular**:
+On your **phone**:
 
-- Tailscale instalado, com acesso à mesma tailnet do PC.
-- **Android:** Chrome atualizado é o caminho recomendado para instalar o web app.
-- **iPhone:** Safari. Para notificações, iOS **16.4 ou superior** e app instalado na Tela de Início.
+- Tailscale installed, with access to the same tailnet as your PC.
+- **Android:** an up-to-date Chrome browser is the recommended way to install the web app.
+- **iPhone:** Safari. Notifications require **iOS 16.4 or later** and the app installed on the Home Screen.
 
-No [painel do Tailscale](https://login.tailscale.com/admin/dns), habilite **HTTPS Certificates**, na área de DNS. É isso que permite abrir o painel com HTTPS e instalar o PWA corretamente.
+In the [Tailscale admin console](https://login.tailscale.com/admin/dns), enable **HTTPS Certificates** under DNS. This lets you open the dashboard over HTTPS and install the PWA correctly.
 
-## Começar no PC
+## Get started on your PC
 
-Os comandos abaixo são executados na raiz do projeto, no PowerShell ou no terminal que você usa no Windows.
+Run the following commands from the project root in PowerShell or your preferred Windows terminal.
 
-### 1. Baixar e compilar
+### 1. Download and build
 
 ```powershell
 git clone https://github.com/j-carv/nanachi-remote-control.git
@@ -80,266 +80,268 @@ npm install
 npm run build
 ```
 
-### 2. Criar a configuração
+### 2. Create the configuration
 
 ```powershell
 npm run start -w @nanachi/daemon
 ```
 
-Na primeira execução, o daemon cria a pasta `%USERPROFILE%\.nanachi-remote` e o arquivo `config.json`. Pare com **Ctrl+C**, abra o arquivo e ajuste as pastas e o login autorizados:
+On its first run, the daemon creates `%USERPROFILE%\.nanachi-remote` and its `config.json` file. Stop it with **Ctrl+C**, open the file, and set your authorized folders and login:
 
 ```json
 {
   "port": 7777,
   "host": "127.0.0.1",
-  "machineName": "Meu PC",
-  "allowedRoots": ["C:\\Projetos", "D:\\Dev"],
-  "allowedTailscaleLogins": ["seu-login@exemplo.com"],
+  "machineName": "My PC",
+  "allowedRoots": ["C:\\Projects", "D:\\Dev"],
+  "allowedTailscaleLogins": ["you@example.com"],
   "corsOrigins": []
 }
 ```
 
-Use pastas que existem na sua máquina. O login é o da sua conta Tailscale; confira com `tailscale status`. Preserve os demais campos que já estiverem no arquivo.
+Use folders that exist on your machine. The login is your Tailscale account login; check it with `tailscale status`. Keep any other fields already present in the file.
 
-- `allowedRoots` define quais pastas aparecem para criar workspaces. **Não é uma sandbox para os agentes.**
-- `allowedTailscaleLogins` define quem pode acessar pela tailnet. Não deixe vazio: vazio aceita qualquer login que chegue pelo Tailscale Serve.
-- `host` fica em loopback. Não troque por `0.0.0.0` — o daemon não aceita escutar diretamente na rede.
+- `allowedRoots` defines which folders are available when creating workspaces. **It is not an agent sandbox.**
+- `allowedTailscaleLogins` defines who can connect through your tailnet. Do not leave it empty: an empty list accepts any login forwarded by Tailscale Serve.
+- Keep `host` on loopback. Do not change it to `0.0.0.0`—the daemon refuses to listen directly on the network.
 
-Suba o daemon de novo e mantenha esse terminal aberto:
+Start the daemon again and leave the terminal open:
 
 ```powershell
 npm run start -w @nanachi/daemon
 ```
 
-### 3. Disponibilizar na sua tailnet
+### 3. Make it available on your tailnet
 
-Em **outro terminal**:
+In **another terminal**:
 
 ```powershell
 tailscale serve --bg http://localhost:7777
 tailscale serve status
 ```
 
-Anote o endereço HTTPS mostrado, algo como `https://meu-pc.minha-tailnet.ts.net`. É esse endereço que você vai abrir no celular. Se sua versão do Tailscale tiver opções diferentes, consulte a [referência do Serve](https://tailscale.com/kb/1242/tailscale-serve).
+Save the HTTPS address shown, such as `https://my-pc.my-tailnet.ts.net`. This is the address you will open on your phone. If your Tailscale version has different options, see the [Serve reference](https://tailscale.com/kb/1242/tailscale-serve).
 
-> **Use `tailscale serve`, nunca `tailscale funnel`.** Serve mantém o acesso na sua tailnet; Funnel publica o serviço na internet. Não encaminhe a porta 7777 no roteador.
+> **Use `tailscale serve`, never `tailscale funnel`.** Serve keeps access within your tailnet; Funnel publishes the service on the internet. Do not forward port 7777 on your router.
 
-### 4. Gerar o código de pareamento
+### 4. Generate a pairing code
 
-Com o daemon rodando:
+With the daemon running:
 
 ```powershell
 npm run pair -w @nanachi/daemon
 ```
 
-Ele mostra um código de **6 dígitos**, válido por **5 minutos** e de uso único. Agora vá para o celular.
+This displays a **6-digit code**, valid for **5 minutes** and usable only once. Now switch to your phone.
 
-## Instalar no celular
+## Install on your phone
+
+The app's interface currently uses Portuguese labels. The instructions below give their English meanings and preserve the labels you need to find.
 
 ### Android
 
-1. Abra o **Tailscale** no Android, entre na sua conta e confira se está conectado à mesma tailnet do PC.
-2. No **Chrome**, abra o endereço HTTPS do PC mostrado pelo `tailscale serve status`.
-3. Toque no menu **⋮** do Chrome → **Instalar e criar atalho → Instalar**. Dependendo da versão, o caminho aparece como **Adicionar à tela inicial → Instalar** ou diretamente **Instalar app**.
-4. Confirme e abra o **Nanachi Remote pelo ícone** criado no launcher ou na tela inicial. Ele deve abrir em uma janela própria, sem a barra de endereço.
-5. Toque em **Parear máquina**, confira o endereço do PC, informe o código de 6 dígitos e dê um nome ao aparelho.
-6. Em **Ajustes** do Nanachi, ative as notificações e aceite a permissão do Chrome/Android, se solicitada.
+1. Open **Tailscale** on Android, sign in, and make sure it is connected to the same tailnet as your PC.
+2. In **Chrome**, open the PC's HTTPS address shown by `tailscale serve status`.
+3. Open Chrome's **⋮** menu → **Install and create shortcut → Install**. Depending on your version, this may appear as **Add to Home screen → Install** or simply **Install app**. Browser menu labels depend on your browser language.
+4. Confirm, then open **Nanachi Remote from its icon** in your launcher or home screen. It should open in its own window, without an address bar.
+5. Tap **Pair machine (Parear máquina)**, check the PC address, enter the 6-digit code, and name your device.
+6. In Nanachi's **Settings (Ajustes)**, enable notifications and accept the Chrome/Android permission request if prompted.
 
-Não é um APK e não precisa da Play Store. A instalação é feita pelo próprio navegador; veja também o [guia de apps da Web do Chrome para Android](https://support.google.com/chrome/answer/9658361?hl=pt-BR&co=GENIE.Platform%3DAndroid).
+This is not an APK and does not require the Play Store. Installation happens through the browser; see the [Chrome guide to web apps on Android](https://support.google.com/chrome/answer/9658361?hl=en&co=GENIE.Platform%3DAndroid).
 
-**Só apareceu “Criar atalho”?** Confira se está usando o Chrome atualizado, no endereço **HTTPS**, e não em uma aba anônima ou no navegador interno de outro app. Abra a página diretamente no Chrome. Os nomes dos menus podem variar conforme a versão e o fabricante.
+**Only seeing “Create shortcut”?** Make sure you are using an up-to-date Chrome browser at the **HTTPS** address, not an incognito tab or another app's embedded browser. Open the page directly in Chrome. Menu names may vary by version and manufacturer.
 
-Para receber avisos, mantenha o Tailscale conectado. Se eles não chegarem, confira as permissões de notificações do app/Chrome nas configurações do Android. Restrições de bateria do fabricante também podem atrasar a conexão ou as notificações.
+Keep Tailscale connected to receive notifications. If they do not arrive, check the app/Chrome notification permissions in Android settings. Manufacturer battery restrictions can also delay the connection or notifications.
 
 ### iPhone
 
-1. Abra o **Tailscale**, conecte-se à mesma tailnet e deixe-o ativo.
-2. No **Safari**, abra o endereço HTTPS do PC.
-3. Toque em **Compartilhar → Adicionar à Tela de Início** e confirme.
-4. Abra o Nanachi **pelo ícone da Tela de Início**, não pela aba do Safari.
-5. Toque em **Parear máquina**, confira o endereço, informe o código e dê um nome ao aparelho.
-6. Em **Ajustes**, ative as notificações e aceite a permissão do iOS.
+1. Open **Tailscale**, connect to the same tailnet, and leave it active.
+2. In **Safari**, open the PC's HTTPS address.
+3. Tap **Share → Add to Home Screen** and confirm. Browser menu labels depend on your system language.
+4. Open Nanachi **from its Home Screen icon**, not from the Safari tab.
+5. Tap **Pair machine (Parear máquina)**, check the address, enter the code, and name your device.
+6. In **Settings (Ajustes)**, enable notifications and accept the iOS permission request.
 
-No iPhone, notificações web exigem **iOS 16.4+** e o app instalado na Tela de Início. Deixar só a página aberta no Safari não basta.
+On iPhone, web notifications require **iOS 16.4+** and the app installed on the Home Screen. Leaving the page open in Safari is not enough.
 
-**O código expirou?** Gere outro no PC com o mesmo comando. Cada aparelho precisa do próprio pareamento.
+**Code expired?** Generate another on your PC with the same command. Each device needs its own pairing.
 
-## No dia a dia
+## Everyday use
 
-### Abrir um projeto e conversar
+### Open a project and start chatting
 
-1. Selecione o PC na tela de máquinas.
-2. Toque em **+ Workspace**, navegue até uma das pastas autorizadas e escolha **Usar esta pasta**.
-3. Dentro do workspace, toque em **Nova sessão**, escolha o agente e ajuste as opções que ele disponibilizar.
-4. Toque em **Criar sessão** e mande sua mensagem.
+1. Select your PC on the machines screen.
+2. Tap **+ Workspace**, browse to an authorized folder, and choose **Use this folder (Usar esta pasta)**.
+3. Inside the workspace, tap **New session (Nova sessão)**, choose an agent, and adjust the options it provides.
+4. Tap **Create session (Criar sessão)** and send your message.
 
-Os seletores de modelo, acesso e esforço dependem do agente, e o app lembra a última escolha de cada um. Pedidos de permissão aparecem como cartões no chat. **Parar** interrompe o trabalho atual.
+Model, access, and effort selectors depend on the agent, and the app remembers your last choice for each one. Permission requests appear as cards in chat. **Stop (Parar)** interrupts the current work.
 
-Digite `/` no começo da mensagem ou use o botão de comandos para ver o que o agente anunciou. Se ele não anunciar comandos, não há uma lista universal para mostrar.
+Type `/` at the beginning of a message or use the commands button to see what the agent has advertised. If it does not advertise commands, there is no universal list to display.
 
-### Continuar de onde parou
+### Pick up where you left off
 
-- **Retomar:** reabre uma sessão parada ou com erro, quando o agente suporta retomada.
-- **Retomar do PC:** lista sessões do agente para aquele workspace e permite trazê-las para o app, quando a listagem é suportada.
-- **Encerrar:** para o processo, mas mantém a sessão na lista.
-- **Remover do app:** apaga o registro, os eventos e os arquivos daquela sessão no Nanachi. Se estiver trabalhando, ela será interrompida. Isso **não apaga o histórico próprio do agente**.
+- **Resume (Retomar):** reopens a stopped or failed session when the agent supports resuming.
+- **Resume from PC (Retomar do PC):** lists the agent's sessions for that workspace and lets you bring them into the app when listing is supported.
+- **End (Encerrar):** stops the process but keeps the session in the list.
+- **Remove from app (Remover do app):** deletes the session's record, events, and files from Nanachi. If it is working, it will be interrupted. This **does not delete the agent's own history**.
 
-Sessões de terminal do Antigravity não são retomadas. Se o agente não oferecer retomada, crie uma sessão nova.
+Antigravity terminal sessions cannot be resumed. If an agent does not support resuming, create a new session.
 
-### Fotos, arquivos e prints
+### Photos, files, and screenshots
 
-Use o clipe no chat para anexar fotos ou arquivos. Imagens são enviadas como imagem quando o agente aceita esse tipo de entrada; caso contrário, ele recebe o caminho do arquivo.
+Use the paperclip in chat to attach photos or files. Images are sent as images when the agent accepts that input type; otherwise, it receives the file path.
 
-No sentido PC → celular, um agente executado dentro de uma sessão Nanachi pode usar:
+To send from PC → phone, an agent running inside a Nanachi session can use:
 
 ```powershell
-phone-send "C:\Projetos\meu-app\resultado.png" --caption "Olha como ficou"
+phone-send "C:\Projects\my-app\result.png" --caption "Here is the result"
 phone-send --screenshot
 ```
 
-O arquivo aparece no chat e pode gerar uma notificação. O comando só funciona **dentro da sessão do Nanachi**; não é um utilitário global para qualquer terminal.
+The file appears in chat and may trigger a notification. This command works **only inside a Nanachi session**; it is not a global utility for any terminal.
 
-Por padrão, o app avisa sobre o `phone-send` no primeiro prompt de uma sessão ACP nova. Sessões importadas ou retomadas não recebem esse aviso; nesses casos, explique o comando ao agente ou inclua-o nas instruções globais dele. `phoneSendHint: false` no `config.json` desativa o aviso automático.
+By default, the app tells the agent about `phone-send` in the first prompt of a new ACP session. Imported or resumed sessions do not receive this hint; in those cases, explain the command to the agent or include it in its global instructions. Set `phoneSendHint: false` in `config.json` to disable the automatic hint.
 
-### Git e terminal
+### Git and terminal
 
-Em um workspace Git, **Alterações** mostra arquivos modificados, inclusive os não rastreados, e o patch de cada um. Para isolar uma tarefa, marque **Em worktree separado** ao criar a sessão: ela ganha checkout e branch próprios.
+In a Git workspace, **Changes (Alterações)** shows modified files, including untracked files, and each file's patch. To isolate a task, select **In a separate worktree (Em worktree separado)** when creating the session: it gets its own checkout and branch.
 
-Ao encerrar, o app pode remover o worktree. Se houver alterações sem commit, a remoção é recusada para preservar o trabalho; o branch só é apagado se já estiver mergeado.
+When ending a session, the app can remove the worktree. If it contains uncommitted changes, removal is refused to preserve your work; the branch is deleted only if it has already been merged.
 
-Sessões do Antigravity abrem um terminal com teclas como Esc, Tab, Ctrl+C, setas e Enter. Faça o primeiro login e aceite a confiança na pasta pelo terminal do PC antes de usá-lo pelo celular.
+Antigravity sessions open a terminal with keys such as Esc, Tab, Ctrl+C, arrows, and Enter. Complete the first login and accept folder trust in your PC's terminal before using it from your phone.
 
-## Deixar pronto para quando precisar
+## Keep it ready when you need it
 
-Depois do primeiro build, você pode instalar o início automático e ligar o supervisor agora:
+After the first build, you can install automatic startup and start the supervisor immediately:
 
 ```powershell
 npm run autostart -w @nanachi/daemon -- install
 npm run autostart -w @nanachi/daemon -- start
 ```
 
-Isso cria um atalho na pasta **Inicializar** do Windows, sem precisar de administrador. Ele inicia o supervisor sem janela **ao fazer logon**, na sua sessão de usuário — não é um serviço do Windows.
+This creates a shortcut in the Windows **Startup** folder without requiring administrator privileges. It starts the supervisor without a window **when you sign in**, in your user session—it is not a Windows service.
 
-O supervisor acompanha alterações no código, recompila e mantém o daemon rodando. Isso é **recarga do código local**, não atualização automática por `git pull`.
+The supervisor watches code changes, rebuilds, and keeps the daemon running. This is **local code reloading**, not automatic updates through `git pull`.
 
 <details>
-<summary><strong>Como funciona a recarga e onde ficam os logs</strong></summary>
+<summary><strong>How reloading works and where to find logs</strong></summary>
 
-- Mudanças no daemon ou em `shared` aguardam **60 segundos sem novos builds** e nenhuma sessão trabalhando ou esperando permissão antes do reload. O intervalo é configurável em `reloadQuietMs`.
-- Sessões ACP ociosas são salvas e retomadas após o reload; terminais ficam parados. Falhas de retomada são registradas no log.
-- Mudanças no PWA não reiniciam o daemon. O service worker atualiza o app; reabra-o para receber a versão nova.
-- Se o daemon cair, o supervisor tenta reiniciar com espera crescente, até 30 segundos.
-- Só uma instância do supervisor roda por vez.
-- Logs: `%USERPROFILE%\.nanachi-remote\supervisor.log`, com rotação ao passar de 5 MB. Erros de início ficam em `supervisor-start.log`.
+- Changes to the daemon or `shared` wait for **60 seconds without new builds** and for no sessions to be working or awaiting permission before reloading. Configure the interval with `reloadQuietMs`.
+- Idle ACP sessions are saved and resumed after reloading; terminals remain stopped. Resume failures are recorded in the log.
+- PWA changes do not restart the daemon. The service worker updates the app; reopen it to get the new version.
+- If the daemon crashes, the supervisor retries with increasing delays, up to 30 seconds.
+- Only one supervisor instance runs at a time.
+- Logs: `%USERPROFILE%\.nanachi-remote\supervisor.log`, rotated when it exceeds 5 MB. Startup errors go to `supervisor-start.log`.
 
-Para acompanhar no terminal, use `npm run supervise`. Ctrl+C encerra o supervisor e seus filhos. Não rode um daemon manual na mesma porta ao mesmo tempo.
+To follow activity in the terminal, use `npm run supervise`. Ctrl+C stops the supervisor and its child processes. Do not run a manual daemon on the same port at the same time.
 
 </details>
 
-## Mais de um PC
+## More than one PC
 
-Cada PC tem seu daemon e seus dados. Você instala o web app uma vez e adiciona as outras máquinas nele.
+Each PC has its own daemon and data. Install the web app once, then add your other machines to it.
 
-1. Repita a instalação no segundo PC, incluindo configuração e Tailscale Serve.
-2. No `config.json` **do segundo PC**, autorize a origem HTTPS de onde você instalou o app:
+1. Repeat the setup on the second PC, including configuration and Tailscale Serve.
+2. In **the second PC's** `config.json`, authorize the HTTPS origin from which you installed the app:
 
    ```json
-   "corsOrigins": ["https://pc-principal.minha-tailnet.ts.net"]
+   "corsOrigins": ["https://main-pc.my-tailnet.ts.net"]
    ```
 
-3. Reinicie o segundo daemon, gere um código nele e, no celular, toque em **Parear máquina**. Use o endereço HTTPS do segundo PC e o código dele.
-4. Para notificações de todos os PCs, copie o arquivo `vapid.json` da pasta `.nanachi-remote` do principal para a mesma pasta de dados nos outros PCs, **antes de iniciar os daemons de destino e ativar os avisos**. Se já estiverem rodando, pare-os antes e reinicie depois. Todas as máquinas precisam da mesma chave. Reative as notificações no app se já estavam configuradas.
+3. Restart the second daemon, generate a code on that PC, and tap **Pair machine (Parear máquina)** on your phone. Use the second PC's HTTPS address and its code.
+4. For notifications from all PCs, copy `vapid.json` from the main PC's `.nanachi-remote` folder to the same data folder on the other PCs, **before starting the destination daemons and enabling notifications**. If they are already running, stop them first and restart them afterward. All machines need the same key. Re-enable notifications in the app if they were already configured.
 
-**O `vapid.json` contém uma chave privada.** Transfira só entre seus PCs, por um meio seguro, e nunca faça commit dele.
+**`vapid.json` contains a private key.** Transfer it only between your own PCs through a secure channel, and never commit it.
 
-## Segurança, sem letras miúdas
+## Security, without the fine print
 
-O Nanachi permite controlar processos que rodam com **o seu usuário do Windows**. Trate um celular pareado como uma chave de acesso ao seu PC.
+Nanachi lets you control processes running as **your Windows user**. Treat a paired phone as a key to your PC.
 
-- O daemon só escuta em loopback; o acesso remoto deve passar pelo **Tailscale Serve**.
-- Use `allowedTailscaleLogins` e as regras de acesso da sua tailnet para limitar quem chega ao serviço.
-- Cada aparelho recebe seu token. O banco guarda o hash, não o token original. O código de pareamento expira em 5 minutos e tem limite de tentativas.
-- **`allowedRoots` não isola o agente.** Ele pode acessar outras pastas com as permissões do seu usuário. Use os modos de aprovação do agente, principalmente com projetos de terceiros.
-- Perdeu o celular? Revogue em **Ajustes → Dispositivos desta máquina**, ou pelo CLI abaixo. A revogação encerra a conexão.
-- Não publique `config.json` com dados pessoais, `data.db`, `vapid.json`, tokens, anexos ou logs da sua pasta de dados.
-- Não use Funnel nem exponha a porta do daemon na internet.
+- The daemon listens only on loopback; remote access must go through **Tailscale Serve**.
+- Use `allowedTailscaleLogins` and your tailnet's access rules to limit who can reach the service.
+- Each device receives its own token. The database stores its hash, not the original token. Pairing codes expire after 5 minutes and have an attempt limit.
+- **`allowedRoots` does not isolate the agent.** It can access other folders with your user's permissions. Use the agent's approval modes, especially with third-party projects.
+- Lost your phone? Revoke it under **Settings → Devices on this machine (Ajustes → Dispositivos desta máquina)** or through the CLI below. Revocation closes the connection.
+- Do not publish `config.json` with personal data, `data.db`, `vapid.json`, tokens, attachments, or logs from your data folder.
+- Do not use Funnel or expose the daemon's port to the internet.
 
 <details>
-<summary><strong>Detalhes de proteção e limites</strong></summary>
+<summary><strong>Protection details and limits</strong></summary>
 
-O daemon valida Host e Origin, limita origens extras por `corsOrigins` e verifica o login repassado pelo Tailscale. As rotas `/api/agent/*`, usadas pelo `phone-send`, recusam chamadas encaminhadas pelo proxy. O token do agente é por sessão, só existe em memória e deixa de valer ao encerrar o daemon.
+The daemon validates Host and Origin, restricts additional origins through `corsOrigins`, and checks the login forwarded by Tailscale. The `/api/agent/*` routes used by `phone-send` reject proxied requests. Agent tokens are session-specific, exist only in memory, and become invalid when the daemon stops.
 
-Cada sessão admite até **200 arquivos e 500 MiB**, somando os dois sentidos. Notificações de arquivo têm intervalo mínimo de 60 segundos por sessão. PNG, JPEG, GIF e WebP podem aparecer inline; outros downloads são enviados como `application/octet-stream`.
+Each session allows up to **200 files and 500 MiB**, counting both directions. File notifications have a minimum interval of 60 seconds per session. PNG, JPEG, GIF, and WebP can appear inline; other downloads are sent as `application/octet-stream`.
 
-O serviço de push só aceita endpoints HTTPS dos provedores previstos no daemon (FCM, Mozilla, WNS e Apple). Inscrições expiradas, com resposta 404 ou 410, são removidas.
+The push service accepts only HTTPS endpoints from the providers allowed by the daemon (FCM, Mozilla, WNS, and Apple). Expired subscriptions returning 404 or 410 are removed.
 
 </details>
 
-## Comandos úteis
+## Useful commands
 
-Execute na raiz do repositório. Os comandos de início usam o resultado de `npm run build`.
+Run these from the repository root. Startup commands use the output of `npm run build`.
 
-| Comando | Para quê |
+| Command | Purpose |
 | --- | --- |
-| `npm run start -w @nanachi/daemon` | Rodar o daemon no terminal. |
-| `npm run pair -w @nanachi/daemon` | Gerar um código para um aparelho novo. |
-| `npm run devices -w @nanachi/daemon` | Listar aparelhos e seus IDs. |
-| `npm run revoke -w @nanachi/daemon -- <id>` | Revogar um aparelho. Substitua `<id>` pelo ID listado. |
-| `npm run autostart -w @nanachi/daemon -- status` | Ver o estado do início automático e do supervisor. |
-| `npm run autostart -w @nanachi/daemon -- stop` | Parar supervisor e processos filhos. |
-| `npm run autostart -w @nanachi/daemon -- uninstall` | Remover o atalho de logon; não para processos já abertos. |
-| `npm run vapid -w @nanachi/daemon -- show` | Ver o caminho da chave de push e sua parte pública. |
-| `npm run supervise` | Compilar e acompanhar os builds e o daemon no terminal. |
+| `npm run start -w @nanachi/daemon` | Run the daemon in the terminal. |
+| `npm run pair -w @nanachi/daemon` | Generate a code for a new device. |
+| `npm run devices -w @nanachi/daemon` | List devices and their IDs. |
+| `npm run revoke -w @nanachi/daemon -- <id>` | Revoke a device. Replace `<id>` with its listed ID. |
+| `npm run autostart -w @nanachi/daemon -- status` | Show automatic startup and supervisor status. |
+| `npm run autostart -w @nanachi/daemon -- stop` | Stop the supervisor and its child processes. |
+| `npm run autostart -w @nanachi/daemon -- uninstall` | Remove the sign-in shortcut; does not stop running processes. |
+| `npm run vapid -w @nanachi/daemon -- show` | Show the push key path and its public part. |
+| `npm run supervise` | Build and watch builds and the daemon in the terminal. |
 
 <details>
-<summary><strong>Referência do config.json</strong></summary>
+<summary><strong>config.json reference</strong></summary>
 
-A pasta de dados padrão é `%USERPROFILE%\.nanachi-remote`. Para usar outra, defina `NANACHI_HOME` no ambiente de **todos** os comandos do daemon e do CLI.
+The default data folder is `%USERPROFILE%\.nanachi-remote`. To use another location, set `NANACHI_HOME` in the environment of **every** daemon and CLI command.
 
-| Campo | Padrão | Função |
+| Field | Default | Purpose |
 | --- | --- | --- |
-| `port` | `7777` | Porta local; ajuste também o destino do Tailscale Serve se mudar. |
-| `host` | `127.0.0.1` | Só aceita `127.0.0.1`, `::1` ou `localhost`. |
-| `machineName` | Nome do PC | Nome exibido no app. |
-| `allowedRoots` | `[]` | Raízes disponíveis para escolher workspaces. |
-| `allowedTailscaleLogins` | `[]` | Logins autorizados; vazio aceita qualquer login encaminhado pelo Serve. |
-| `corsOrigins` | `[]` | Origens extras, como a do PC principal em uma instalação com várias máquinas. |
-| `phoneSendHint` | `true` | Avisa o agente sobre `phone-send` no primeiro prompt de uma sessão ACP nova. |
-| `reloadQuietMs` | `60000` | Espera sem novos builds antes do reload pelo supervisor. |
-| `agents` | omp, claude, codex, agy | Mapa de agentes, com `label`, `command`, `args`, `env` e `kind` (`acp` ou `pty`). |
+| `port` | `7777` | Local port; also update the Tailscale Serve target if you change it. |
+| `host` | `127.0.0.1` | Accepts only `127.0.0.1`, `::1`, or `localhost`. |
+| `machineName` | PC name | Name displayed in the app. |
+| `allowedRoots` | `[]` | Roots available when choosing workspaces. |
+| `allowedTailscaleLogins` | `[]` | Authorized logins; an empty list accepts any login forwarded by Serve. |
+| `corsOrigins` | `[]` | Additional origins, such as the main PC's origin in a multi-machine setup. |
+| `phoneSendHint` | `true` | Tells the agent about `phone-send` in the first prompt of a new ACP session. |
+| `reloadQuietMs` | `60000` | Quiet period without new builds before the supervisor reloads. |
+| `agents` | omp, claude, codex, agy | Agent map with `label`, `command`, `args`, `env`, and `kind` (`acp` or `pty`). |
 
-Uma entrada em `agents` substitui o padrão do mesmo ID. Agentes padrão não definidos no arquivo continuam disponíveis em memória. Depois de editar a configuração, reinicie o daemon.
+An entry in `agents` overrides the default for the same ID. Default agents not defined in the file remain available in memory. Restart the daemon after editing the configuration.
 
 </details>
 
-## Quando algo não funcionar
+## Troubleshooting
 
-| Sintoma | O que conferir |
+| Symptom | What to check |
 | --- | --- |
-| O endereço não abre no celular | PC ligado, daemon rodando, Tailscale conectado nos dois aparelhos e endereço HTTPS correto em `tailscale serve status`. |
-| Não aparece pasta para criar workspace | `allowedRoots` precisa ter pelo menos uma pasta existente. Reinicie o daemon depois de editar. |
-| Código inválido ou expirado | Gere outro com `npm run pair -w @nanachi/daemon`; ele só vale uma vez, por 5 minutos. |
-| Android só cria um atalho | Use Chrome atualizado, HTTPS e uma aba normal. Procure **Instalar app** ou **Adicionar à tela inicial → Instalar**. |
-| Notificações não chegam | Confira permissões do sistema/navegador, Tailscale ativo e, em vários PCs, a mesma chave VAPID. No iPhone, use iOS 16.4+ e abra pelo ícone instalado. |
-| Notificações pararam depois de funcionar | Ative-as de novo em Ajustes; a inscrição pode ter expirado. No Android, confira também as restrições de bateria. |
-| WebSocket não conecta | Confira se o proxy repassa os headers de origem. Se necessário, inclua a origem HTTPS do app em `corsOrigins` e reinicie. |
-| O agente não inicia | Teste o comando no terminal, confirme PATH e login. `omp` e `agy` são instalados à parte. |
-| Antigravity pede login ou confiança | Abra `agy` no PC uma vez e resolva as perguntas na pasta desejada. |
-| Captura de tela fica preta | Rode o daemon na sessão de desktop do usuário. Um serviço do Windows não enxerga a mesma área de trabalho. |
-| Porta 7777 ocupada | Não misture daemon manual e supervisor na mesma porta. Se trocar `port`, atualize também o Tailscale Serve. |
-| Erro ao ler `config.json` | Confira JSON válido e o campo citado na mensagem. BOM UTF-8 do PowerShell 5.1 é aceito. |
+| The address does not open on your phone | PC powered on, daemon running, Tailscale connected on both devices, and the correct HTTPS address from `tailscale serve status`. |
+| No folder appears when creating a workspace | `allowedRoots` must contain at least one existing folder. Restart the daemon after editing it. |
+| Invalid or expired code | Generate another with `npm run pair -w @nanachi/daemon`; each code works once and lasts 5 minutes. |
+| Android only creates a shortcut | Use up-to-date Chrome, HTTPS, and a normal tab. Look for **Install app** or **Add to Home screen → Install**. |
+| Notifications do not arrive | Check system/browser permissions, an active Tailscale connection, and the same VAPID key across PCs. On iPhone, use iOS 16.4+ and open the installed icon. |
+| Notifications stopped working | Enable them again in **Settings (Ajustes)**; the subscription may have expired. On Android, also check battery restrictions. |
+| WebSocket does not connect | Make sure the proxy forwards origin headers. If needed, add the app's HTTPS origin to `corsOrigins` and restart. |
+| The agent does not start | Try its command in the terminal and check PATH and login. Install `omp` and `agy` separately. |
+| Antigravity asks for login or folder trust | Open `agy` once on your PC and answer its prompts in the desired folder. |
+| Screenshots are black | Run the daemon in your user's desktop session. A Windows service cannot see the same desktop. |
+| Port 7777 is in use | Do not mix a manual daemon and supervisor on the same port. If you change `port`, update Tailscale Serve too. |
+| Error reading `config.json` | Check for valid JSON and inspect the field named in the message. PowerShell 5.1's UTF-8 BOM is accepted. |
 
-## Para mexer no código
+## Working on the code
 
-Monorepo com npm workspaces:
+This is an npm workspaces monorepo:
 
 ```text
 packages/
-  shared/   Tipos e schemas Zod do protocolo
-  daemon/   API Fastify, WebSocket, SQLite, agentes e CLI
-  pwa/      React, Vite, service worker e interface mobile
-e2e/        Cenários ponta a ponta com Playwright e Edge
-docs/       Contratos técnicos e notas do projeto
+  shared/   Protocol types and Zod schemas
+  daemon/   Fastify API, WebSocket, SQLite, agents, and CLI
+  pwa/      React, Vite, service worker, and mobile interface
+e2e/        End-to-end scenarios with Playwright and Edge
+docs/       Technical contracts and project notes
 ```
 
 ```powershell
@@ -349,30 +351,34 @@ npm test
 npm run typecheck
 ```
 
-Para trabalhar com recarga integrada, use `npm run supervise`. Também existem `npm run dev -w @nanachi/daemon` e `npm run dev -w @nanachi/pwa` para trabalhar em cada pacote; compile `shared` antes. O Vite encaminha `/api` e `/ws` para `127.0.0.1:7777`. O fluxo de instalação e notificações deve ser conferido com o **PWA buildado e servido via HTTPS**, não só com o servidor de desenvolvimento.
+For integrated reloading, use `npm run supervise`. You can also use `npm run dev -w @nanachi/daemon` and `npm run dev -w @nanachi/pwa` to work on individual packages; build `shared` first. Vite proxies `/api` and `/ws` to `127.0.0.1:7777`. Check installation and notifications with the **built PWA served over HTTPS**, not just the development server.
 
 <details>
-<summary><strong>Testes ponta a ponta</strong></summary>
+<summary><strong>End-to-end tests</strong></summary>
 
-Depois de `npm run build`, os cenários abaixo sobem daemons temporários e usam agentes de teste, sem consumir uma conta de IA. Exigem Windows, Node 22+, Microsoft Edge e as portas usadas por cada cenário livres. As capturas geradas ficam em `e2e/screenshots/`, fora do versionamento.
+After `npm run build`, the following scenarios start temporary daemons and use test agents without consuming an AI account. They require Windows, Node 22+, Microsoft Edge, and free ports for each scenario. Generated screenshots are saved in `e2e/screenshots/`, which is not version-controlled.
 
-| Comando | Cenário |
+| Command | Scenario |
 | --- | --- |
-| `npm run e2e:34` | Anexos, arquivos enviados pelo PC, terminal e notificações. |
-| `npm run e2e:5` | Vários PCs, worktrees, dispositivos e controle de origem. |
-| `npm run e2e:resume` | Listagem, importação e remoção de sessões. |
-| `npm run e2e:images` | Imagens no chat e visualizador. |
-| `npm run e2e:commands` | Menu de comandos `/` e envio pelo chat. |
-| `npm run e2e:chatperf` | Chat longo, rolagem e apresentação das mensagens. |
+| `npm run e2e:34` | Attachments, files sent from the PC, terminal, and notifications. |
+| `npm run e2e:5` | Multiple PCs, worktrees, devices, and origin control. |
+| `npm run e2e:resume` | Session listing, import, and removal. |
+| `npm run e2e:images` | Chat images and image viewer. |
+| `npm run e2e:commands` | `/` command menu and sending commands through chat. |
+| `npm run e2e:chatperf` | Long chats, scrolling, and message rendering. |
 
-O `npm run e2e` básico é diferente: precisa de um daemon configurado na porta 7790, uma raiz autorizada e um código de pareamento. Ele usa o agente real. Exemplo: `npm run e2e -- --pair-code <código> --root-name <nome>`. Confira os requisitos no início de cada script antes de rodar. `E2E_BROWSER_CHANNEL=chrome` troca o navegador dos scripts que oferecem essa opção.
+The basic `npm run e2e` is different: it requires a configured daemon on port 7790, an authorized root, and a pairing code. It uses the real agent. Example: `npm run e2e -- --pair-code <code> --root-name <name>`. Read the requirements at the beginning of each script before running it. `E2E_BROWSER_CHANNEL=chrome` switches the browser for scripts that support that option.
 
-Os cenários com viewport de iPhone no navegador ajudam a conferir a interface, mas **não substituem validar instalação, teclado e push em um celular real**, Android ou iPhone.
+Browser scenarios with an iPhone viewport help check the interface, but **do not replace testing installation, keyboard behavior, and push on a real Android phone or iPhone**.
 
 </details>
 
-Mais detalhes: [contratos e arquitetura](docs/PLAN.md) · [configuração manual](docs/PENDENTES-USUARIO.md).
+More details: [contracts and architecture (Portuguese)](docs/PLAN.md) · [manual configuration (Portuguese)](docs/PENDENTES-USUARIO.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. External contributors should fork the repository and open a pull request for review by **@j-carv**. The repository is public, but public visibility does not grant write or merge access.
 
 ---
 
-Feito para acompanhar o trabalho de longe, sem entregar o controle do seu PC a um painel público. Comece com uma máquina, um projeto e um agente; adicione o resto quando precisar.
+Built to follow your work from anywhere without handing control of your PC to a public dashboard. Start with one machine, one project, and one agent; add the rest when you need it.
