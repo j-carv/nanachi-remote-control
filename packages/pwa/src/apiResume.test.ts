@@ -8,7 +8,6 @@ const SESSION = {
   kind: 'acp',
   title: 'Refatorar o parser',
   status: 'idle',
-  configOptions: [],
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,

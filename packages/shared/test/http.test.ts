@@ -3,6 +3,7 @@ import {
   AgentSessionsResponseSchema,
   AgentsResponseSchema,
   CommandsResponseSchema,
+  ConfigOptionsResponseSchema,
   AttachmentResponseSchema,
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
@@ -123,7 +124,6 @@ const session = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'starting',
-  configOptions: [],
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -322,6 +322,19 @@ describe('CreateSessionRequestSchema', () => {
       CreateSessionRequestSchema.safeParse({ workspaceId: 'w-1', agent: 'omp', worktree: 'yes' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('ConfigOptionsResponseSchema', () => {
+  it('aceita a lista de opções (vazia ou com itens)', () => {
+    expect(ConfigOptionsResponseSchema.parse({ configOptions: [] })).toEqual({ configOptions: [] });
+    const configOptions = [{ id: 'mode', name: 'Acesso', type: 'boolean', currentValue: true }];
+    expect(ConfigOptionsResponseSchema.parse({ configOptions })).toEqual({ configOptions });
+  });
+
+  it('rejeita configOptions ausente ou opção inválida', () => {
+    expect(ConfigOptionsResponseSchema.safeParse({}).success).toBe(false);
+    expect(ConfigOptionsResponseSchema.safeParse({ configOptions: [{ id: 'x', name: 'X' }] }).success).toBe(false);
   });
 });
 

@@ -8,7 +8,6 @@ const SESSION = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
-  configOptions: [],
   worktree: { path: 'C:\\app\\.nanachi\\wt', branch: 'nanachi/s1' },
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,

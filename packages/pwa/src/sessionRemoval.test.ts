@@ -10,7 +10,6 @@ function session(id: string, updatedAt: number, overrides: Partial<Session> = {}
     kind: 'acp',
     title: id,
     status: 'idle',
-    configOptions: [],
     worktree: null,
     createdAt: 1_700_000_000_000,
     updatedAt,

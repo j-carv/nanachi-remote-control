@@ -47,7 +47,6 @@ const session = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
-  configOptions: [selectOption, booleanOption],
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_500,
@@ -202,19 +201,9 @@ describe('SessionSchema', () => {
     expect(SessionSchema.parse(session)).toEqual(session);
   });
 
-  it('aceita configOptions vazio (antes de o agente responder)', () => {
-    expect(SessionSchema.safeParse({ ...session, configOptions: [] }).success).toBe(true);
-  });
-
-  it('rejeita configOptions ausente', () => {
-    const { configOptions: _configOptions, ...withoutConfig } = session;
-    expect(SessionSchema.safeParse(withoutConfig).success).toBe(false);
-  });
-
-  it('rejeita configOptions com opção inválida', () => {
-    expect(
-      SessionSchema.safeParse({ ...session, configOptions: [{ id: 'x', name: 'X' }] }).success,
-    ).toBe(false);
+  it('não carrega configOptions: a Session sai sem o campo (as opções vêm por GET /config)', () => {
+    const parsed: Record<string, unknown> = SessionSchema.parse({ ...session, configOptions: [selectOption] });
+    expect(parsed).not.toHaveProperty('configOptions');
   });
 
   it('rejeita status fora do enum', () => {

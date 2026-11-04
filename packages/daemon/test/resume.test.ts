@@ -6,9 +6,10 @@ import { SessionSchema, WorkspaceSchema, type AgentConfig, type Session, type Se
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   authHeader,
-  createSession,
   crashingAgent,
+  createSession,
   fakeAgent,
+  fetchConfigOptions,
   isAlive,
   isEvent,
   listen,
@@ -120,11 +121,13 @@ describe('POST /api/sessions/:id/resume com session/load', () => {
   it('configOptions da resposta do load substituem as salvas (o agente novo abre com o modelo padrão)', async () => {
     const daemon = await start();
     const stopped = await stoppedSession(daemon, 'fake', { model: 'slow-model' });
-    expect(stopped.configOptions.find((option) => option.id === 'model')).toMatchObject({ currentValue: 'slow-model' });
+    expect((await fetchConfigOptions(daemon, stopped.id)).find((option) => option.id === 'model')).toMatchObject({
+      currentValue: 'slow-model',
+    });
 
-    const { body } = await resume(daemon, stopped.id);
+    await resume(daemon, stopped.id);
 
-    expect(SessionSchema.parse(body).configOptions.find((option) => option.id === 'model')).toMatchObject({
+    expect((await fetchConfigOptions(daemon, stopped.id)).find((option) => option.id === 'model')).toMatchObject({
       currentValue: 'fast',
     });
   });
@@ -171,9 +174,9 @@ describe('POST /api/sessions/:id/resume com session/resume', () => {
     const daemon = await start();
     const stopped = await stoppedSession(daemon, 'modos');
 
-    const { body } = await resume(daemon, stopped.id);
+    await resume(daemon, stopped.id);
 
-    expect(SessionSchema.parse(body).configOptions).toEqual([
+    expect(await fetchConfigOptions(daemon, stopped.id)).toEqual([
       expect.objectContaining({ id: 'mode', category: 'mode', type: 'select', currentValue: 'default' }),
     ]);
   });

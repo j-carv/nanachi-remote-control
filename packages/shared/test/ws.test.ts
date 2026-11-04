@@ -13,7 +13,6 @@ const sessionValue = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
-  configOptions: [],
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -429,11 +428,8 @@ describe('ServerMessageSchema', () => {
       ).toBe(false);
     });
 
-    it('rejeita session sem configOptions', () => {
-      const { configOptions: _configOptions, ...withoutConfig } = sessionValue;
-      expect(ServerMessageSchema.safeParse({ type: 'session', session: withoutConfig }).success).toBe(
-        false,
-      );
+    it('aceita session sem configOptions (o campo não existe mais na Session)', () => {
+      expect(ServerMessageSchema.safeParse({ type: 'session', session: sessionValue }).success).toBe(true);
     });
   });
 
@@ -454,6 +450,30 @@ describe('ServerMessageSchema', () => {
       expect(ServerMessageSchema.safeParse({ type: 'commands', sessionId: 's-1' }).success).toBe(false);
       expect(
         ServerMessageSchema.safeParse({ type: 'commands', sessionId: 's-1', commands: [{ name: '', description: 'x', hint: null }] })
+          .success,
+      ).toBe(false);
+    });
+  });
+
+  describe('config_options', () => {
+    const configOptions = [
+      { id: 'model', name: 'Modelo', category: 'model', type: 'select', currentValue: 'a', options: [{ value: 'a', name: 'A' }] },
+    ];
+
+    it('aceita sessionId e a lista de opções', () => {
+      const msg = { type: 'config_options', sessionId: 's-1', configOptions };
+      expect(ServerMessageSchema.parse(msg)).toEqual(msg);
+    });
+
+    it('aceita lista vazia', () => {
+      expect(ServerMessageSchema.safeParse({ type: 'config_options', sessionId: 's-1', configOptions: [] }).success).toBe(true);
+    });
+
+    it('rejeita sem sessionId, sem lista ou com opção inválida', () => {
+      expect(ServerMessageSchema.safeParse({ type: 'config_options', configOptions }).success).toBe(false);
+      expect(ServerMessageSchema.safeParse({ type: 'config_options', sessionId: 's-1' }).success).toBe(false);
+      expect(
+        ServerMessageSchema.safeParse({ type: 'config_options', sessionId: 's-1', configOptions: [{ id: 'x', name: 'X' }] })
           .success,
       ).toBe(false);
     });
