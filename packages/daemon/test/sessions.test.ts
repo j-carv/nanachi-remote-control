@@ -1,4 +1,4 @@
-import { SessionsResponseSchema, type PairResponse, type SessionStatus } from '@nanachi/shared';
+import { ConfigOptionsResponseSchema, SessionsResponseSchema, type PairResponse, type SessionStatus } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
 import { stopInterruptedSessions } from '../src/repository.js';
 import { issueCode, setupDaemonTests, type TestDaemon } from './support.js';
@@ -74,7 +74,7 @@ describe('GET /api/workspaces/:id/sessions', () => {
     expect(SessionsResponseSchema.parse(res.json<unknown>())).toEqual({ sessions: [] });
   });
 
-  it('lista do banco, mais recente primeiro, com configOptions decodificadas', async () => {
+  it('lista do banco, mais recente primeiro, sem configOptions (elas ficam em GET /config)', async () => {
     const daemon = await env.start();
     insertWorkspace(daemon, 'ws-1');
     insertWorkspace(daemon, 'ws-2');
@@ -104,12 +104,31 @@ describe('GET /api/workspaces/:id/sessions', () => {
       kind: 'acp',
       title: 'Título',
       status: 'running',
-      configOptions: [SELECT_OPTION],
       worktree: null,
       createdAt: 30,
       updatedAt: 31,
     });
-    expect(body.sessions[1]?.configOptions).toEqual([]);
+    expect(body.sessions[0]).not.toHaveProperty('configOptions');
+  });
+
+  it('GET /api/sessions/:id/config devolve as opções gravadas; sessão inexistente dá 404', async () => {
+    const daemon = await env.start();
+    insertWorkspace(daemon, 'ws-1');
+    insertSession(daemon, {
+      id: 'com-opcoes',
+      workspaceId: 'ws-1',
+      status: 'idle',
+      createdAt: 10,
+      updatedAt: 10,
+      configOptions: JSON.stringify([SELECT_OPTION]),
+    });
+
+    const found = await daemon.app.inject({ method: 'GET', url: '/api/sessions/com-opcoes/config', headers: await auth(daemon) });
+    expect(found.statusCode).toBe(200);
+    expect(ConfigOptionsResponseSchema.parse(found.json<unknown>())).toEqual({ configOptions: [SELECT_OPTION] });
+
+    const missing = await daemon.app.inject({ method: 'GET', url: '/api/sessions/nao-existe/config', headers: await auth(daemon) });
+    expect(missing.statusCode).toBe(404);
   });
 
   it('kind vem gravado na sessão: não muda se o agente sumir ou mudar de tipo no config', async () => {

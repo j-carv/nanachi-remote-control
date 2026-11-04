@@ -137,7 +137,7 @@ Genérico via ACP `configOptions`, sem nada específico de agente. Observado:
 
 Contrato:
 - `SessionConfigOptionSchema = { id, name, description?: string|null, category?: string|null } & ({ type: "select", currentValue: string, options: { value, name, description?: string|null }[] } | { type: "boolean", currentValue: boolean })`. O daemon achata `options` agrupadas (`SessionConfigSelectGroup`) numa lista só.
-- `Session` ganha `configOptions: SessionConfigOption[]` (vazio até o agente responder). Persistido em `sessions.config_options TEXT` (JSON; migração 2 já cria a coluna).
+- ~~`Session` ganha `configOptions`~~: desde o Extra (04/11) a `Session` não tem `configOptions` (ver "configOptions fora da Session"). Continua persistido em `sessions.config_options TEXT` (JSON; migração 2 já cria a coluna).
 - Fontes: resposta de `session/new` (e futuramente `session/load`), notificações `config_option_update` (substitui a lista) e `current_mode_update` (atualiza o `currentValue` da opção de categoria `mode`). Agente que só manda `modes` (sem `configOptions`) → daemon sintetiza uma opção `{ id: "mode", name: "Modo", category: "mode", type: "select" }` e usa `session/set_mode` para trocar.
 - `POST /api/sessions` aceita `config?: Record<string, string | boolean>` aplicado logo após `session/new` (ids desconhecidos ignorados; falha de uma opção vira evento `error`, não derruba a sessão).
 - WS cliente → servidor: `set_config { sessionId, configId, value: string | boolean }` → daemon chama `session/set_config_option` (resposta traz a lista nova) → broadcast `session`. Erro → `error { message, sessionId }`.
@@ -319,10 +319,25 @@ Contrato:
 - Fake agent: `FAKE_AGENT_COMMANDS=1` anuncia 4 comandos (`loop`, `mcp`, `skill:brainstorming`, `eco`); `/eco <texto>` responde só com o texto. E2E: `npm run e2e:commands` (porta 7802), screenshots em `e2e/screenshots/commands/`.
 
 Limites e pontos em aberto:
-- Medido no banco real (04/11, leitura somente): listagem de uma pasta com 2 sessões (omp + claude) caiu de 143.394 para 89.860 bytes. Sobra quase tudo em `configOptions` do omp (~86 KB por sessão), que vai na `Session`. Esse é o próximo alvo, fora deste contrato.
+- Medido no banco real (04/11, leitura somente): listagem de uma pasta com 2 sessões (omp + claude) caiu de 143.394 para 89.860 bytes. Sobra quase tudo em `configOptions` do omp (~86 KB por sessão), que vai na `Session`. Resolvido na seção "configOptions fora da Session" abaixo.
 - Codex: o nome vem com `$` (`$brainstorming`). O ACP manda `/<nome>`, então o texto enviado é `/$brainstorming`. Não verificado com prompt real (a investigação não gasta prompts): se o codex-acp não reconhecer, o ajuste é só no `insertCommand`.
 - `/loop` existe no claude e não no omp (apesar do pedido). Um `/loop` digitado num omp vai como texto e o agente decide o que fazer.
 - Só o agente decide o efeito de um comando: o daemon não executa nada, só repassa o texto.
+
+## Extra (04/11) — configOptions fora da Session
+
+Motivo: `configOptions` do omp pesa ~86 KB por sessão (lista de modelos). Ia em toda listagem de sessões e em todo broadcast `session` para todos os clientes. Mesmo modelo do Extra de comandos: sai da `Session`, vai por GET e por mensagem só para os inscritos.
+
+Contrato:
+- shared: `SessionSchema` sem `configOptions`. `SessionConfigOptionSchema` continua. `ConfigOptionsResponseSchema = { configOptions: SessionConfigOption[] }` (http.ts).
+- `GET /api/sessions/:id/config` (Bearer) → `{ configOptions }`, lido da coluna `sessions.config_options` (`findSessionConfigOptions`). 404 se a sessão não existe. Lista vazia se o agente nunca mandou opções. Sem migração: a coluna já existia.
+- ServerMessage `config_options { sessionId, configOptions }`, enviada SÓ aos clientes inscritos na sessão: (a) no `subscribe`, depois do replay, se a lista não estiver vazia; (b) quando muda. Durante o replay não manda (a lista lida depois dele já inclui a mudança).
+- `persistConfig(live)` é o ponto único: compara com o banco; igual não regrava a linha nem avisa; diferente grava e avisa `SessionListener.configOptions`. Passa por ele: resposta de `set_config` (`applyConfig`), `config_option_update`, `current_mode_update`, `session/new`, `session/load` (resume e importação).
+- O broadcast `session` não é mais disparado por `setConfig`, `config_option_update`, `current_mode_update` nem por mudança de comandos (a Session não carrega nada disso).
+- PWA: `useChat` carrega `configOptions` por GET ao abrir e atualiza pela mensagem `config_options` (se a mensagem chegou antes do GET responder, o GET não sobrescreve). `ChatScreen` lê `controller.configOptions` (seletores Acesso/Modelo/Effort e "Mais opções"). A folha de nova sessão continua usando o localStorage, que o hook atualiza quando a lista muda.
+- Antes: listagem de uma pasta com 2 sessões (omp + claude) = 89.860 bytes, quase tudo `configOptions`. Depois: a listagem não carrega opções. Não remedido no banco real.
+
+Testes: daemon (`agent-support.fetchConfigOptions`, `session-ws` com os casos de inscrito/não inscrito, subscribe e reenvio igual), shared (`session`, `ws`, `http`), PWA (`apiClient` com GET /config). E2E: `e2e:commands` e `e2e:34` passam; nenhum E2E lia `configOptions` da Session.
 
 ## Fases seguintes (detalhadas quando a anterior fechar)
 2. Claude Code (`claude-agent-acp`), várias sessões por workspace, histórico SQLite, retomar sessões, ressincronização.

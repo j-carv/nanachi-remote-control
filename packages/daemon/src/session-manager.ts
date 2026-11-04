@@ -61,6 +61,7 @@ import {
   findFileById,
   findSessionById,
   findSessionCommands,
+  findSessionConfigOptions,
   findWorkspaceById,
   insertEvent,
   insertSession,
@@ -124,10 +125,14 @@ export class SessionError extends Error {
   }
 }
 
-/** Quem assina uma sessão recebe os eventos (histórico e ao vivo) e cada lista nova de comandos. */
+/**
+ * Quem assina uma sessão recebe os eventos (histórico e ao vivo), cada lista nova de comandos e cada mudança de
+ * opções de configuração.
+ */
 export interface SessionListener {
   event(event: SessionEvent): void;
   commands(commands: AvailableCommand[]): void;
+  configOptions(configOptions: SessionConfigOption[]): void;
 }
 
 export interface SessionManagerOptions {
@@ -375,7 +380,8 @@ export class SessionManager {
 
     this.reserved.add(sessionId);
     try {
-      await this.restore(sessionId, cwd, agent, acpSessionId, session.configOptions, options.markStarting === true);
+      const savedOptions = findSessionConfigOptions(this.options.db, sessionId) ?? [];
+      await this.restore(sessionId, cwd, agent, acpSessionId, savedOptions, options.markStarting === true);
     } finally {
       this.reserved.delete(sessionId);
     }
@@ -515,7 +521,6 @@ export class SessionManager {
     this.requireAcp(sessionId);
     const live = this.requireLive(sessionId);
     await this.applyConfig(live, configId, value);
-    this.broadcastSession(sessionId);
   }
 
   /** Bytes digitados no terminal (sessão pty viva). Terminal que já morreu vira error, sem derrubar nada. */
@@ -924,7 +929,6 @@ export class SessionManager {
       case 'config_option_update':
         live.configOptions = flattenConfigOptions(update.configOptions);
         this.persistConfig(live);
-        this.broadcastSession(id);
         return;
       case 'current_mode_update': {
         const modeId = update.currentModeId;
@@ -932,7 +936,6 @@ export class SessionManager {
           option.category === 'mode' && option.type === 'select' ? { ...option, currentValue: modeId } : option,
         );
         this.persistConfig(live);
-        this.broadcastSession(id);
         return;
       }
       default: {
@@ -954,7 +957,6 @@ export class SessionManager {
   private setCommands(id: string, commands: AvailableCommand[]): void {
     if (isDeepStrictEqual(findSessionCommands(this.options.db, id), commands)) return;
     updateSession(this.options.db, id, { commands }, Date.now());
-    this.broadcastSession(id);
     this.emitCommands(id, commands);
   }
 
@@ -1321,8 +1323,14 @@ export class SessionManager {
     this.persistConfig(live);
   }
 
+  /**
+   * Grava as opções que valem agora e avisa quem assina, mas só se mudaram em relação ao banco: opção igual não
+   * regrava a linha nem é reenviada.
+   */
   private persistConfig(live: LiveSession): void {
+    if (isDeepStrictEqual(findSessionConfigOptions(this.options.db, live.id), live.configOptions)) return;
     updateSession(this.options.db, live.id, { configOptions: live.configOptions }, Date.now());
+    this.emitConfigOptions(live.id, live.configOptions);
   }
 
   /**
@@ -1393,6 +1401,16 @@ export class SessionManager {
         listener.event(event);
       } catch (error) {
         this.options.log.warn({ err: error, sessionId }, 'assinante de evento falhou');
+      }
+    }
+  }
+
+  private emitConfigOptions(sessionId: string, configOptions: SessionConfigOption[]): void {
+    for (const listener of this.listeners.get(sessionId) ?? []) {
+      try {
+        listener.configOptions(configOptions);
+      } catch (error) {
+        this.options.log.warn({ err: error, sessionId }, 'assinante de opções falhou');
       }
     }
   }

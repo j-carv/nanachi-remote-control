@@ -8,6 +8,7 @@ import {
   authHeader,
   createSession,
   fakeAgent,
+  fetchConfigOptions,
   isEvent,
   listen,
   pairToken,
@@ -329,16 +330,83 @@ describe('WS: permissão e cancelamento', () => {
   });
 });
 
+describe('WS: config_options só para quem está inscrito', () => {
+  const configOf = (client: WsTestClient, sessionId: string) =>
+    client.messages.filter(
+      (message): message is Extract<ServerMessage, { type: 'config_options' }> =>
+        message.type === 'config_options' && message.sessionId === sessionId,
+    );
+
+  it('mudança de opção não vai para cliente que não assina a sessão', async () => {
+    const { daemon, base, client, session } = await openSession();
+    const other = await WsTestClient.connect(base, await pairToken(daemon));
+    await other.sync();
+    await client.sync();
+    const before = configOf(client, session.id).length;
+
+    client.send({ type: 'set_config', sessionId: session.id, configId: 'model', value: 'slow-model' });
+    await client.waitFor((message) => message.type === 'config_options');
+    await client.sync();
+    await other.sync();
+
+    expect(configOf(client, session.id)).toHaveLength(before + 1);
+    expect(configOf(other, session.id)).toEqual([]);
+    await other.close();
+    await client.close();
+  });
+
+  it('subscribe manda as opções atuais depois do replay', async () => {
+    const { daemon, base, client, session } = await openSession();
+    client.send({ type: 'set_config', sessionId: session.id, configId: 'model', value: 'slow-model' });
+    await client.waitFor((message) => message.type === 'config_options');
+
+    const late = await WsTestClient.connect(base, await pairToken(daemon));
+    late.send({ type: 'subscribe', sessionId: session.id, afterSeq: 0 });
+    await late.waitFor((message) => message.type === 'config_options');
+    await late.sync();
+
+    const messages = late.messages;
+    const configAt = messages.findIndex((message) => message.type === 'config_options');
+    const lastEventAt = messages.reduce((at, message, index) => (message.type === 'event' ? index : at), -1);
+    expect(configAt).toBeGreaterThan(lastEventAt);
+    expect(configOf(late, session.id)[0]?.configOptions).toContainEqual(
+      expect.objectContaining({ id: 'model', currentValue: 'slow-model' }),
+    );
+    await late.close();
+    await client.close();
+  });
+
+  it('opções iguais às gravadas não são reenviadas (resume devolve as mesmas opções)', async () => {
+    const { daemon, client, session } = await openSession();
+    await client.sync();
+    const before = configOf(client, session.id).length;
+    expect(before).toBe(1);
+
+    await daemon.app.inject({ method: 'DELETE', url: `/api/sessions/${session.id}`, headers: await authHeader(daemon) });
+    const res = await daemon.app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/resume`,
+      headers: await authHeader(daemon),
+    });
+    expect(res.statusCode).toBe(200);
+    await client.sync();
+
+    expect(configOf(client, session.id)).toHaveLength(before);
+    await client.close();
+  });
+});
+
 describe('WS: set_config e config_option_update', () => {
-  it('set_config troca o valor, persiste e faz broadcast de session; valor inválido vira error', async () => {
-    const { client, session } = await openSession();
+  it('set_config troca o valor, persiste e manda config_options ao inscrito; valor inválido vira error', async () => {
+    const { client, session, daemon } = await openSession();
 
     client.send({ type: 'set_config', sessionId: session.id, configId: 'model', value: 'slow-model' });
     const updated = await client.waitFor((message) => {
-      if (message.type !== 'session' || message.session.id !== session.id) return false;
-      return message.session.configOptions.some((option) => option.id === 'model' && option.type === 'select' && option.currentValue === 'slow-model');
+      if (message.type !== 'config_options' || message.sessionId !== session.id) return false;
+      return message.configOptions.some((option) => option.id === 'model' && option.type === 'select' && option.currentValue === 'slow-model');
     });
-    expect(updated.type).toBe('session');
+    expect(updated.type).toBe('config_options');
+    expect(await fetchConfigOptions(daemon, session.id)).toContainEqual(expect.objectContaining({ id: 'model', currentValue: 'slow-model' }));
 
     client.send({ type: 'set_config', sessionId: session.id, configId: 'model', value: 'nao-existe' });
     await client.waitFor(isErrorFor(session.id));
@@ -351,28 +419,28 @@ describe('WS: set_config e config_option_update', () => {
     await client.close();
   });
 
-  it('config_option_update do agente atualiza configOptions e faz broadcast de session', async () => {
+  it('config_option_update do agente atualiza as opções e manda config_options ao inscrito', async () => {
     const { client, session } = await openSession();
 
     client.send({ type: 'prompt', sessionId: session.id, text: 'config' });
     await client.waitFor((message) => {
-      if (message.type !== 'session' || message.session.id !== session.id) return false;
-      return message.session.configOptions.some((option) => option.id === 'thought' && option.type === 'select' && option.currentValue === 'high');
+      if (message.type !== 'config_options' || message.sessionId !== session.id) return false;
+      return message.configOptions.some((option) => option.id === 'thought' && option.type === 'select' && option.currentValue === 'high');
     });
     await client.waitFor(isEvent('turn_end'));
     await client.close();
   });
 
   it('agente que só informa modes: opção "mode" sintetizada e troca via session/set_mode', async () => {
-    const { client, session } = await openSession('modos');
-    expect(session.configOptions).toEqual([
+    const { client, session, daemon } = await openSession('modos');
+    expect(await fetchConfigOptions(daemon, session.id)).toEqual([
       expect.objectContaining({ id: 'mode', category: 'mode', type: 'select', currentValue: 'default' }),
     ]);
 
     client.send({ type: 'set_config', sessionId: session.id, configId: 'mode', value: 'plan' });
     await client.waitFor((message) => {
-      if (message.type !== 'session' || message.session.id !== session.id) return false;
-      return message.session.configOptions.some((option) => option.id === 'mode' && option.type === 'select' && option.currentValue === 'plan');
+      if (message.type !== 'config_options' || message.sessionId !== session.id) return false;
+      return message.configOptions.some((option) => option.id === 'mode' && option.type === 'select' && option.currentValue === 'plan');
     });
     await client.close();
   });

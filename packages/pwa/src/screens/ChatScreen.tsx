@@ -88,7 +88,7 @@ export function ChatScreen({
   const { chat } = controller;
   const current = controller.session;
   const viewport = useVisualViewport();
-  const { primary, extra } = splitOptions(current.configOptions);
+  const { primary, extra } = splitOptions(controller.configOptions);
 
   const [extraOpen, setExtraOpen] = useState(false);
   const [draft, setDraft] = useState('');

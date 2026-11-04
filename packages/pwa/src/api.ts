@@ -4,6 +4,7 @@ import {
   AgentsResponseSchema,
   AttachmentResponseSchema,
   CommandsResponseSchema,
+  ConfigOptionsResponseSchema,
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DevicesResponseSchema,
@@ -28,6 +29,7 @@ import {
   type AgentsResponse,
   type AttachmentResponse,
   type AvailableCommand,
+  type SessionConfigOption,
   type CreateSessionRequest,
   type CreateWorkspaceRequest,
   type DevicesResponse,
@@ -229,6 +231,8 @@ export interface ApiClient {
   fetchEvents(sessionId: string, query: EventsQuery): Promise<SessionEvent[]>;
   /** Comandos que o agente anunciou por último (lista vazia se nenhum). */
   sessionCommands(sessionId: string): Promise<AvailableCommand[]>;
+  /** Opções de configuração que valem agora (lista vazia se nenhuma). */
+  sessionConfigOptions(sessionId: string): Promise<SessionConfigOption[]>;
   /**
    * Envia um arquivo do celular para a sessão (corpo cru, com progresso via XHR).
    * Devolve o arquivo gravado no PC, para ser citado no `prompt`.
@@ -467,6 +471,11 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
     async sessionCommands(sessionId) {
       const { commands } = await getJson(CommandsResponseSchema, `/api/sessions/${pathId(sessionId)}/commands`);
       return commands;
+    },
+
+    async sessionConfigOptions(sessionId) {
+      const { configOptions } = await getJson(ConfigOptionsResponseSchema, `/api/sessions/${pathId(sessionId)}/config`);
+      return configOptions;
     },
 
     async fetchEvents(sessionId, query) {

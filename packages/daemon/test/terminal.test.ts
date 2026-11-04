@@ -12,6 +12,7 @@ import {
   authHeader,
   createSession,
   fakeAgent,
+  fetchConfigOptions,
   listen,
   pairToken,
   waitUntilDead,
@@ -104,7 +105,8 @@ describe('terminal (sessão kind pty)', () => {
   it('sobe no cwd do workspace com o env dos agentes ACP; saída inicial vira terminal_output', async () => {
     const daemon = await start();
     const session = await createSession(daemon, { workspaceId: await createWorkspaceId(daemon), agent: 'espera' });
-    expect(session).toMatchObject({ kind: 'pty', status: 'running', configOptions: [] });
+    expect(session).toMatchObject({ kind: 'pty', status: 'running' });
+    expect(await fetchConfigOptions(daemon, session.id)).toEqual([]);
 
     const client = await subscribe(daemon, session.id);
     await until(client, session.id, (events) => outputOf(events).includes('pronto'));

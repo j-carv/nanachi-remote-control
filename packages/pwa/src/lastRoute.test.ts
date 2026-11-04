@@ -21,7 +21,6 @@ const SESSION: Session = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'stopped',
-  configOptions: [],
   worktree: null,
   createdAt: 1,
   updatedAt: 1,

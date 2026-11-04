@@ -15,6 +15,7 @@ import {
   type AgentAccountsResponse,
   type AgentSessionsResponse,
   type CommandsResponse,
+  type ConfigOptionsResponse,
   type AgentsResponse,
   type ClientMessage,
   type DevicesResponse,
@@ -57,6 +58,7 @@ import {
   findPushSubscriptionOwner,
   findSessionById,
   findSessionCommands,
+  findSessionConfigOptions,
   findWorkspaceById,
   findWorkspaceByPath,
   insertWorkspace,
@@ -594,6 +596,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       return body;
     });
 
+    // Opções de configuração que valem agora (vazia se nenhuma). Fora da Session: ver ConfigOptionsResponseSchema.
+    api.get<{ Params: { id: string } }>('/api/sessions/:id/config', async (request, reply) => {
+      const configOptions = findSessionConfigOptions(db, request.params.id);
+      if (configOptions === undefined) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+      const body: ConfigOptionsResponse = { configOptions };
+      return body;
+    });
+
     api.get<{ Params: { id: string }; Querystring: { after?: unknown; limit?: unknown } }>(
       '/api/sessions/:id/events',
       async (request, reply) => {
@@ -718,6 +730,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       commands: (commands) => {
         if (active && !replaying) send(socket, { type: 'commands', sessionId, commands });
       },
+      configOptions: (configOptions) => {
+        if (active && !replaying) send(socket, { type: 'config_options', sessionId, configOptions });
+      },
     });
     subscriptions.set(sessionId, () => {
       active = false;
@@ -730,6 +745,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // Sem await entre o fim do replay e esta leitura: a lista é a atual. Vazia não se manda.
     const commands = findSessionCommands(db, sessionId) ?? [];
     if (active && commands.length > 0) send(socket, { type: 'commands', sessionId, commands });
+    const configOptions = findSessionConfigOptions(db, sessionId) ?? [];
+    if (active && configOptions.length > 0) send(socket, { type: 'config_options', sessionId, configOptions });
   }
 
   async function handleClientMessage(socket: WebSocket, subscriptions: Subscriptions, message: ClientMessage): Promise<void> {

@@ -16,7 +16,6 @@ const SESSION = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
-  configOptions: [],
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -239,6 +238,13 @@ describe('createApiClient: sessões e eventos', () => {
     const { calls, fetchFn } = fakeFetch(() => json({ commands }));
     expect(await clientWith(fetchFn).sessionCommands('s-1')).toEqual(commands);
     expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/commands');
+  });
+
+  it('sessionConfigOptions faz GET em /api/sessions/:id/config e devolve a lista', async () => {
+    const configOptions = [{ id: 'mode', name: 'Acesso', type: 'boolean', currentValue: true }];
+    const { calls, fetchFn } = fakeFetch(() => json({ configOptions }));
+    expect(await clientWith(fetchFn).sessionConfigOptions('s-1')).toEqual(configOptions);
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/config');
   });
 
   it('fetchEvents com limit acima de 500 nem chama a rede', async () => {

@@ -8,9 +8,10 @@ import {
   authHeader,
   createWorkspace,
   fakeAgent,
+  fetchConfigOptions,
+  type StoredAgentSession,
   waitUntilDead,
   writeAgentStore,
-  type StoredAgentSession,
 } from './agent-support.js';
 import { findAcpSessionId, listEvents } from '../src/repository.js';
 import type { NotifyHandler, NotifyKind } from '../src/notify.js';
@@ -180,7 +181,8 @@ describe('POST /api/sessions com resumeAcpSessionId (importar sessão do PC)', (
       config: { model: 'slow-model' },
     });
 
-    expect(session.configOptions.find((option) => option.id === 'model')).toMatchObject({ currentValue: 'slow-model' });
+    const configOptions = await fetchConfigOptions(daemon, session.id);
+    expect(configOptions.find((option) => option.id === 'model')).toMatchObject({ currentValue: 'slow-model' });
   });
 
   it('segunda importação da mesma sessão com ela aberta → 409 already_running com o sessionId', async () => {

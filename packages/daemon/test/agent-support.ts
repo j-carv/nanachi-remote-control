@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
 import {
+  ConfigOptionsResponseSchema,
   parseServerMessage,
   SessionSchema,
   WorkspaceSchema,
@@ -12,6 +13,7 @@ import {
   type PairResponse,
   type ServerMessage,
   type Session,
+  type SessionConfigOption,
   type SessionEvent,
 } from '@nanachi/shared';
 import { WebSocket } from 'ws';
@@ -199,6 +201,17 @@ export async function createSession(
     throw new Error(`POST /api/sessions → ${res.statusCode}: ${res.body}`);
   }
   return SessionSchema.parse(res.json<unknown>());
+}
+
+/** Opções de configuração que valem agora (GET /api/sessions/:id/config). */
+export async function fetchConfigOptions(daemon: TestDaemon, sessionId: string): Promise<SessionConfigOption[]> {
+  const res = await daemon.app.inject({
+    method: 'GET',
+    url: `/api/sessions/${sessionId}/config`,
+    headers: await authHeader(daemon),
+  });
+  if (res.statusCode !== 200) throw new Error(`GET /config → ${res.statusCode}: ${res.body}`);
+  return ConfigOptionsResponseSchema.parse(res.json<unknown>()).configOptions;
 }
 
 /** Env que o agente de teste recebeu (gravado pelo fake em `<pidDir>/<sessionId>.env.json`). */

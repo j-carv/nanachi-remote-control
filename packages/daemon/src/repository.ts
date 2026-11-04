@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AvailableCommandSchema,
   PushSubscriptionRequestSchema,
+  SessionConfigOptionSchema,
   SessionEventSchema,
   SessionSchema,
   SessionStatusSchema,
@@ -138,15 +139,13 @@ interface SessionDbRow {
   kind: string;
   title: string;
   status: string;
-  config_options: string;
   worktree: string | null;
   created_at: number;
   updated_at: number;
 }
 
-/** Valida a linha inteira com o schema do shared (kind, status, configOptions e worktree viram tipos confiáveis). */
+/** Valida a linha inteira com o schema do shared (kind, status e worktree viram tipos confiáveis). */
 function toSession(row: SessionDbRow): Session {
-  const configOptions: unknown = JSON.parse(row.config_options);
   const worktree: unknown = row.worktree === null ? null : JSON.parse(row.worktree);
   return SessionSchema.parse({
     id: row.id,
@@ -155,7 +154,6 @@ function toSession(row: SessionDbRow): Session {
     kind: row.kind,
     title: row.title,
     status: row.status,
-    configOptions,
     worktree,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -278,7 +276,7 @@ export function stopInterruptedSessions(db: Database.Database, at: number): numb
 }
 
 const SESSION_COLUMNS =
-  'id, workspace_id, agent, kind, title, status, config_options, worktree, created_at, updated_at';
+  'id, workspace_id, agent, kind, title, status, worktree, created_at, updated_at';
 
 export interface NewSession {
   id: string;
@@ -319,6 +317,12 @@ export function findSessionById(db: Database.Database, id: string): Session | un
 export function findSessionCommands(db: Database.Database, id: string): AvailableCommand[] | undefined {
   const row = db.prepare<[string], { commands: string }>('SELECT commands FROM sessions WHERE id = ?').get(id);
   return row === undefined ? undefined : AvailableCommandSchema.array().parse(JSON.parse(row.commands));
+}
+
+/** Opções de configuração que valem agora (coluna `config_options`). Undefined se a sessão não existe. */
+export function findSessionConfigOptions(db: Database.Database, id: string): SessionConfigOption[] | undefined {
+  const row = db.prepare<[string], { config_options: string }>('SELECT config_options FROM sessions WHERE id = ?').get(id);
+  return row === undefined ? undefined : SessionConfigOptionSchema.array().parse(JSON.parse(row.config_options));
 }
 
 /** Id da sessão no agente (session/new). Undefined se a sessão não existe ou nunca abriu no agente. */

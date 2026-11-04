@@ -11,9 +11,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   authHeader,
-  createSession,
   crashingAgent,
+  createSession,
   fakeAgent,
+  fetchConfigOptions,
   isAlive,
   waitUntilDead,
 } from './agent-support.js';
@@ -79,11 +80,13 @@ describe('POST /api/sessions', () => {
     });
 
     expect(session).toMatchObject({ workspaceId, agent: 'fake', title: 'Nova sessão', status: 'idle' });
-    expect(session.configOptions.map((option) => option.id)).toEqual(['mode', 'model', 'thought', 'ultra']);
-    const model = session.configOptions.find((option) => option.id === 'model');
+    const configOptions = await fetchConfigOptions(daemon, session.id);
+    expect(configOptions.map((option) => option.id)).toEqual(['mode', 'model', 'thought', 'ultra']);
+    const model = configOptions.find((option) => option.id === 'model');
     expect(model).toMatchObject({ type: 'select', currentValue: 'slow-model' });
     expect(model?.type === 'select' ? model.options.map((option) => option.value) : []).toEqual(['fast', 'slow-model']);
-    expect(session.configOptions.find((option) => option.id === 'thought')).toMatchObject({ currentValue: 'high' });
+    expect(configOptions.find((option) => option.id === 'thought')).toMatchObject({ currentValue: 'high' });
+    expect(session).not.toHaveProperty('configOptions');
 
     const events = await daemon.app.inject({
       method: 'GET',

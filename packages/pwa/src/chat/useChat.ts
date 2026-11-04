@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { AvailableCommand, ClientMessage, ConfigValue, FileInfo, Session, SessionEvent } from '@nanachi/shared';
+import type {
+  AvailableCommand,
+  ClientMessage,
+  ConfigValue,
+  FileInfo,
+  Session,
+  SessionConfigOption,
+  SessionEvent,
+} from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
 import { writeAgentConfig } from '../agentConfig.js';
@@ -20,10 +28,12 @@ export interface ChatOptions {
 
 export interface ChatController {
   chat: ChatState;
-  /** Sessão mais recente (título, config e status vindos do broadcast `session`). */
+  /** Sessão mais recente (título e status vindos do broadcast `session`). */
   session: Session;
   /** Comandos do agente: carregados por GET ao abrir e atualizados pela mensagem `commands`. */
   commands: readonly AvailableCommand[];
+  /** Opções de configuração (modelo, effort, modo...): GET ao abrir, depois a mensagem `config_options`. */
+  configOptions: readonly SessionConfigOption[];
   loaded: boolean;
   loadError: unknown;
   notice: string | null;
@@ -58,11 +68,14 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
   const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState<unknown>(null);
   const [commands, setCommands] = useState<readonly AvailableCommand[]>([]);
+  const [configOptions, setConfigOptions] = useState<readonly SessionConfigOption[]>([]);
 
   useEffect(() => {
     let active = true;
     // A mensagem `commands` do WS é sempre mais nova que o GET em voo: se ela chegou, o GET não sobrescreve.
     let commandsFromSocket = false;
+    // Mesma regra para as opções: a mensagem `config_options` vence o GET que estava em voo.
+    let configFromSocket = false;
     // Streaming manda um evento por chunk: os eventos do mesmo quadro viram um único setState.
     const batcher = createFrameBatcher<SessionEvent>({
       schedule: (callback) => window.requestAnimationFrame(callback),
@@ -85,6 +98,11 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
           commandsFromSocket = true;
           setCommands(message.commands);
         }
+      } else if (message.type === 'config_options') {
+        if (message.sessionId === sessionId) {
+          configFromSocket = true;
+          setConfigOptions(message.configOptions);
+        }
       } else if (message.type === 'error') {
         if (message.sessionId === undefined || message.sessionId === sessionId) {
           setNotice(message.message);
@@ -97,6 +115,13 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
       .sessionCommands(sessionId)
       .then((list) => {
         if (active && !commandsFromSocket) setCommands(list);
+      })
+      .catch(() => undefined);
+
+    api
+      .sessionConfigOptions(sessionId)
+      .then((list) => {
+        if (active && !configFromSocket) setConfigOptions(list);
       })
       .catch(() => undefined);
 
@@ -121,10 +146,10 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
   }, [api, connection, sessionId]);
 
   useEffect(() => {
-    if (session.configOptions.length > 0) {
-      writeAgentConfig(storage, session.agent, session.configOptions);
+    if (configOptions.length > 0) {
+      writeAgentConfig(storage, session.agent, configOptions);
     }
-  }, [storage, session.agent, session.configOptions]);
+  }, [storage, session.agent, configOptions]);
 
   function send(message: ClientMessage): boolean {
     if (connection?.send(message) === true) return true;
@@ -136,6 +161,7 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
     chat,
     session,
     commands,
+    configOptions,
     loaded,
     loadError,
     notice,
