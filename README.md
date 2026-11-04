@@ -14,6 +14,8 @@
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.9" /></a>
   </p>
 
+  <p><sub><em>Disclaimer: Nanachi is a character from <strong>Made in Abyss</strong>, created by Akihito Tsukushi and published by Takeshobo; the anime adaptation is produced by Kinema Citrus. All rights to the character and the series belong to their respective owners. This is an unofficial fan-named personal project with no affiliation with, or endorsement by, the author, the publisher, or the studio.</em></sub></p>
+
   <p><a href="#get-started-on-your-pc">Setup</a> · <a href="#install-on-your-phone">Android and iPhone</a> · <a href="#everyday-use">How to use it</a> · <a href="#troubleshooting">Help</a></p>
 </div>
 
