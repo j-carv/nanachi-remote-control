@@ -1,0 +1,5 @@
+#!/bin/sh
+# Launcher do phone-send (Nanachi Remote). Só fica no PATH dos agentes do daemon.
+# pwd -W devolve o caminho do Windows no Git Bash; node não entende /c/...
+DIR=$(cd "$(dirname "$0")/.." && pwd -W 2>/dev/null || pwd)
+exec node "$DIR/dist/phone-send.js" "$@"
