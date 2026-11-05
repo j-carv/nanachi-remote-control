@@ -1,6 +1,15 @@
-import type { AvailableCommand } from '@nanachi/shared';
+import type { AvailableCommand, SessionConfigOption } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
-import { filterCommands, insertCommand, slashQuery, splitCommand } from './commands.js';
+import {
+  bareCommandName,
+  commandSheetFor,
+  filterCommands,
+  insertCommand,
+  nativePickerFor,
+  parseHintChoices,
+  slashQuery,
+  splitCommand,
+} from './commands.js';
 
 const COMMANDS: AvailableCommand[] = [
   { name: 'loop', description: 'Repete um prompt em intervalo', hint: '[intervalo] [prompt]' },
@@ -92,5 +101,211 @@ describe('splitCommand', () => {
     expect(splitCommand('/')).toBeUndefined();
     expect(splitCommand('/ loop')).toBeUndefined();
     expect(splitCommand('')).toBeUndefined();
+  });
+});
+
+function selectOption(id: string, category: string | null, values: readonly string[]): SessionConfigOption {
+  return {
+    id,
+    name: id,
+    category,
+    type: 'select',
+    currentValue: values[0] ?? '',
+    options: values.map((value) => ({ value, name: value })),
+  };
+}
+
+const OMP_LIKE_OPTIONS: SessionConfigOption[] = [
+  selectOption('mode', 'mode', ['default', 'plan']),
+  selectOption('model', 'model', ['fast', 'slow']),
+  selectOption('thought', 'thought_level', ['low', 'high']),
+  { id: 'ultra', name: 'Ultra', category: 'model_config', type: 'boolean', currentValue: false },
+];
+
+describe('nativePickerFor', () => {
+  it('maps model to the model category, effort to thought_level and mode/permissions/approvals to mode', () => {
+    expect(nativePickerFor('model', OMP_LIKE_OPTIONS)?.id).toBe('model');
+    expect(nativePickerFor('effort', OMP_LIKE_OPTIONS)?.id).toBe('thought');
+    expect(nativePickerFor('mode', OMP_LIKE_OPTIONS)?.id).toBe('mode');
+    expect(nativePickerFor('permissions', OMP_LIKE_OPTIONS)?.id).toBe('mode');
+    expect(nativePickerFor('approvals', OMP_LIKE_OPTIONS)?.id).toBe('mode');
+  });
+
+  it('returns the select option itself, with its choices', () => {
+    const picker = nativePickerFor('model', OMP_LIKE_OPTIONS);
+    expect(picker?.options.map((choice) => choice.value)).toEqual(['fast', 'slow']);
+  });
+
+  it('is undefined when the session has no option of the mapped category', () => {
+    const onlyMode = [selectOption('mode', 'mode', ['default'])];
+    expect(nativePickerFor('model', onlyMode)).toBeUndefined();
+    expect(nativePickerFor('effort', onlyMode)).toBeUndefined();
+    expect(nativePickerFor('model', [])).toBeUndefined();
+  });
+
+  it('ignores boolean options and commands that map to nothing', () => {
+    const onlyBoolean: SessionConfigOption[] = [
+      { id: 'model', name: 'Model', category: 'model', type: 'boolean', currentValue: true },
+    ];
+    expect(nativePickerFor('model', onlyBoolean)).toBeUndefined();
+    expect(nativePickerFor('loop', OMP_LIKE_OPTIONS)).toBeUndefined();
+    expect(nativePickerFor('mcp', OMP_LIKE_OPTIONS)).toBeUndefined();
+  });
+
+  it('matches the command name exactly', () => {
+    expect(nativePickerFor('models', OMP_LIKE_OPTIONS)).toBeUndefined();
+    expect(nativePickerFor('skill:model', OMP_LIKE_OPTIONS)).toBeUndefined();
+  });
+});
+
+describe('parseHintChoices', () => {
+  it('reads a bracketed alternation whose trailing argument is shared by enable and disable (claude /mcp)', () => {
+    expect(parseHintChoices('[reconnect|enable|disable [<server>|all]]')).toEqual({
+      optional: true,
+      choices: [
+        { value: 'reconnect', takesArgument: false },
+        { value: 'enable', takesArgument: true },
+        { value: 'disable', takesArgument: true },
+      ],
+    });
+  });
+
+  it('reads an angled alternation as required (claude /effort), with 7 choices', () => {
+    const parsed = parseHintChoices('<low|medium|high|xhigh|max|auto|ultracode [on|off]>');
+    expect(parsed?.optional).toBe(false);
+    expect(parsed?.choices.map((choice) => choice.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+      'auto',
+      'ultracode',
+    ]);
+    // `[on|off]` has no placeholder, so it belongs to ultracode alone: the others send at once.
+    expect(parsed?.choices.filter((choice) => choice.takesArgument).map((choice) => choice.value)).toEqual([
+      'ultracode',
+    ]);
+  });
+
+  it('reads a plain bracketed list (omp /plugins)', () => {
+    expect(parseHintChoices('[list|enable|disable]')).toEqual({
+      optional: true,
+      choices: [
+        { value: 'list', takesArgument: false },
+        { value: 'enable', takesArgument: false },
+        { value: 'disable', takesArgument: false },
+      ],
+    });
+  });
+
+  it('shares a trailing argument with the alternatives after the first only when it has a placeholder', () => {
+    expect(parseHintChoices('[info|delete|pin [account]]')?.choices).toEqual([
+      { value: 'info', takesArgument: false },
+      { value: 'delete', takesArgument: false },
+      { value: 'pin', takesArgument: true },
+    ]);
+    expect(parseHintChoices('[a|b|c [<x>]]')?.choices.map((choice) => choice.takesArgument)).toEqual([
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it('keeps the nested argument of the last choice (omp /usage)', () => {
+    expect(parseHintChoices('[show|reset [provider/credential-id|provider/active]]')?.choices).toEqual([
+      { value: 'show', takesArgument: false },
+      { value: 'reset', takesArgument: true },
+    ]);
+  });
+
+  it('reads a single bracketed literal as one optional choice (codex /mcp)', () => {
+    expect(parseHintChoices('[reconnect]')).toEqual({
+      optional: true,
+      choices: [{ value: 'reconnect', takesArgument: false }],
+    });
+  });
+
+  it('reads the omp /session alternation', () => {
+    expect(parseHintChoices('[info|delete|pin [account]]')?.choices.map((choice) => choice.value)).toEqual([
+      'info',
+      'delete',
+      'pin',
+    ]);
+  });
+
+  it('ignores whitespace around the hint', () => {
+    expect(parseHintChoices('  [list|enable]  ')?.choices).toHaveLength(2);
+  });
+
+  it('is undefined for hints that are not choices', () => {
+    expect(parseHintChoices(null)).toBeUndefined();
+    expect(parseHintChoices('')).toBeUndefined();
+    expect(parseHintChoices('<subcommand>')).toBeUndefined();
+    expect(parseHintChoices('<model>')).toBeUndefined();
+    expect(parseHintChoices('<texto>')).toBeUndefined();
+    expect(parseHintChoices('key=value')).toBeUndefined();
+    expect(parseHintChoices('arguments')).toBeUndefined();
+    expect(parseHintChoices('argumentos')).toBeUndefined();
+    expect(parseHintChoices('[interval] [prompt]')).toBeUndefined();
+    expect(parseHintChoices('[intervalo] [prompt]')).toBeUndefined();
+  });
+
+  it('is undefined for placeholders inside alternatives and for empty alternatives', () => {
+    expect(parseHintChoices('[<server>|all]')).toBeUndefined();
+    expect(parseHintChoices('[a||b]')).toBeUndefined();
+    expect(parseHintChoices('[]')).toBeUndefined();
+    expect(parseHintChoices('[<server>]')).toBeUndefined();
+  });
+
+  it('is undefined when the group does not end the hint', () => {
+    expect(parseHintChoices('[reconnect] extra')).toBeUndefined();
+    expect(parseHintChoices('[a|b] [c|d]')).toBeUndefined();
+  });
+});
+
+describe('bareCommandName', () => {
+  it('is the name when the whole message is one command with no arguments', () => {
+    expect(bareCommandName('/model')).toBe('model');
+    expect(bareCommandName('  /model  ')).toBe('model');
+    expect(bareCommandName('/skill:brainstorming')).toBe('skill:brainstorming');
+  });
+
+  it('is undefined when there are arguments, no slash or nothing after the slash', () => {
+    expect(bareCommandName('/model opus')).toBeUndefined();
+    expect(bareCommandName('/model\nopus')).toBeUndefined();
+    expect(bareCommandName('model')).toBeUndefined();
+    expect(bareCommandName('/')).toBeUndefined();
+    expect(bareCommandName('')).toBeUndefined();
+  });
+});
+
+describe('commandSheetFor', () => {
+  const loop = { name: 'loop', hint: '[intervalo] [prompt]' };
+
+  it('opens the native picker when the command maps to a select option of the session', () => {
+    expect(commandSheetFor({ name: 'model', hint: null }, OMP_LIKE_OPTIONS)).toEqual({
+      kind: 'config',
+      name: 'model',
+      option: OMP_LIKE_OPTIONS[1],
+    });
+  });
+
+  it('prefers the native picker over the hint choices', () => {
+    const sheet = commandSheetFor({ name: 'effort', hint: '<low|high>' }, OMP_LIKE_OPTIONS);
+    expect(sheet?.kind).toBe('config');
+  });
+
+  it('opens the subcommand sheet when the hint has choices and no native picker applies', () => {
+    expect(commandSheetFor({ name: 'mcp', hint: '[reconnect]' }, OMP_LIKE_OPTIONS)).toEqual({
+      kind: 'choices',
+      name: 'mcp',
+      hint: { optional: true, choices: [{ value: 'reconnect', takesArgument: false }] },
+    });
+  });
+
+  it('is undefined for a command that keeps the current behavior (insert into the composer)', () => {
+    expect(commandSheetFor(loop, OMP_LIKE_OPTIONS)).toBeUndefined();
+    expect(commandSheetFor({ name: 'model', hint: null }, [])).toBeUndefined();
   });
 });

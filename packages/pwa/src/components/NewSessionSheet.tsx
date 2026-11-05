@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import type { ConfigValue, Session, SessionConfigOption, Workspace } from '@nanachi/shared';
 import {
   applyConfigValue,
@@ -9,8 +10,21 @@ import {
 import type { ApiClient } from '../api.js';
 import type { StorageLike } from '../machines.js';
 import { useAsync } from '../useAsync.js';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { ConfigControls } from './ConfigControls.js';
 import { ErrorNotice } from './ErrorNotice.js';
+import { ListGroup, listRowClass } from './ListGroup.js';
 
 interface NewSessionSheetProps {
   api: ApiClient;
@@ -81,83 +95,90 @@ export function NewSessionSheet({
   }
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <section
-        className="sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Nova sessão"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2 className="section-title">Nova sessão</h2>
-        <p className="muted small">{workspace.name}</p>
+    <Drawer
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Nova sessão</DrawerTitle>
+          <DrawerDescription>{workspace.name}</DrawerDescription>
+        </DrawerHeader>
 
-        <ErrorNotice error={error} />
+        <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-5 pt-4 pb-2">
+          <ErrorNotice error={error} />
 
-        <fieldset className="agent-picker">
-          <legend className="section-title">Agente</legend>
-          {agentList.map((agent) => (
-            <button
-              key={agent.id}
-              type="button"
-              className="agent-choice"
-              aria-pressed={agent.id === agentId}
-              onClick={() => setChosen(agent.id)}
-            >
-              {agent.label}
-              {agent.kind === 'pty' && <span className="badge agent-kind">terminal</span>}
-            </button>
-          ))}
-          {agents.data !== null && agentList.length === 0 && (
-            <p className="muted small">Nenhum agente configurado no daemon.</p>
-          )}
-        </fieldset>
-
-        {isGit && (
-          <label className="config-toggle">
-            <span>
-              <span className="config-name">Em worktree separado</span>
-              <span className="muted small">
-                Cria um branch e uma pasta próprios para esta sessão; o seu checkout fica intacto.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              className="switch"
-              checked={worktree}
-              onChange={(event) => setWorktree(event.target.checked)}
-            />
-          </label>
-        )}
-
-        {!isTerminal && (
-          <>
-            <h3 className="section-title">Opções</h3>
-            {options.length > 0 ? (
-              <ConfigControls options={options} onChange={change} />
-            ) : (
-              <p className="muted small">
-                Ainda sem opções lembradas para este agente. Elas aparecem no chat depois da primeira
-                sessão e passam a ser usadas aqui.
-              </p>
+          <fieldset className="flex min-w-0 flex-col gap-2">
+            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">Agente</legend>
+            <ListGroup>
+              {agentList.map((agent) => {
+                const pressed = agent.id === agentId;
+                return (
+                  <li key={agent.id}>
+                    <button
+                      type="button"
+                      aria-pressed={pressed}
+                      className={cn(
+                        listRowClass,
+                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent',
+                      )}
+                      onClick={() => setChosen(agent.id)}
+                    >
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="truncate">{agent.label}</span>
+                        {agent.kind === 'pty' && <Badge variant="outline">terminal</Badge>}
+                      </span>
+                      {pressed && <Check className="size-5 shrink-0" aria-hidden="true" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ListGroup>
+            {agents.data !== null && agentList.length === 0 && (
+              <p className="pl-1 text-sm text-muted-foreground">Nenhum agente configurado no daemon.</p>
             )}
-          </>
-        )}
+          </fieldset>
 
-        <div className="sheet-actions">
-          <button type="button" className="button ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="button primary"
-            disabled={agentId === null || creating}
-            onClick={() => void create()}
-          >
-            {creating ? 'Criando…' : 'Criar sessão'}
-          </button>
+          {isGit && (
+            <ListGroup>
+              <li className={listRowClass}>
+                <label className="flex min-w-0 flex-1 flex-col gap-0.5" htmlFor="new-session-worktree">
+                  <span className="text-base">Em worktree separado</span>
+                  <span className="text-sm text-muted-foreground">
+                    Cria um branch e uma pasta próprios para esta sessão; o seu checkout fica intacto.
+                  </span>
+                </label>
+                <Switch id="new-session-worktree" checked={worktree} onCheckedChange={setWorktree} />
+              </li>
+            </ListGroup>
+          )}
+
+          {!isTerminal && (
+            <section className="flex flex-col gap-2">
+              <h3 className="pl-1 text-sm font-medium text-muted-foreground">Opções</h3>
+              {options.length > 0 ? (
+                <ConfigControls options={options} onChange={change} />
+              ) : (
+                <p className="pl-1 text-sm text-muted-foreground">
+                  Ainda sem opções lembradas para este agente. Elas aparecem no chat depois da primeira
+                  sessão e passam a ser usadas aqui.
+                </p>
+              )}
+            </section>
+          )}
         </div>
-      </section>
-    </div>
+
+        <DrawerFooter className="flex-row">
+          <Button variant="ghost" className="flex-1" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button className="flex-1" disabled={agentId === null || creating} onClick={() => void create()}>
+            {creating ? 'Criando…' : 'Criar sessão'}
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }

@@ -37,19 +37,20 @@ function tableNames(database: Database.Database): string[] {
 }
 
 describe('openDatabase', () => {
-  it('cria as tabelas das migrações 1 a 6 e fixa user_version em 6', () => {
+  it('cria as tabelas das migrações 1 a 8 e fixa user_version em 8', () => {
     db = openDatabase(join(dir, 'data.db'));
     expect(tableNames(db)).toEqual([
       'devices',
       'events',
       'files',
+      'loops',
       'machine',
       'pair_codes',
       'push_subscriptions',
       'sessions',
       'workspaces',
     ]);
-    expect(db.pragma('user_version', { simple: true })).toBe(6);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
   });
 
   it('migração 5: sessions.worktree é TEXT anulável (sem worktree = NULL)', () => {
@@ -156,7 +157,7 @@ describe('openDatabase', () => {
     db.close();
 
     db = openDatabase(join(dir, 'data.db'));
-    expect(db.pragma('user_version', { simple: true })).toBe(6);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
     expect(ensureMachine(db, 'PC').name).toBe('PC');
   });
 

@@ -14,6 +14,7 @@ Checklist do que precisa ser feito na sua máquina e no celular. O passo a passo
 - [ ] Iniciar o daemon novamente e, em outro terminal, executar `tailscale serve --bg http://localhost:7777`.
 - [ ] Conferir o endereço HTTPS com `tailscale serve status`. Não usar Funnel.
 - [ ] Se quiser início automático ao fazer logon, executar `npm run autostart -w @nanachi/daemon -- install` e depois `npm run autostart -w @nanachi/daemon -- start`. Pare o daemon manual antes para não disputar a porta.
+- [ ] Alternativa aos passos acima, depois de criar o `config.json` e entrar no Tailscale: dar duplo clique em `Nanachi.bat` na raiz do projeto. Ele instala o que faltar, configura o início automático, sobe o supervisor, configura o Tailscale Serve e mostra o código de pareamento (válido por 5 min). Esc fecha a janela; R gera outro código.
 
 O supervisor recompila mudanças no código local e recarrega o daemon quando as sessões permitem. Ele não baixa atualizações do repositório.
 

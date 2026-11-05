@@ -151,26 +151,26 @@ async function until(description, check, timeout = 20_000) {
 }
 
 const button = (name) => page.getByRole('button', { name, exact: true });
-const headerTitle = (text) => page.locator('.app-title', { hasText: text });
+const headerTitle = (text) => page.locator('h1', { hasText: text });
 const hasCount = (locator) => locator.count().then((n) => n > 0);
-const statusIs = (status) => hasCount(page.locator(`.pill-${status}`));
+const statusIs = (status) => hasCount(page.locator(`[data-status="${status}"]`));
 const round = (value) => Math.round(value * 10) / 10;
 
 async function distanceToBottom() {
   return page.evaluate(() => {
-    const el = document.querySelector('.chat-timeline');
+    const el = document.querySelector('[data-slot="chat-timeline"]');
     return el === null ? -1 : el.scrollHeight - el.scrollTop - el.clientHeight;
   });
 }
 
 async function timelineScrollTop() {
-  return page.evaluate(() => document.querySelector('.chat-timeline')?.scrollTop ?? -1);
+  return page.evaluate(() => document.querySelector('[data-slot="chat-timeline"]')?.scrollTop ?? -1);
 }
 
 /** Rola a lista (e só ela) para `top` em px; simula o dedo do usuário subindo a conversa. */
 async function scrollTimelineTo(top) {
   await page.evaluate((value) => {
-    const el = document.querySelector('.chat-timeline');
+    const el = document.querySelector('[data-slot="chat-timeline"]');
     if (el !== null) el.scrollTop = value;
   }, top);
 }
@@ -183,16 +183,16 @@ async function pairAndWorkspace() {
   assert.deepEqual(size, { w: 390, h: 844 }, 'viewport precisa ser 390x844');
   await page.fill('input[placeholder="000000"]', issuePairCode());
   await button('Parear').click();
-  await until('status online na home', () => hasCount(page.locator('.status-card.status-online')));
+  await until('status online na home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
 
   await button('Workspaces').click();
   await headerTitle('Workspaces').waitFor();
-  await button('+ Workspace').click();
+  await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();
-  await page.locator('.item-title', { hasText: 'proj' }).click();
-  await page.locator('.app-header .muted', { hasText: 'proj' }).waitFor();
+  await page.locator('ul[aria-label="Pastas"] > li button', { hasText: 'proj' }).click();
+  await page.locator('h1 + p', { hasText: 'proj' }).waitFor();
   await button('Usar esta pasta').click();
-  await page.locator('.item-main', { hasText: 'proj' }).first().waitFor();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().waitFor();
 }
 
 async function goToWorkspaces() {
@@ -210,10 +210,10 @@ async function goToWorkspaces() {
 
 async function newFakeSession() {
   await goToWorkspaces();
-  await page.locator('.item-main', { hasText: 'proj' }).first().click();
-  await button('+ Nova sessão').click();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().click();
+  await button('Nova sessão').click();
   await page.getByRole('dialog', { name: 'Nova sessão' }).waitFor();
-  await page.locator('.agent-choice', { hasText: 'Fake' }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: 'Fake' }).click();
   await button('Criar sessão').click();
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
 }
@@ -241,7 +241,7 @@ async function startMonitor() {
     requestAnimationFrame(frame);
     // Distância ao fim enquanto o usuário não rolou para cima: mede se a rolagem acompanha o conteúdo novo.
     setInterval(() => {
-      const el = document.querySelector('.chat-timeline');
+      const el = document.querySelector('[data-slot="chat-timeline"]');
       if (!perf.running || el === null || perf.userUp) return;
       perf.gaps.push(el.scrollHeight - el.scrollTop - el.clientHeight);
     }, 200);
@@ -280,7 +280,7 @@ function rounded(stats) {
 async function streamTurn({ scrollUp }) {
   await startMonitor();
   const started = Date.now();
-  await page.locator('.chat-textarea').fill('flood');
+  await page.locator('[data-slot="chat-textarea"]').fill('flood');
   await button('Enviar').click();
   await until('turno começa (running)', () => statusIs('running'), 30_000);
 
@@ -318,7 +318,7 @@ async function coldOpen() {
   const started = Date.now();
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(
-    () => [...document.querySelectorAll('.agent-text')].some((el) => el.textContent?.includes('FIM-DO-FLOOD')),
+    () => [...document.querySelectorAll('[data-slot="agent-text"]')].some((el) => el.textContent?.includes('FIM-DO-FLOOD')),
     null,
     { timeout: 180_000, polling: 100 },
   );
@@ -329,13 +329,13 @@ async function coldOpen() {
 
 /** Sobe a conversa, sai para a lista de sessões e volta: a posição deve ser a mesma em que o usuário deixou. */
 async function backAndReturn() {
-  await scrollTimelineTo(Math.floor((await page.evaluate(() => document.querySelector('.chat-timeline')?.scrollHeight ?? 0)) * 0.4));
+  await scrollTimelineTo(Math.floor((await page.evaluate(() => document.querySelector('[data-slot="chat-timeline"]')?.scrollHeight ?? 0)) * 0.4));
   await page.waitForTimeout(200);
   const saved = await timelineScrollTop();
   await button('Voltar').click();
-  await page.locator('.item-main').first().waitFor({ timeout: 10_000 });
-  await page.locator('.item-main').first().click();
-  await until('conversa de volta', () => hasCount(page.locator('.chat-timeline')), 10_000);
+  await page.locator('ul[aria-label="Sessões"] > li').first().getByRole('button').first().waitFor({ timeout: 10_000 });
+  await page.locator('ul[aria-label="Sessões"] > li').first().getByRole('button').first().click();
+  await until('conversa de volta', () => hasCount(page.locator('[data-slot="chat-timeline"]')), 10_000);
   await page.waitForTimeout(400);
   const restored = await timelineScrollTop();
   return { posicaoSalva: round(saved), posicaoAoVoltar: round(restored), posicaoRestaurada: Math.abs(restored - saved) < 60 };
@@ -353,7 +353,7 @@ async function visualChecks() {
     await page.waitForTimeout(200);
     await shot(`${tag}-01-topo`);
 
-    const tool = page.locator('.tool-card').nth(3);
+    const tool = page.locator('[data-slot="tool-card"]').nth(3);
     await tool.scrollIntoViewIfNeeded();
     await page.waitForTimeout(200);
     await shot(`${tag}-02-tool-recolhido`);
@@ -361,14 +361,14 @@ async function visualChecks() {
     await page.waitForTimeout(300);
     await shot(`${tag}-03-tool-expandido`);
 
-    const diff = tool.locator('.diff').first();
+    const diff = tool.locator('[data-slot="diff"]').first();
     if ((await diff.count()) > 0) {
       await diff.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
       await shot(`${tag}-04-diff`);
     }
 
-    const code = page.locator('.markdown pre', { hasText: 'configuracaoDoAgente' }).first();
+    const code = page.locator('[data-slot="markdown"] pre', { hasText: 'configuracaoDoAgente' }).first();
     if ((await code.count()) > 0) {
       await code.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
@@ -376,13 +376,13 @@ async function visualChecks() {
     }
 
     await page.evaluate(() => {
-      const el = document.querySelector('.chat-timeline');
+      const el = document.querySelector('[data-slot="chat-timeline"]');
       if (el !== null) el.scrollTop = el.scrollHeight;
     });
     await page.waitForTimeout(300);
     await shot(`${tag}-06-fim`);
 
-    await scrollTimelineTo(Math.floor((await page.evaluate(() => document.querySelector('.chat-timeline')?.scrollHeight ?? 0)) * 0.5));
+    await scrollTimelineTo(Math.floor((await page.evaluate(() => document.querySelector('[data-slot="chat-timeline"]')?.scrollHeight ?? 0)) * 0.5));
     await page.waitForTimeout(300);
     await shot(`${tag}-07-rolado-para-cima`);
     checks.botaoIrParaFim = await hasCount(page.getByRole('button', { name: /Ir para o fim/ }));
@@ -393,18 +393,18 @@ async function visualChecks() {
   checks.overflowHorizontal = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   checks.dom = await page.evaluate(() => ({
     nos: document.getElementsByTagName('*').length,
-    itensNaLista: document.querySelector('.chat-timeline')?.children.length ?? 0,
+    itensNaLista: document.querySelector('[data-slot="chat-timeline"]')?.children.length ?? 0,
   }));
 
   // Teclado do iOS aproximado: a área visível encolhe. O composer tem de continuar dentro dela.
   await scrollTimelineTo(0);
   await page.setViewportSize({ width: 390, height: 500 });
   await page.waitForTimeout(600);
-  await page.locator('.chat-textarea').focus();
+  await page.locator('[data-slot="chat-textarea"]').focus();
   await page.waitForTimeout(400);
   await shot('light-08-teclado');
   checks.composerVisivelComTeclado = await page.evaluate(() => {
-    const textarea = document.querySelector('.chat-textarea');
+    const textarea = document.querySelector('[data-slot="chat-textarea"]');
     const vv = window.visualViewport;
     const bottom = vv ? vv.height + vv.offsetTop : innerHeight;
     return textarea !== null && textarea.getBoundingClientRect().bottom <= bottom + 1;
@@ -427,13 +427,13 @@ async function layoutChecks() {
       const r = el.getBoundingClientRect();
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height };
     };
-    const composer = document.querySelector('.chat-input');
+    const composer = document.querySelector('[data-slot="chat-input"]');
     return {
       alturaJanela: innerHeight,
       alturaVisivel: window.visualViewport ? window.visualViewport.height : null,
-      composer: box('.chat-input'),
-      timeline: box('.chat-timeline'),
-      jumpBottom: box('.jump-bottom'),
+      composer: box('[data-slot="chat-input"]'),
+      timeline: box('[data-slot="chat-timeline"]'),
+      jumpBottom: box('[data-slot="jump-bottom"]'),
       paddingBottomComposer: composer === null ? null : getComputedStyle(composer).paddingBottom,
       rolagemDaPagina: document.documentElement.scrollHeight - innerHeight,
     };
@@ -446,16 +446,16 @@ async function layoutChecks() {
     rolagemDaPaginaPx: round(geo.rolagemDaPagina),
   };
 
-  await page.locator('.chat-textarea').fill('permission');
+  await page.locator('[data-slot="chat-textarea"]').fill('permission');
   await button('Enviar').click();
-  await until('cartão de permissão', () => hasCount(page.locator('.permission-card')), 60_000);
+  await until('cartão de permissão', () => hasCount(page.locator('[data-slot="permission-card"]')), 60_000);
   await page.waitForTimeout(500);
   const card = await page.evaluate(() => {
-    const cardEl = document.querySelector('.permission-card');
-    const timeline = document.querySelector('.chat-timeline').getBoundingClientRect();
-    const composer = document.querySelector('.chat-input').getBoundingClientRect();
+    const cardEl = document.querySelector('[data-slot="permission-card"]');
+    const timeline = document.querySelector('[data-slot="chat-timeline"]').getBoundingClientRect();
+    const composer = document.querySelector('[data-slot="chat-input"]').getBoundingClientRect();
     const r = cardEl.getBoundingClientRect();
-    const buttons = [...cardEl.querySelectorAll('.permission-actions .button')].map((b) => {
+    const buttons = [...cardEl.querySelectorAll('[data-slot="permission-actions"] button')].map((b) => {
       const br = b.getBoundingClientRect();
       const hit = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);
       return {
@@ -474,8 +474,8 @@ async function layoutChecks() {
   out.distanciaFimComPermissaoPx = round(await distanceToBottom());
   await shot('light-09-permissao');
 
-  await page.locator('.permission-allow').first().click();
-  await until('permissão respondida', async () => !(await hasCount(page.locator('.permission-card'))), 30_000);
+  await page.locator('[data-permission="allow"]').first().click();
+  await until('permissão respondida', async () => !(await hasCount(page.locator('[data-slot="permission-card"]'))), 30_000);
   await until('turno termina após permissão', () => statusIs('idle'), 60_000);
 
   // Roda do mouse (ou dedo) para cima e depois para baixo: tem de levar às mensagens mais novas.
@@ -489,9 +489,9 @@ async function layoutChecks() {
   out.rolagemParaBaixoAvanca = afterDown > top + 200;
   out.distanciaFimAposRolarPx = round(await distanceToBottom());
   out.ultimaMensagemVisivel = await page.evaluate(() => {
-    const feed = document.querySelector('.chat-feed');
+    const feed = document.querySelector('[data-slot="chat-feed"]');
     const last = feed?.lastElementChild;
-    const timeline = document.querySelector('.chat-timeline').getBoundingClientRect();
+    const timeline = document.querySelector('[data-slot="chat-timeline"]').getBoundingClientRect();
     if (!last) return false;
     const r = last.getBoundingClientRect();
     return r.bottom <= timeline.bottom + 1 && r.bottom > timeline.top;

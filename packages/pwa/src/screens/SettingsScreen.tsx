@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { Bell, BellOff, ChevronRight, Smartphone } from 'lucide-react';
 import { createApiClient, ApiError, type ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
 import { AgentAccountsSection } from '../components/AgentAccountsSection.js';
+import { ListGroup, listMainClass, listRowClass, SectionHeading } from '../components/ListGroup.js';
+import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import type { Machine } from '../machines.js';
 import type { Navigator } from '../navigation.js';
 import { groupMachinesByKey, sameApplicationKey } from '../push/pushSetup.js';
@@ -56,6 +61,7 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
+  const pushId = useId();
 
   useEffect(() => {
     if (!supported) return;
@@ -161,63 +167,73 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
     }
   }
 
+  const pushDescription = busy
+    ? subscribed
+      ? 'Desativando…'
+      : 'Ativando…'
+    : subscribed
+      ? 'Ativas neste celular: aviso quando o agente termina, pede aprovação, dá erro ou envia um arquivo.'
+      : 'Desativadas neste celular.';
+
   return (
-    <main className="screen">
+    <Screen>
       <ScreenHeader title="Ajustes" onBack={() => nav.back()} />
 
       <AgentAccountsSection key={selected.id} machine={selected} nav={nav} />
 
-      <section className="card">
-        <h2 className="section-title">Dispositivos</h2>
-        <p className="muted">Celulares e navegadores pareados com {selected.name}.</p>
-        <button
-          type="button"
-          className="button secondary"
-          onClick={() => nav.push({ kind: 'devices' })}
-        >
-          Dispositivos desta máquina
-        </button>
+      <section aria-labelledby="devices-title" className="flex flex-col gap-2">
+        <SectionHeading icon={Smartphone} id="devices-title">
+          Dispositivos
+        </SectionHeading>
+        <ListGroup>
+          <li>
+            <button type="button" className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent`} onClick={() => nav.push({ kind: 'devices' })}>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-base">Dispositivos desta máquina</span>
+                <span className="text-sm text-muted-foreground">Celulares e navegadores pareados com {selected.name}.</span>
+              </span>
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </button>
+          </li>
+        </ListGroup>
       </section>
 
-      <section className="card">
-        <h2 className="section-title">Notificações</h2>
+      <section aria-labelledby="push-title" className="flex flex-col gap-2">
+        <SectionHeading icon={subscribed ? Bell : BellOff} id="push-title">
+          Notificações
+        </SectionHeading>
         {!supported ? (
-          <p className="muted">{UNSUPPORTED_TEXT}</p>
+          <p className="pl-1 text-sm text-muted-foreground">{UNSUPPORTED_TEXT}</p>
         ) : (
           <>
-            <p className="muted">
-              {subscribed
-                ? 'Ativas neste celular: aviso quando o agente termina, pede aprovação, dá erro ou envia um arquivo.'
-                : 'Desativadas neste celular.'}
-            </p>
+            <ListGroup>
+              <li className={listRowClass}>
+                <label htmlFor={pushId} className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-base">Avisos neste celular</span>
+                  <span className="text-sm text-muted-foreground">{pushDescription}</span>
+                </label>
+                <Switch
+                  id={pushId}
+                  checked={subscribed}
+                  disabled={busy || (!subscribed && machines.length === 0)}
+                  onCheckedChange={(next) => void (next ? activate() : deactivate())}
+                />
+              </li>
+            </ListGroup>
             {permission === 'denied' && (
-              <p className="error" role="alert">
+              <p role="alert" className="pl-1 text-sm text-destructive">
                 As notificações estão bloqueadas. Libere-as nos ajustes do iPhone para este app.
               </p>
             )}
-            {subscribed ? (
-              <button type="button" className="button danger" disabled={busy} onClick={() => void deactivate()}>
-                Desativar
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="button primary"
-                disabled={busy || machines.length === 0}
-                onClick={() => void activate()}
-              >
-                {busy ? 'Ativando…' : 'Ativar'}
-              </button>
-            )}
             {failure !== null && (
-              <p className="error" role="alert">
+              <p role="alert" className="pl-1 text-sm text-destructive">
                 {failure}
               </p>
             )}
             {notes.length > 0 && (
-              <ul className="notes">
+              <ul className="flex flex-col gap-1 pl-1">
                 {notes.map((note) => (
-                  <li key={note} className="muted small">
+                  <li key={note} className="text-sm text-muted-foreground">
                     {note}
                   </li>
                 ))}
@@ -226,6 +242,6 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
           </>
         )}
       </section>
-    </main>
+    </Screen>
   );
 }

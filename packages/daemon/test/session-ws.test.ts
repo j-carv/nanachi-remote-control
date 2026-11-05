@@ -447,15 +447,16 @@ describe('WS: set_config e config_option_update', () => {
 });
 
 describe('WS: agente que morre', () => {
-  it('morte no meio do turno → evento error e status error; próximo prompt é recusado', async () => {
+  it('morte no meio do turno → evento error e status error; o próximo prompt retoma o agente e responde', async () => {
     const { client, session } = await openSession();
     client.send({ type: 'prompt', sessionId: session.id, text: 'die' });
 
     await client.waitFor(isEvent('error'));
     await client.waitFor(isSession(session.id, 'error'));
 
+    // Sessão em error sem processo: o prompt retoma (ver prompt-resume.test.ts).
     client.send({ type: 'prompt', sessionId: session.id, text: 'de novo' });
-    await client.waitFor(isErrorFor(session.id));
+    await client.waitFor(isEvent('turn_end'));
     await client.close();
   });
 });

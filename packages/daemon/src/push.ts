@@ -1,4 +1,4 @@
-import { PushPayloadSchema } from '@nanachi/shared';
+import { DevicePairedPushPayloadSchema, PushPayloadSchema } from '@nanachi/shared';
 import type Database from 'better-sqlite3';
 import webpush, { type PushSubscription, type RequestOptions } from 'web-push';
 import type { NotifyDetails, NotifyKind } from './notify.js';
@@ -20,6 +20,8 @@ const PUSH_TIMEOUT_MS = 10_000;
 export const FILE_PUSH_INTERVAL_MS = 60_000;
 /** Mensagem de erro no corpo da notificação. */
 const ERROR_MESSAGE_MAX_CHARS = 120;
+/** Nome do aparelho no aviso de pareamento (o nome vem do cliente, então é cortado). */
+const DEVICE_NAME_MAX_CHARS = 64;
 
 /** Assinatura de `sendNotification` do web-push. Testes injetam um fake. */
 export type SendNotification = (
@@ -48,6 +50,11 @@ export interface PushNotifier {
    * Nunca rejeita: qualquer falha vai para `warn`.
    */
   notify(sessionId: string, kind: NotifyKind, details: NotifyDetails): Promise<void>;
+  /**
+   * Aviso de pareamento por Tailscale (PLAN.md, "Entrar com Tailscale") para os outros devices com inscrição.
+   * Não passa pela fila de sessão. Nunca rejeita: falhas vão para `warn`.
+   */
+  notifyDevicePaired(deviceId: string, deviceName: string): Promise<void>;
 }
 
 function messageOf(error: unknown): string {
@@ -69,8 +76,15 @@ function shorten(text: string, max: number): string {
   return chars.length <= max ? flat : `${chars.slice(0, max - 1).join('')}…`;
 }
 
+/** Título da notificação: o nome do workspace, exceto no aviso de loop pausado (que diz o que aconteceu). */
+function titleOf(details: NotifyDetails, workspaceName: string): string {
+  return details.kind === 'loop_paused' ? 'Loop pausado' : workspaceName;
+}
+
 function bodyOf(details: NotifyDetails, sessionTitle: string): string {
   switch (details.kind) {
+    case 'loop_paused':
+      return `${sessionTitle}: ${shorten(details.message, ERROR_MESSAGE_MAX_CHARS)}`;
     case 'turn_end':
       return `Terminou: ${sessionTitle}`;
     case 'terminal_exit':
@@ -84,11 +98,11 @@ function bodyOf(details: NotifyDetails, sessionTitle: string): string {
   }
 }
 
-function optionsFor(kind: NotifyKind, vapid: VapidConfig): RequestOptions {
+function optionsFor(urgency: 'high' | 'normal', vapid: VapidConfig): RequestOptions {
   return {
     vapidDetails: { subject: vapid.subject, publicKey: vapid.publicKey, privateKey: vapid.privateKey },
     TTL: PUSH_TTL_SECONDS,
-    urgency: kind === 'permission_request' ? 'high' : 'normal',
+    urgency,
     contentEncoding: 'aes128gcm',
     timeout: PUSH_TIMEOUT_MS,
   };
@@ -113,9 +127,13 @@ export function createPushNotifier(deps: PushNotifierDeps): PushNotifier {
     return false;
   }
 
-  async function deliverTo(target: PushSubscriptionRow, payload: string, kind: NotifyKind): Promise<void> {
+  async function deliverTo(
+    target: PushSubscriptionRow,
+    payload: string,
+    urgency: 'high' | 'normal',
+  ): Promise<void> {
     try {
-      await send({ endpoint: target.endpoint, keys: target.keys }, payload, optionsFor(kind, deps.vapid));
+      await send({ endpoint: target.endpoint, keys: target.keys }, payload, optionsFor(urgency, deps.vapid));
     } catch (error) {
       const statusCode = statusOf(error);
       if (statusCode === 404 || statusCode === 410) {
@@ -133,7 +151,7 @@ export function createPushNotifier(deps: PushNotifierDeps): PushNotifier {
     if (workspace === undefined || workspace.muted) return;
 
     const parsed = PushPayloadSchema.safeParse({
-      title: workspace.name,
+      title: titleOf(details, workspace.name),
       body: bodyOf(details, session.title),
       machineId: deps.machineId,
       workspaceId: workspace.id,
@@ -147,7 +165,25 @@ export function createPushNotifier(deps: PushNotifierDeps): PushNotifier {
 
     const payload = JSON.stringify(parsed.data);
     const targets = listPushSubscriptions(deps.db).filter((target) => !deps.connections.hasLiveConnection(target.deviceId));
-    await Promise.all(targets.map((target) => deliverTo(target, payload, kind)));
+    const urgency = kind === 'permission_request' ? 'high' : 'normal';
+    await Promise.all(targets.map((target) => deliverTo(target, payload, urgency)));
+  }
+
+  /** Só o aviso de pareamento: sem sessão nem workspace, e sem o filtro de WS aberto (ver DevicePairedPushPayloadSchema). */
+  async function deliverDevicePaired(deviceId: string, deviceName: string): Promise<void> {
+    const parsed = DevicePairedPushPayloadSchema.safeParse({
+      title: 'Nanachi Remote',
+      body: `Novo aparelho entrou com Tailscale: ${shorten(deviceName, DEVICE_NAME_MAX_CHARS)}`,
+      machineId: deps.machineId,
+      kind: 'device_paired',
+    });
+    if (!parsed.success) {
+      deps.warn({ issues: parsed.error.issues.length }, 'payload de aviso de pareamento fora do schema');
+      return;
+    }
+    const payload = JSON.stringify(parsed.data);
+    const targets = listPushSubscriptions(deps.db).filter((target) => target.deviceId !== deviceId);
+    await Promise.all(targets.map((target) => deliverTo(target, payload, 'normal')));
   }
 
   return {
@@ -157,6 +193,13 @@ export function createPushNotifier(deps: PushNotifierDeps): PushNotifier {
         await deliver(sessionId, kind, details);
       } catch (error) {
         deps.warn({ kind, reason: messageOf(error) }, 'falha ao montar ou enviar push');
+      }
+    },
+    async notifyDevicePaired(deviceId, deviceName) {
+      try {
+        await deliverDevicePaired(deviceId, deviceName);
+      } catch (error) {
+        deps.warn({ reason: messageOf(error) }, 'falha ao avisar pareamento por push');
       }
     },
   };

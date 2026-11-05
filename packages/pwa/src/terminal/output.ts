@@ -2,6 +2,8 @@ import type { SessionEvent } from '@nanachi/shared';
 
 export interface TerminalExit {
   readonly exitCode: number | null;
+  /** `reload`: the daemon closed the shell to reload. null when the process exited by itself. */
+  readonly reason: 'reload' | null;
 }
 
 /**
@@ -38,7 +40,8 @@ export function ingestTerminal(state: TerminalState, events: readonly SessionEve
     if (event.kind === 'terminal_output') writes.push(event.data);
     next = {
       lastSeq: event.seq,
-      exit: event.kind === 'terminal_exit' ? { exitCode: event.exitCode } : next.exit,
+      exit:
+        event.kind === 'terminal_exit' ? { exitCode: event.exitCode, reason: event.reason ?? null } : next.exit,
     };
   }
 

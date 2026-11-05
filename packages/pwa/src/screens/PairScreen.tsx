@@ -1,8 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
+import { ChevronLeft, CircleExclamationPoint, Link2, ShieldCheck } from 'lucide-react';
 import type { PairResponse } from '@nanachi/shared';
-import { ApiError, pair } from '../api.js';
+import { ApiError, pair, pairTailscale, pairTailscaleStatus } from '../api.js';
 import { describeError as describeApiError } from '../errorMessages.js';
 import { isSafePairingBaseUrl, normalizeBaseUrl } from '../machines.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Screen } from '../components/Screen.js';
 
 interface PairScreenProps {
   initialBaseUrl: string;
@@ -13,15 +18,46 @@ interface PairScreenProps {
 
 const DEFAULT_DEVICE_NAME = 'iPhone';
 const CODE_PATTERN = /^[0-9]{6}$/;
+/** Espera o usuário terminar de digitar o endereço antes de perguntar ao PC pelo Tailscale. */
+const TAILSCALE_CHECK_DELAY_MS = 300;
 
 const PAIR_INPUT_TEXT = 'Revise o endereço, o código (6 dígitos) e o nome do dispositivo.';
 const PAIR_HTTPS_TEXT =
   'Use https:// no endereço do PC (ex.: https://pc-sala.seu-tailnet.ts.net). http:// só vale para localhost, 127.0.0.1 ou a própria origem desta app.';
+const TAILSCALE_UNAVAILABLE_TEXT =
+  'Entrar com Tailscale não está liberado para esta conta neste PC. Use um código de pareamento.';
 
 function describeError(error: unknown): string {
   if (error instanceof ApiError && error.kind === 'invalid_input') return PAIR_INPUT_TEXT;
   if (error instanceof ApiError) return describeApiError(error);
   return 'Erro inesperado ao parear.';
+}
+
+/** Login do Tailscale que o PC aceita para este aparelho, ou null quando não vale (ou não dá para saber). */
+function useTailscaleLogin(baseUrl: string): string | null {
+  const [login, setLogin] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLogin(null);
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (normalized === null || !isSafePairingBaseUrl(normalized, window.location.origin)) return;
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      pairTailscaleStatus(normalized).then(
+        (status) => {
+          if (active && status.available && status.login !== undefined) setLogin(status.login);
+        },
+        () => undefined,
+      );
+    }, TAILSCALE_CHECK_DELAY_MS);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [baseUrl]);
+
+  return login;
 }
 
 export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: PairScreenProps) {
@@ -30,20 +66,48 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
   const [deviceName, setDeviceName] = useState(DEFAULT_DEVICE_NAME);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tailscaleLogin = useTailscaleLogin(baseUrl);
+  const urlId = useId();
+  const codeId = useId();
+  const nameId = useId();
+
+  /** Endereço válido e seguro para pareamento, ou a mensagem que explica por que não. */
+  function checkedBaseUrl(): string | null {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (normalized === null) {
+      setError('O endereço precisa começar com http:// ou https://.');
+      return null;
+    }
+    if (!isSafePairingBaseUrl(normalized, window.location.origin)) {
+      setError(PAIR_HTTPS_TEXT);
+      return null;
+    }
+    return normalized;
+  }
+
+  async function handleTailscale() {
+    if (submitting) return;
+    const normalized = checkedBaseUrl();
+    if (normalized === null) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await pairTailscale({ baseUrl: normalized, deviceName });
+      onPaired(result, normalized);
+    } catch (caught) {
+      setError(caught instanceof ApiError && caught.kind === 'forbidden' ? TAILSCALE_UNAVAILABLE_TEXT : describeError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
 
-    const normalized = normalizeBaseUrl(baseUrl);
-    if (normalized === null) {
-      setError('O endereço precisa começar com http:// ou https://.');
-      return;
-    }
-    if (!isSafePairingBaseUrl(normalized, window.location.origin)) {
-      setError(PAIR_HTTPS_TEXT);
-      return;
-    }
+    const normalized = checkedBaseUrl();
+    if (normalized === null) return;
     if (!CODE_PATTERN.test(code)) {
       setError('O código tem 6 dígitos.');
       return;
@@ -62,18 +126,21 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
   }
 
   return (
-    <main className="screen">
-      <header className="screen-header">
-        <h1>Parear máquina</h1>
-        <p className="muted">
-          Gere um código de 6 dígitos no PC e digite aqui. Ele vale por 5 minutos.
+    <Screen className="gap-6">
+      <header className="flex flex-col gap-2 pt-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Parear máquina</h1>
+        <p className="text-base leading-6 text-muted-foreground">
+          {tailscaleLogin === null
+            ? 'Gere um código de 6 dígitos no PC e digite aqui. Ele vale por 5 minutos.'
+            : 'Entre sem código pela sua conta Tailscale, ou use um código de 6 dígitos gerado no PC.'}
         </p>
       </header>
 
-      <form className="card form" onSubmit={handleSubmit} noValidate>
-        <label className="field">
-          <span>Endereço do PC</span>
-          <input
+      <form className="flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={urlId}>Endereço do PC</Label>
+          <Input
+            id={urlId}
             type="url"
             inputMode="url"
             autoCapitalize="none"
@@ -84,50 +151,72 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
             onChange={(event) => setBaseUrl(event.target.value)}
             required
           />
-        </label>
+        </div>
 
-        <label className="field">
-          <span>Código</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            pattern="[0-9]{6}"
-            placeholder="000000"
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Nome deste dispositivo</span>
-          <input
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={nameId}>Nome deste dispositivo</Label>
+          <Input
+            id={nameId}
             type="text"
             maxLength={64}
             value={deviceName}
             onChange={(event) => setDeviceName(event.target.value)}
             required
           />
-        </label>
+        </div>
 
         {error !== null && (
-          <p className="error" role="alert">
+          <p role="alert" className="flex gap-3 rounded-lg bg-destructive/10 p-4 text-sm leading-5">
+            <CircleExclamationPoint className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
             {error}
           </p>
         )}
 
-        <button className="button primary" type="submit" disabled={submitting}>
-          {submitting ? 'Pareando…' : 'Parear'}
-        </button>
-
-        {canCancel && (
-          <button className="button ghost" type="button" onClick={onCancel} disabled={submitting}>
-            Voltar
-          </button>
+        {tailscaleLogin !== null && (
+          <div className="flex flex-col gap-3">
+            <Button type="button" size="wide" onClick={() => void handleTailscale()} disabled={submitting}>
+              <ShieldCheck aria-hidden="true" />
+              {submitting ? 'Entrando…' : 'Entrar com Tailscale'}
+            </Button>
+            <p className="text-center text-sm text-muted-foreground">Conectado como {tailscaleLogin}</p>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+              ou use um código de pareamento
+              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+            </div>
+          </div>
         )}
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={codeId}>Código</Label>
+          <Input
+            id={codeId}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            pattern="[0-9]{6}"
+            placeholder="000000"
+            className="h-12 font-mono text-xl tracking-[0.3em]"
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
+            required={tailscaleLogin === null}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 pt-1">
+          <Button type="submit" size="wide" variant={tailscaleLogin === null ? 'default' : 'secondary'} disabled={submitting}>
+            <Link2 aria-hidden="true" />
+            {submitting && tailscaleLogin === null ? 'Pareando…' : 'Parear'}
+          </Button>
+          {canCancel && (
+            <Button variant="ghost" size="wide" type="button" onClick={onCancel} disabled={submitting}>
+              <ChevronLeft aria-hidden="true" />
+              Voltar
+            </Button>
+          )}
+        </div>
       </form>
-    </main>
+    </Screen>
   );
 }

@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/button';
+
 interface ShowAllProps {
   /** Quantos itens ficaram de fora do corte. Zero: não mostra nada. */
   hidden: number;
@@ -9,8 +11,8 @@ interface ShowAllProps {
 export function ShowAll({ hidden, unit, onExpand }: ShowAllProps) {
   if (hidden === 0) return null;
   return (
-    <button type="button" className="show-all" onClick={onExpand}>
+    <Button variant="ghost" className="text-muted-foreground" onClick={onExpand}>
       Mostrar tudo ({hidden} {unit})
-    </button>
+    </Button>
   );
 }

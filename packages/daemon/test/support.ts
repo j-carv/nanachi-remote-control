@@ -10,7 +10,7 @@ import { LiveConnections } from '../src/live-connections.js';
 import { createPairCode } from '../src/pairing.js';
 import { ensureMachine, type Machine } from '../src/repository.js';
 import type { NotifyHandler } from '../src/notify.js';
-import { buildServer, type WorkspaceDeletedHandler } from '../src/server.js';
+import { buildServer, type DevicePairedHandler, type WorkspaceDeletedHandler } from '../src/server.js';
 import type { AgentAccountsService } from '../src/agent-accounts.js';
 import { loadOrCreateVapid } from '../src/vapid.js';
 import { removeTempDir } from './temp.js';
@@ -39,8 +39,16 @@ export interface StartOptions {
   wsRevalidateMs?: number;
   /** Teto da listagem de sessões do agente (padrão: 30 s). Testes do timeout usam um valor curto. */
   agentListTimeoutMs?: number;
+  /** Teto da leitura de uso (`POST /api/sessions/:id/usage`). Padrão: 30 s. Testes do timeout usam um valor curto. */
+  usageTimeoutMs?: number | undefined;
+  /** Cache da leitura de uso (padrão: 30 s). Testes usam 0 ou um valor curto. */
+  usageCacheMs?: number | undefined;
+  /** Ociosidade do processo de uso (padrão: 2 min). Testes usam um valor curto. */
+  usageIdleMs?: number | undefined;
   /** Contas dos agentes. Padrão: serviço que não verifica nada (testes não rodam claude/codex de verdade). */
   agentAccounts?: AgentAccountsService;
+  /** Aviso de pareamento por Tailscale (o main liga o Web Push aqui). */
+  onDevicePaired?: DevicePairedHandler | undefined;
 }
 
 export async function startDaemon(home: string, options: StartOptions = {}): Promise<TestDaemon> {
@@ -65,6 +73,7 @@ export async function startDaemon(home: string, options: StartOptions = {}): Pro
     version: TEST_VERSION,
     home,
     staticDir,
+    staticPointer: join(home, 'releases', 'current.json'),
     vapidPublicKey: vapid.publicKey,
     connections,
     logger: false,
@@ -72,8 +81,12 @@ export async function startDaemon(home: string, options: StartOptions = {}): Pro
     onNotify: options.onNotify,
     wsRevalidateMs: options.wsRevalidateMs,
     agentListTimeoutMs: options.agentListTimeoutMs,
+    usageTimeoutMs: options.usageTimeoutMs,
+    usageCacheMs: options.usageCacheMs,
+    usageIdleMs: options.usageIdleMs,
     resumeAfterReload: options.resumeAfterReload,
     agentAccounts: options.agentAccounts ?? { list: () => Promise.resolve([]) },
+    onDevicePaired: options.onDevicePaired,
   });
   return { app, db, config, machine, home, connections };
 }

@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MACHINES_KEY,
   SELECTED_KEY,
   isSafePairingBaseUrl,
   normalizeBaseUrl,
   parseMachines,
+  parseStoredMachines,
+  readStoredMachines,
   readMachines,
   readSelectedId,
   removeMachine,
@@ -191,5 +193,53 @@ describe('isSafePairingBaseUrl', () => {
 
   it('recusa protocolo que não é http(s)', () => {
     expect(isSafePairingBaseUrl('ftp://pc-sala.ts.net', APP)).toBe(false);
+  });
+});
+
+describe('leitura distinta de vazio e ilegível', () => {
+  it('sem chave salva é vazio (ok), não ilegível', () => {
+    expect(readStoredMachines(memoryStorage())).toEqual({ status: 'ok', machines: [] });
+  });
+
+  it('JSON inválido é ilegível, não vazio', () => {
+    expect(parseStoredMachines('{não é json')).toEqual({ status: 'unreadable' });
+  });
+
+  it('JSON que não é lista é ilegível', () => {
+    expect(parseStoredMachines(JSON.stringify({ id: 'm-a' }))).toEqual({ status: 'unreadable' });
+  });
+
+  it('storage que lança na leitura é ilegível', () => {
+    const broken = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+    expect(readStoredMachines(broken)).toEqual({ status: 'unreadable' });
+    expect(readMachines(broken)).toEqual([]);
+  });
+
+  it('lista com entradas válidas e inválidas: mantém as válidas e loga a contagem das descartadas', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const raw = JSON.stringify([a, { id: 'm-x' }, 'lixo', b]);
+      expect(parseStoredMachines(raw)).toEqual({ status: 'ok', machines: [a, b] });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain('2');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('lista só com entradas válidas não loga nada', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(parseStoredMachines(JSON.stringify([a]))).toEqual({ status: 'ok', machines: [a] });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

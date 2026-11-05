@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
@@ -7,7 +7,9 @@ import fastifyWebsocket from '@fastify/websocket';
 import {
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
+  LoopRequestSchema,
   PairRequestSchema,
+  TailscalePairRequestSchema,
   parseClientMessage,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
@@ -22,15 +24,19 @@ import {
   type EventsResponse,
   type FsListResponse,
   type HealthResponse,
+  type LoopResponse,
   type MeResponse,
   type PairResponse,
   type PushKeyResponse,
   type RootsResponse,
   type ServerMessage,
   type Session,
+  type ShellsResponse,
   type SessionDiffResponse,
   type SessionEvent,
   type SessionsResponse,
+  type UsageResponse,
+  type TailscalePairStatusResponse,
   type Workspace,
   type WorkspaceInfoResponse,
   type WorkspacesResponse,
@@ -41,6 +47,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { createAgentAccounts, type AgentAccountsService } from './agent-accounts.js';
 import { agentBinDirs, withPathPrepended } from './agent-path.js';
 import type { LoadedConfig } from './config.js';
+import { ApiError } from './api-error.js';
 import { registerFileRoutes } from './file-routes.js';
 import { FileQuotaError, filesRootOf, removeSessionFiles } from './files.js';
 import { createHostCheck } from './host-check.js';
@@ -48,10 +55,12 @@ import { isAllowedPushEndpoint } from './push-endpoint.js';
 import { LiveConnections } from './live-connections.js';
 import { serializeRequest } from './log.js';
 import { sessionDiff } from './session-diff.js';
-import { authenticateToken, pairDevice } from './pairing.js';
+import { authenticateToken, pairDevice, pairDeviceViaTailscale } from './pairing.js';
 import type { NotifyHandler } from './notify.js';
+import { createPwaRoot } from './pwa-root.js';
 import { replayEvents } from './replay.js';
 import { createFailureLimiter } from './rate-limit.js';
+import { trustedTailscaleLogin } from './tailscale-login.js';
 import {
   deletePushSubscription,
   deleteWorkspace,
@@ -75,7 +84,9 @@ import {
 import { describeRoots, listDirectory, PathError, resolveInsideRoots, type PathErrorCode } from './roots.js';
 import { resumeAfterReload } from './reload-resume.js';
 import { SessionError, SessionManager, type SessionErrorCode } from './session-manager.js';
+import { defaultShellOf, localShells } from './shells.js';
 import { isAllowedWsOrigin } from './ws-origin.js';
+import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { workspaceInfo } from './workspace-info.js';
 
 declare module 'fastify' {
@@ -83,10 +94,20 @@ declare module 'fastify' {
     /** Dispositivo do Bearer. Preenchido no preHandler das rotas `/api` (depois dele, nunca é null). */
     device: DeviceRow | null;
   }
+  interface FastifyInstance {
+    /**
+     * Antes de um reload: encerra os terminais de workspace com aviso (`reason: "reload"`), sem Web Push. Só o caminho
+     * de reload do main chama; o shutdown normal mata os shells sem aviso.
+     */
+    closeShellsForReload(): void;
+  }
 }
 
 /** Chamado depois que um workspace sai do banco. `sessionIds` são as sessões que deixaram de estar ativas. */
 export type WorkspaceDeletedHandler = (event: { workspaceId: string; sessionIds: string[] }) => void | Promise<void>;
+
+/** Chamado depois de um pareamento por Tailscale (`POST /api/pair/tailscale`). Síncrono: quem avisa não bloqueia a resposta. */
+export type DevicePairedHandler = (device: { id: string; name: string }) => void;
 
 export interface ServerDeps {
   config: LoadedConfig;
@@ -95,8 +116,10 @@ export interface ServerDeps {
   version: string;
   /** `<NANACHI_HOME>`: arquivos ficam em `<home>/files`. */
   home: string;
-  /** Pasta com o build do PWA (index.html + assets). Pode não existir. */
+  /** Pasta com o build do PWA (index.html + assets). Pode não existir. Fallback quando não há ponteiro. */
   staticDir: string;
+  /** `releases/current.json` do build em watch (ver `pwa-root.ts`). Ausente: serve só `staticDir`. */
+  staticPointer?: string | undefined;
   /** Chave pública VAPID (`GET /api/push/key`). Vem do `vapid.json` carregado na subida. */
   vapidPublicKey: string;
   /** Aviso para turn_end, permission_request, error e file. Opcional: sem ele, nada acontece. */
@@ -114,10 +137,18 @@ export interface ServerDeps {
   wsRevalidateMs?: number | undefined;
   /** Teto da listagem de sessões do agente (`agent-sessions`). Padrão: 30 s. Testes usam valor curto. */
   agentListTimeoutMs?: number | undefined;
+  /** Teto da leitura de uso (`POST /api/sessions/:id/usage`). Padrão: 30 s. Testes usam valor curto. */
+  usageTimeoutMs?: number | undefined;
+  /** Cache da leitura de uso. Padrão: 30 s. Testes usam 0 ou valor curto. */
+  usageCacheMs?: number | undefined;
+  /** Ociosidade até o processo de uso morrer. Padrão: 2 min. Testes usam valor curto. */
+  usageIdleMs?: number | undefined;
   /** Contas dos agentes (`GET /api/agents/accounts`). Padrão: verificadores reais sobre o PATH dos agentes. */
   agentAccounts?: AgentAccountsService | undefined;
   /** Sessões que o reload deixou ociosas (`reload-resume.ts`): retomadas em segundo plano assim que o servidor escuta. */
   resumeAfterReload?: readonly string[] | undefined;
+  /** Aviso de pareamento novo por Tailscale (Web Push para os outros devices). Padrão: nada. */
+  onDevicePaired?: DevicePairedHandler | undefined;
 }
 
 /** Status HTTP de cada erro de caminho. */
@@ -146,6 +177,14 @@ const SESSION_ERROR_STATUS: Record<SessionErrorCode, number> = {
   no_commits: 400,
   worktree_failed: 500,
   worktree_dirty: 409,
+  session_not_active: 409,
+  usage_unsupported: 400,
+  loop_not_found: 404,
+  loop_finished: 409,
+  loop_busy: 409,
+  shell_disabled: 403,
+  shell_unavailable: 400,
+  outside_roots: 403,
 };
 
 const PAIR_MAX_FAILURES = 5;
@@ -174,19 +213,47 @@ function agentBaseUrl(app: FastifyInstance, config: LoadedConfig): string {
   return `http://${host}:${config.port}`;
 }
 
+/**
+ * Caminho relativo de um arquivo estático da URL (`/assets/app.js` -> `assets/app.js`), ou undefined quando a URL
+ * não é um arquivo seguro: segmento vazio, `.` ou `..`, barra invertida, byte nulo ou percent-encoding inválido.
+ * `/` vira `index.html`.
+ */
+function staticFileOf(url: string): string | undefined {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathOf(url));
+  } catch {
+    return undefined;
+  }
+  if (decoded === '/') return 'index.html';
+  const parts = decoded.split('/').slice(1);
+  const unsafe = parts.some((part) => part === '' || part === '.' || part === '..' || /[\\\0]/.test(part));
+  return unsafe ? undefined : parts.join('/');
+}
+
+function isRegularFile(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
+}
+
 function isApiPath(url: string): boolean {
   const path = pathOf(url);
   return path === '/api' || path.startsWith('/api/');
 }
 
+/** Pareamento sem código (Entrar com Tailscale). Fora da checagem global: a própria rota decide. */
+const TAILSCALE_PAIR_PATH = '/api/pair/tailscale';
+
 /**
  * Rotas que passam pela checagem Tailscale. `/api/agent/*` fica de fora: o agente chama o daemon em loopback,
- * sem `tailscale serve`, e a rota é protegida pelo token de sessão.
+ * sem `tailscale serve`, e a rota é protegida pelo token de sessão. `/api/pair/tailscale` também: ela decide sozinha
+ * (available false ou 403), assim o app recebe a resposta em vez de um 403 genérico.
  */
 function isProtectedPath(url: string): boolean {
   if (pathOf(url).startsWith('/api/agent/')) return false;
+  if (pathOf(url) === TAILSCALE_PAIR_PATH) return false;
   return isApiPath(url) || pathOf(url) === '/ws';
 }
+
 
 /** Status HTTP de erros do próprio Fastify (corpo JSON inválido, 415, 413...). */
 function statusCodeOf(error: unknown): number | undefined {
@@ -232,7 +299,7 @@ function parseIntParam(value: unknown, options: { fallback: number; min: number;
 type Subscriptions = Map<string, () => void>;
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
-  const { config, db, machine, version, home, staticDir, onWorkspaceDeleted, onNotify, vapidPublicKey } = deps;
+  const { config, db, machine, version, home, staticDir, onWorkspaceDeleted, onNotify, onDevicePaired, vapidPublicKey } = deps;
   const connections = deps.connections ?? new LiveConnections();
   const filesRoot = resolve(filesRootOf(home));
   const wsRevalidateMs = deps.wsRevalidateMs ?? WS_REVALIDATE_MS;
@@ -255,6 +322,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     filesRoot,
     onNotify,
     agentListTimeoutMs: deps.agentListTimeoutMs,
+    usageTimeoutMs: deps.usageTimeoutMs,
+    usageCacheMs: deps.usageCacheMs,
+    usageIdleMs: deps.usageIdleMs,
+    usageProbeRoot: join(home, 'usage-probe'),
   });
   const agentAccounts =
     deps.agentAccounts ??
@@ -279,6 +350,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   // Erros viram { error: "<codigo>" }: caminho -> 403/404/400; sessão -> 400/404/409; corpo inválido do cliente -> 400; resto -> 500.
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ApiError) {
+      return reply.code(error.status).send(error.toBody());
+    }
     if (error instanceof PathError) {
       return reply.code(PATH_ERROR_STATUS[error.code]).send({ error: error.code });
     }
@@ -298,6 +372,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     request.log.error({ err: error }, 'erro não tratado');
     return reply.code(500).send({ error: 'internal_error' });
   });
+
+  app.decorate('closeShellsForReload', () => sessions.closeShellsForReload());
 
   // Antes dos hooks de acesso: o plugin marca `request.ws` em onRequest, e o onResponse só fecha o socket
   // do upgrade recusado (403) se essa marca existir. Hook que responde antes dele deixaria o socket aberto.
@@ -319,8 +395,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   app.addHook('onRequest', async (request, reply) => {
     if (tailscaleLogins.size === 0 || !isProtectedPath(request.url)) return;
-    const login = request.headers['tailscale-user-login'];
-    if (typeof login === 'string' && tailscaleLogins.has(login)) return;
+    const login = trustedTailscaleLogin(request.ip, request.headers['tailscale-user-login']);
+    if (login !== undefined && tailscaleLogins.has(login)) return;
     return reply.code(403).send({ error: 'forbidden' });
   });
 
@@ -395,6 +471,54 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     return body;
   });
 
+  // Entrar com Tailscale (PLAN.md, "Extra (05/11)"): sem código. Vale só com `tailscaleAutoPair`, peer loopback e um
+  // login da allowlist. Sem isso, `available` é false e o POST é 403. Compartilha o limite de falhas do pareamento.
+  const autoPairLogin = (request: FastifyRequest): string | undefined => {
+    if (!config.tailscaleAutoPair) return undefined;
+    const login = trustedTailscaleLogin(request.ip, request.headers['tailscale-user-login']);
+    return login !== undefined && tailscaleLogins.has(login) ? login : undefined;
+  };
+
+  app.get('/api/pair/tailscale', async (request) => {
+    const login = autoPairLogin(request);
+    const body: TailscalePairStatusResponse = login === undefined ? { available: false } : { available: true, login };
+    return body;
+  });
+
+  app.post('/api/pair/tailscale', async (request, reply) => {
+    const trusted = trustedTailscaleLogin(request.ip, request.headers['tailscale-user-login']);
+    const key = trusted !== undefined ? `login:${trusted}` : `ip:${request.ip}`;
+    const now = Date.now();
+    if (pairFailures.isBlocked(key, now)) {
+      return reply.code(429).send({ error: 'too_many_attempts' });
+    }
+    if (autoPairLogin(request) === undefined) {
+      pairFailures.recordFailure(key, now);
+      return reply.code(403).send({ error: 'pair_unavailable' });
+    }
+    const parsed = TailscalePairRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      pairFailures.recordFailure(key, now);
+      return reply.code(400).send({ error: 'invalid_body' });
+    }
+
+    const created = pairDeviceViaTailscale(db, { deviceName: parsed.data.deviceName, now });
+    request.log.info({ deviceId: created.deviceId }, 'device pareado por Tailscale');
+    try {
+      onDevicePaired?.({ id: created.deviceId, name: parsed.data.deviceName });
+    } catch (error) {
+      // O pareamento já está gravado: aviso que falha não desfaz nada.
+      request.log.warn({ err: error }, 'aviso de pareamento falhou');
+    }
+    const body: PairResponse = {
+      token: created.token,
+      deviceId: created.deviceId,
+      machineId: machine.id,
+      machineName: machine.name,
+    };
+    return body;
+  });
+
   app.get('/api/me', async (request, reply) => {
     const device = authenticateToken(db, bearerToken(request.headers.authorization), Date.now());
     if (device === undefined) {
@@ -432,6 +556,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         return reply.code(400).send({ error: 'invalid_request' });
       }
       const body: FsListResponse = listDirectory(path, config.allowedRoots);
+      return body;
+    });
+
+    // Shells deste PC para o terminal de workspace (`POST /api/sessions` com agent "shell"). Vazio com shellSessions off.
+    api.get('/api/shells', async () => {
+      const available = config.shellSessions ? localShells() : [];
+      const fallback = defaultShellOf(available)?.id;
+      const body: ShellsResponse = {
+        shells: available.map((shell) => ({ id: shell.id, label: shell.label, isDefault: shell.id === fallback })),
+      };
       return body;
     });
 
@@ -506,16 +640,20 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       if (result === undefined) {
         return reply.code(404).send({ error: 'not_found' });
       }
-      await sessions.stopSessions(result.sessionIds);
+      // Todas as sessões do workspace, também as já paradas: o loop de uma sessão parada pelo reinício ainda está
+      // ativo e não pode retomar uma sessão de workspace apagado. Sessão sem processo só troca o status.
+      const sessionIds = listSessionsByWorkspace(db, id).map((session) => session.id);
+      await sessions.stopSessions(sessionIds);
       // Depois de parar os agentes (que podem estar com arquivos abertos). A linha da sessão continua no banco.
-      await removeSessionFiles(
-        filesRoot,
-        listSessionsByWorkspace(db, id).map((session) => session.id),
-        (error) => app.log.warn({ err: error }, 'não apagou a pasta de arquivos da sessão'),
+      await removeSessionFiles(filesRoot, sessionIds, (error) =>
+        app.log.warn({ err: error }, 'não apagou a pasta de arquivos da sessão'),
       );
       await onWorkspaceDeleted?.({ workspaceId: id, sessionIds: result.sessionIds });
       return reply.code(204).send();
     });
+
+    // Workspace branches (git) and files: see workspace-routes.ts. Same authentication as the other /api routes.
+    await registerWorkspaceRoutes(api, { db, requireDevice });
 
     api.get<{ Params: { id: string } }>('/api/workspaces/:id/sessions', async (request, reply) => {
       if (findWorkspaceById(db, request.params.id) === undefined) {
@@ -604,6 +742,48 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       }
       const body: ConfigOptionsResponse = { configOptions };
       return body;
+    });
+
+    // Uso do agente: o comando local (/usage ou /status) roda como turno e a resposta vem no corpo. Nada é gravado.
+    api.post<{ Params: { id: string } }>('/api/sessions/:id/usage', async (request) => {
+      const body: UsageResponse = await sessions.usage(request.params.id);
+      return body;
+    });
+
+    // Loop da sessão (PLAN.md, modo Loop). PUT cria ou troca e começa; as outras mexem no loop que já existe.
+    // Os erros (loop_not_found, loop_finished, loop_busy, not_acp) vêm do SessionManager.
+    api.get<{ Params: { id: string } }>('/api/sessions/:id/loop', async (request) => {
+      const body: LoopResponse = { loop: sessions.loopOf(request.params.id) };
+      return body;
+    });
+
+    api.put<{ Params: { id: string } }>('/api/sessions/:id/loop', async (request, reply) => {
+      const parsed = LoopRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const body: LoopResponse = { loop: sessions.putLoop(request.params.id, parsed.data) };
+      return reply.code(200).send(body);
+    });
+
+    api.post<{ Params: { id: string } }>('/api/sessions/:id/loop/pause', async (request) => {
+      const body: LoopResponse = { loop: sessions.pauseLoop(request.params.id) };
+      return body;
+    });
+
+    api.post<{ Params: { id: string } }>('/api/sessions/:id/loop/resume', async (request) => {
+      const body: LoopResponse = { loop: sessions.resumeLoop(request.params.id) };
+      return body;
+    });
+
+    api.post<{ Params: { id: string } }>('/api/sessions/:id/loop/run-now', async (request) => {
+      const body: LoopResponse = { loop: sessions.runLoopNow(request.params.id) };
+      return body;
+    });
+
+    api.delete<{ Params: { id: string } }>('/api/sessions/:id/loop', async (request, reply) => {
+      sessions.deleteLoop(request.params.id);
+      return reply.code(204).send();
     });
 
     api.get<{ Params: { id: string }; Querystring: { after?: unknown; limit?: unknown } }>(
@@ -733,6 +913,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       configOptions: (configOptions) => {
         if (active && !replaying) send(socket, { type: 'config_options', sessionId, configOptions });
       },
+      loop: (loop) => {
+        if (active && !replaying) send(socket, { type: 'loop', sessionId, loop });
+      },
     });
     subscriptions.set(sessionId, () => {
       active = false;
@@ -747,6 +930,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (active && commands.length > 0) send(socket, { type: 'commands', sessionId, commands });
     const configOptions = findSessionConfigOptions(db, sessionId) ?? [];
     if (active && configOptions.length > 0) send(socket, { type: 'config_options', sessionId, configOptions });
+    // Sempre, null incluso: o PWA não pode guardar o loop de outra sessão.
+    if (active) send(socket, { type: 'loop', sessionId, loop: sessions.loopOf(sessionId) });
   }
 
   async function handleClientMessage(socket: WebSocket, subscriptions: Subscriptions, message: ClientMessage): Promise<void> {
@@ -846,15 +1031,18 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     requireDevice,
   });
 
-  if (existsSync(staticDir)) {
-    await app.register(fastifyStatic, { root: staticDir, prefix: '/' });
-  }
+  // Raiz do PWA por requisição: a release apontada pelo ponteiro, ou staticDir sem ponteiro. Por isso o
+  // fastify/static só serve com `root` explícito em `reply.sendFile`, e as rotas de estáticos são nossas.
+  const pwaRoot = deps.staticPointer === undefined
+    ? undefined
+    : createPwaRoot({ fallbackDir: staticDir, pointerFile: deps.staticPointer, warn: (message) => app.log.warn(message) });
+  const currentStaticDir = (): string => pwaRoot?.current() ?? staticDir;
+  // serve: false só adiciona reply.sendFile. Com root fixo, o plugin registraria uma rota por arquivo encontrado.
+  await app.register(fastifyStatic, { serve: false });
 
-  const indexFile = join(staticDir, 'index.html');
-  app.setNotFoundHandler(async (request, reply) => {
-    if (isApiPath(request.url)) {
-      return reply.code(404).send({ error: 'not_found' });
-    }
+  /** SPA: index.html da raiz atual, sem cache. Só GET; outros métodos são 404. */
+  const spaFallback = async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const indexFile = join(currentStaticDir(), 'index.html');
     if (!existsSync(indexFile)) {
       return reply
         .code(404)
@@ -869,6 +1057,27 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       .type('text/html; charset=utf-8')
       .header('Cache-Control', 'no-cache')
       .send(createReadStream(indexFile));
+  };
+
+  const serveStatic = async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    if (isApiPath(request.url)) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+    const root = currentStaticDir();
+    const file = staticFileOf(request.url);
+    if (file !== undefined && isRegularFile(join(root, file))) {
+      return reply.sendFile(file, root);
+    }
+    return spaFallback(request, reply);
+  };
+  app.get('/', serveStatic);
+  app.get('/*', serveStatic);
+
+  app.setNotFoundHandler(async (request, reply) => {
+    if (isApiPath(request.url)) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+    return spaFallback(request, reply);
   });
 
   return app;

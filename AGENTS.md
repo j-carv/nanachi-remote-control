@@ -50,18 +50,32 @@ feat(pwa)!: change the pairing flow
 - `.gitmessage` is optional editing guidance, not a validation hook. Do not claim local commit messages are automatically enforced.
 - Configure Git identity per repository when needed; never change global Git settings. Prefer a GitHub-provided `noreply` email for public commits instead of publishing a private address.
 
+## Live supervisor
+
+Some checkouts run a live supervisor that serves the maintainer's phone. Check for it before building anything:
+
+- Run `npm run autostart -w @nanachi/daemon -- status`. If it reports the supervisor as running:
+  - Do not run `npm run build`, `vite build` or `vite --watch`. They race the supervisor's watch build and cause `EBUSY` errors.
+  - Do not run a `vite` dev or preview server against `packages/pwa` while the supervisor runs. Any process with a handle on the PWA output folders can block the watch build from publishing. Take screenshots through the e2e daemons on their own ports.
+  - The watch build publishes each build to `packages/pwa/releases/<id>/` and points `releases/current.json` at it; the daemon serves that release. `packages/pwa/dist` is only the fallback when there is no pointer. Keep the last three releases; a release that cannot be deleted yet is retried by the next build.
+  - To see whether the code compiles, read the tail of `%USERPROFILE%\.nanachi-remote\supervisor.log` instead of building.
+  - Do not stop the supervisor, and do not use port 7777 for tests. Tests and E2E scripts start their own daemons on other ports. Do not run `e2e/run.mjs`.
+  - PWA changes reach the phone the next time the app is opened.
+  - Daemon changes reload the daemon after 60 seconds with no busy session. Idle sessions resume by themselves after the reload.
+- If the supervisor is not running, the build step in Verification applies as written.
+
 ## Verification
 
 Run commands from the repository root. For code changes, use the relevant focused checks and the existing scripts:
 
 ```powershell
 npm ci
-npm run build
 npm run typecheck
 npm test
 ```
 
-- Compile `shared` before exercising packages that depend on its built output; the root build handles that order.
+- `npm run build` applies only when the live supervisor is not running (see Live supervisor). It compiles `shared` first.
+- Compile `shared` before exercising packages that depend on its built output. The root build does that; with the supervisor running, its watch build does.
 - Keep regression tests deterministic, isolated, and focused on observable behavior. Do not replace real integrations with fake production behavior.
 - Exercise the changed runtime path when practical, in addition to automated checks. Use temporary data rather than the maintainer's running daemon or real agent account unless specifically authorized.
 - Follow the prerequisites in each `e2e/` script. The basic `npm run e2e` uses a real agent; do not run it casually or consume paid services without authorization.

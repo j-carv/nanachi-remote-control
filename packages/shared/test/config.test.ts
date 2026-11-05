@@ -10,6 +10,8 @@ describe('ConfigSchema', () => {
       allowedRoots: [],
       allowedTailscaleLogins: [],
       corsOrigins: [],
+      tailscaleAutoPair: false,
+      shellSessions: true,
       phoneSendHint: true,
       reloadQuietMs: 60000,
       agents: {

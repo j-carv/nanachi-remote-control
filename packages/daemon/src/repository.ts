@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   AvailableCommandSchema,
+  LoopSchema,
   PushSubscriptionRequestSchema,
   SessionConfigOptionSchema,
   SessionEventSchema,
@@ -8,6 +9,7 @@ import {
   SessionStatusSchema,
   type AgentKind,
   type AvailableCommand,
+  type Loop,
   type Session,
   type SessionConfigOption,
   type SessionEvent,
@@ -21,12 +23,16 @@ export interface Machine {
   name: string;
 }
 
+/** Como o device pareou: código de 6 dígitos (`code`) ou login do Tailscale (`tailscale`, ver PLAN.md). */
+export type PairMethod = 'code' | 'tailscale';
+
 export interface DeviceRow {
   id: string;
   name: string;
   createdAt: number;
   lastSeenAt: number | null;
   revokedAt: number | null;
+  pairMethod: PairMethod;
 }
 
 interface DeviceDbRow {
@@ -35,7 +41,11 @@ interface DeviceDbRow {
   created_at: number;
   last_seen_at: number | null;
   revoked_at: number | null;
+  pair_method: PairMethod;
 }
+
+/** Colunas de `devices` que viram `DeviceRow`. */
+const DEVICE_COLUMNS = 'id, name, created_at, last_seen_at, revoked_at, pair_method';
 
 function toDevice(row: DeviceDbRow): DeviceRow {
   return {
@@ -44,6 +54,7 @@ function toDevice(row: DeviceDbRow): DeviceRow {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     revokedAt: row.revoked_at,
+    pairMethod: row.pair_method,
   };
 }
 
@@ -63,17 +74,17 @@ export function ensureMachine(db: Database.Database, name: string): Machine {
 
 export function insertDevice(
   db: Database.Database,
-  device: { id: string; name: string; tokenHash: string; createdAt: number },
+  device: { id: string; name: string; tokenHash: string; createdAt: number; pairMethod?: PairMethod },
 ): void {
-  db.prepare<[string, string, string, number]>(
-    'INSERT INTO devices (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)',
-  ).run(device.id, device.name, device.tokenHash, device.createdAt);
+  db.prepare<[string, string, string, number, PairMethod]>(
+    'INSERT INTO devices (id, name, token_hash, created_at, pair_method) VALUES (?, ?, ?, ?, ?)',
+  ).run(device.id, device.name, device.tokenHash, device.createdAt, device.pairMethod ?? 'code');
 }
 
 export function findDeviceByTokenHash(db: Database.Database, tokenHash: string): DeviceRow | undefined {
   const row = db
     .prepare<[string], DeviceDbRow>(
-      'SELECT id, name, created_at, last_seen_at, revoked_at FROM devices WHERE token_hash = ?',
+      `SELECT ${DEVICE_COLUMNS} FROM devices WHERE token_hash = ?`,
     )
     .get(tokenHash);
   return row === undefined ? undefined : toDevice(row);
@@ -85,7 +96,7 @@ export function touchDevice(db: Database.Database, id: string, at: number): void
 
 export function listDevices(db: Database.Database): DeviceRow[] {
   return db
-    .prepare<[], DeviceDbRow>('SELECT id, name, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at')
+    .prepare<[], DeviceDbRow>(`SELECT ${DEVICE_COLUMNS} FROM devices ORDER BY created_at`)
     .all()
     .map(toDevice);
 }
@@ -94,7 +105,7 @@ export function listDevices(db: Database.Database): DeviceRow[] {
 export function listActiveDevices(db: Database.Database): DeviceRow[] {
   return db
     .prepare<[], DeviceDbRow>(
-      'SELECT id, name, created_at, last_seen_at, revoked_at FROM devices WHERE revoked_at IS NULL ORDER BY created_at',
+      `SELECT ${DEVICE_COLUMNS} FROM devices WHERE revoked_at IS NULL ORDER BY created_at`,
     )
     .all()
     .map(toDevice);
@@ -167,13 +178,28 @@ export function countLiveSessions(db: Database.Database): number {
     .get()?.n ?? 0;
 }
 
-/** Sessões que estão trabalhando agora (subindo, rodando ou esperando permissão). `idle` não conta: fica parada até o usuário retomar. */
+/**
+ * Sessões que estão trabalhando agora (subindo, rodando ou esperando permissão). `idle` não conta: fica parada até o
+ * usuário retomar. Terminal de workspace (`agent = 'shell'`) não conta: ele fica `running` enquanto aberto, e o reload o
+ * encerra com aviso (ver SessionManager.closeShellsForReload).
+ */
 export function countBusySessions(db: Database.Database): number {
   return db
     .prepare<[], { n: number }>(
-      "SELECT COUNT(*) AS n FROM sessions WHERE status IN ('starting', 'running', 'awaiting_permission')",
+      "SELECT COUNT(*) AS n FROM sessions WHERE status IN ('starting', 'running', 'awaiting_permission') AND agent <> 'shell'",
     )
     .get()?.n ?? 0;
+}
+
+/** Some session of the workspace (worktree sessions included) is starting, running, or awaiting permission. */
+export function hasBusySessionsInWorkspace(db: Database.Database, workspaceId: string): boolean {
+  return (
+    db
+      .prepare<[string], { found: number }>(
+        "SELECT 1 AS found FROM sessions WHERE workspace_id = ? AND status IN ('starting', 'running', 'awaiting_permission') LIMIT 1",
+      )
+      .get(workspaceId) !== undefined
+  );
 }
 
 /** Sessões ociosas de agente (ACP) com processo vivo: as que um reload precisa retomar. Terminal (pty) não entra. */
@@ -251,6 +277,7 @@ export function deleteSessionRows(db: Database.Database, sessionId: string): voi
   db.transaction((): void => {
     db.prepare<[string]>('DELETE FROM events WHERE session_id = ?').run(sessionId);
     db.prepare<[string]>('DELETE FROM files WHERE session_id = ?').run(sessionId);
+    db.prepare<[string]>('DELETE FROM loops WHERE session_id = ?').run(sessionId);
     db.prepare<[string]>('DELETE FROM sessions WHERE id = ?').run(sessionId);
   })();
 }
@@ -459,6 +486,126 @@ export function listEvents(
         kind: row.kind,
       });
     });
+}
+
+interface LoopDbRow {
+  session_id: string;
+  prompt: string;
+  mode: string;
+  interval_ms: number | null;
+  max_iterations: number | null;
+  iterations: number;
+  state: string;
+  next_run_at: number | null;
+  last_run_at: number | null;
+  last_error: string | null;
+  created_at: number;
+}
+
+const LOOP_COLUMNS =
+  'session_id, prompt, mode, interval_ms, max_iterations, iterations, state, next_run_at, last_run_at, last_error, created_at';
+
+/** Valida a linha com o schema do shared (modo e estado viram tipos confiáveis). */
+function toLoop(row: LoopDbRow): StoredLoop {
+  return StoredLoopSchema.parse({
+    sessionId: row.session_id,
+    prompt: row.prompt,
+    mode: row.mode,
+    intervalMs: row.interval_ms,
+    maxIterations: row.max_iterations,
+    iterations: row.iterations,
+    state: row.state,
+    nextRunAt: row.next_run_at,
+    lastRunAt: row.last_run_at,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+  });
+}
+
+/**
+ * Loop como fica na tabela: o `Loop` sem `revision`. A revisão é do processo (ordem dos snapshots), não do banco;
+ * quem publica acrescenta (LoopRunner).
+ */
+export type StoredLoop = Omit<Loop, 'revision'>;
+
+const StoredLoopSchema = LoopSchema.omit({ revision: true });
+
+/** Loop da sessão (uma por sessão), ou undefined se ela não tem. */
+export function findLoop(db: Database.Database, sessionId: string): StoredLoop | undefined {
+  const row = db.prepare<[string], LoopDbRow>(`SELECT ${LOOP_COLUMNS} FROM loops WHERE session_id = ?`).get(sessionId);
+  return row === undefined ? undefined : toLoop(row);
+}
+
+/** Loops ativos (state `active`) de todas as sessões: os que um start precisa reagendar. */
+export function listActiveLoops(db: Database.Database): StoredLoop[] {
+  return db
+    .prepare<[], LoopDbRow>(`SELECT ${LOOP_COLUMNS} FROM loops WHERE state = 'active' ORDER BY created_at, rowid`)
+    .all()
+    .map(toLoop);
+}
+
+/** Grava o loop da sessão, trocando o que houver (PUT). */
+export function replaceLoop(db: Database.Database, loop: StoredLoop): void {
+  db.prepare<[string, string, string, number | null, number | null, number, string, number | null, number | null, string | null, number]>(
+    `INSERT OR REPLACE INTO loops (${LOOP_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    loop.sessionId,
+    loop.prompt,
+    loop.mode,
+    loop.intervalMs,
+    loop.maxIterations,
+    loop.iterations,
+    loop.state,
+    loop.nextRunAt,
+    loop.lastRunAt,
+    loop.lastError,
+    loop.createdAt,
+  );
+}
+
+/** Campos de um loop que mudam depois de criado. Os nomes de coluna são fixos (nada vem do usuário). */
+export interface LoopChanges {
+  state?: Loop['state'];
+  iterations?: number;
+  nextRunAt?: number | null;
+  lastRunAt?: number | null;
+  lastError?: string | null;
+}
+
+/** Atualiza só os campos informados. Loop inexistente não faz nada. */
+export function updateLoop(db: Database.Database, sessionId: string, changes: LoopChanges): void {
+  const assignments: string[] = [];
+  const values: Array<string | number | null> = [];
+  if (changes.state !== undefined) {
+    assignments.push('state = ?');
+    values.push(changes.state);
+  }
+  if (changes.iterations !== undefined) {
+    assignments.push('iterations = ?');
+    values.push(changes.iterations);
+  }
+  if (changes.nextRunAt !== undefined) {
+    assignments.push('next_run_at = ?');
+    values.push(changes.nextRunAt);
+  }
+  if (changes.lastRunAt !== undefined) {
+    assignments.push('last_run_at = ?');
+    values.push(changes.lastRunAt);
+  }
+  if (changes.lastError !== undefined) {
+    assignments.push('last_error = ?');
+    values.push(changes.lastError);
+  }
+  if (assignments.length === 0) return;
+  db.prepare<Array<string | number | null>>(`UPDATE loops SET ${assignments.join(', ')} WHERE session_id = ?`).run(
+    ...values,
+    sessionId,
+  );
+}
+
+/** Apaga o loop da sessão, se houver. */
+export function deleteLoop(db: Database.Database, sessionId: string): void {
+  db.prepare<[string]>('DELETE FROM loops WHERE session_id = ?').run(sessionId);
 }
 
 export type FileDirection = 'to_phone' | 'from_phone';

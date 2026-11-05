@@ -12,9 +12,13 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
   error: 'Erro',
 };
 
-/** Texto da pílula de status. Em terminal (PTY) "rodando" é "Em execução", não "Trabalhando". */
+/**
+ * Texto da pílula de status. Em terminal (PTY) "rodando" é "Em execução", não "Trabalhando", e um terminal
+ * encerrado é "Encerrado" (não há conversa a retomar).
+ */
 export function sessionStatusText(status: SessionStatus, kind: 'acp' | 'pty'): string {
   if (status === 'running' && kind === 'pty') return 'Em execução';
+  if (status === 'stopped' && kind === 'pty') return 'Encerrado';
   return STATUS_TEXT[status];
 }
 

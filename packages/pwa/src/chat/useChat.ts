@@ -4,6 +4,8 @@ import type {
   ClientMessage,
   ConfigValue,
   FileInfo,
+  Loop,
+  LoopRequest,
   Session,
   SessionConfigOption,
   SessionEvent,
@@ -14,6 +16,7 @@ import { writeAgentConfig } from '../agentConfig.js';
 import type { StorageLike } from '../machines.js';
 import { applyEvents, createChatState, withStatus, type ChatState } from './reducer.js';
 import { loadHistory } from './history.js';
+import { pickLoop } from './loop.js';
 import { createFrameBatcher } from './frameBatch.js';
 
 export const OFFLINE_NOTICE = 'Sem conexão com o PC. Tente de novo quando voltar.';
@@ -51,6 +54,19 @@ export interface ChatController {
   cancel(): boolean;
   respond(requestId: string, optionId: string): boolean;
   setConfig(configId: string, value: ConfigValue): boolean;
+  /** The session's loop (Loop mode): GET on open, then the WS `loop` message. Null when there is no loop. */
+  loop: Loop | null;
+  /** The first loop state has arrived (GET or WS). Until then the chip and the sheet claim nothing. */
+  loopLoaded: boolean;
+  /** A loop action is running. */
+  loopBusy: boolean;
+  /** Loop actions throw the `ApiError` when they fail (see `describeLoopError`); the state comes from the response. */
+  saveLoop(request: LoopRequest): Promise<void>;
+  pauseLoop(): Promise<void>;
+  resumeLoop(): Promise<void>;
+  runLoopNow(): Promise<void>;
+  /** Stops and deletes the loop. */
+  stopLoop(): Promise<void>;
 }
 
 /**
@@ -69,6 +85,9 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
   const [resumeError, setResumeError] = useState<unknown>(null);
   const [commands, setCommands] = useState<readonly AvailableCommand[]>([]);
   const [configOptions, setConfigOptions] = useState<readonly SessionConfigOption[]>([]);
+  const [loop, setLoop] = useState<Loop | null>(null);
+  const [loopLoaded, setLoopLoaded] = useState(false);
+  const [loopBusy, setLoopBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -103,6 +122,10 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
           configFromSocket = true;
           setConfigOptions(message.configOptions);
         }
+      } else if (message.type === 'loop') {
+        if (message.sessionId === sessionId) {
+          applyLoop(message.loop);
+        }
       } else if (message.type === 'error') {
         if (message.sessionId === undefined || message.sessionId === sessionId) {
           setNotice(message.message);
@@ -122,6 +145,14 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
       .sessionConfigOptions(sessionId)
       .then((list) => {
         if (active && !configFromSocket) setConfigOptions(list);
+      })
+      .catch(() => undefined);
+
+    // A failed loop GET is not shown: the subscribe still sends the `loop` message.
+    api
+      .fetchLoop(sessionId)
+      .then((current) => {
+        if (active) applyLoop(current);
       })
       .catch(() => undefined);
 
@@ -155,6 +186,22 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
     if (connection?.send(message) === true) return true;
     setNotice(OFFLINE_NOTICE);
     return false;
+  }
+
+  /** Applies a loop snapshot unless a newer one is already there (see `pickLoop`). */
+  function applyLoop(next: Loop | null): void {
+    setLoop((current) => pickLoop(current, next));
+    setLoopLoaded(true);
+  }
+
+  /** One loop action: marks busy, applies the loop from the response, and lets the error reach the caller. */
+  async function loopCall(action: () => Promise<Loop | null>): Promise<void> {
+    setLoopBusy(true);
+    try {
+      applyLoop(await action());
+    } finally {
+      setLoopBusy(false);
+    }
   }
 
   return {
@@ -209,6 +256,33 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
 
     setConfig(configId, value) {
       return send({ type: 'set_config', sessionId, configId, value });
+    },
+
+    loop,
+    loopLoaded,
+    loopBusy,
+
+    saveLoop(request) {
+      return loopCall(() => api.putLoop(sessionId, request));
+    },
+
+    pauseLoop() {
+      return loopCall(() => api.pauseLoop(sessionId));
+    },
+
+    resumeLoop() {
+      return loopCall(() => api.resumeLoop(sessionId));
+    },
+
+    runLoopNow() {
+      return loopCall(() => api.runLoopNow(sessionId));
+    },
+
+    stopLoop() {
+      return loopCall(async () => {
+        await api.deleteLoop(sessionId);
+        return null;
+      });
     },
   };
 }

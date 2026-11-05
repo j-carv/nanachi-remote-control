@@ -1,18 +1,25 @@
 import { useEffect, useState } from 'react';
-import { GitBranch } from '@phosphor-icons/react';
+import { BellOff, Bell, CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
 import type { StorageLike } from '../machines.js';
+import { BranchSwitcher } from '../components/BranchSwitcher.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
 import { NewSessionSheet } from '../components/NewSessionSheet.js';
-import { OverflowMenu } from '../components/OverflowMenu.js';
+import { ActionSheetButton } from '../components/ActionSheet.js';
 import { RemoveSessionSheet } from '../components/RemoveSessionSheet.js';
 import { ResumeSheet } from '../components/ResumeSheet.js';
+import { ShellSheet } from '../components/ShellSheet.js';
+import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { SessionStatusPill } from '../components/SessionStatusPill.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { WorkspaceInfoBar } from '../components/WorkspaceInfoBar.js';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import type { Navigator } from '../navigation.js';
 import { formatRelativeTime } from '../relativeTime.js';
 import { sessionTitle } from '../sessionText.js';
@@ -44,6 +51,7 @@ export function SessionsScreen({
   const [live, setLive] = useState<Record<string, Session>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
+  const [shellOpen, setShellOpen] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
   const [muted, setMuted] = useState(workspace.muted);
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(new Set());
@@ -112,86 +120,132 @@ export function SessionsScreen({
   }
 
   return (
-    <main className="screen">
+    <Screen>
       <ScreenHeader
         title={workspace.name}
         subtitle={`${machineName} · ${workspace.path}`}
         onBack={() => nav.back()}
+        meta={
+          <BranchSwitcher api={api} workspace={workspace} onSwitched={() => info.reload()} />
+        }
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Terminal"
+              title="Terminal"
+              onClick={() => setShellOpen(true)}
+            >
+              <SquareTerminal aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Arquivos"
+              title="Arquivos"
+              onClick={() => nav.push({ kind: 'files', workspace, path: '' })}
+            >
+              <FolderTree aria-hidden="true" />
+            </Button>
+          </>
+        }
       />
 
-      <WorkspaceInfoBar info={info.data} />
+      <WorkspaceInfoBar info={info.data} showBranch={false} />
 
-      <button type="button" className="button primary" onClick={() => setSheetOpen(true)}>
-        + Nova sessão
-      </button>
+      <div className="flex gap-2">
+        <Button className="flex-1" onClick={() => setSheetOpen(true)}>
+          <Plus aria-hidden="true" />
+          Nova sessão
+        </Button>
+        <Button variant="secondary" className="flex-1" onClick={() => setResumeOpen(true)}>
+          <RotateCcwClock aria-hidden="true" />
+          Retomar do PC
+        </Button>
+      </div>
 
-      <button type="button" className="button secondary" onClick={() => setResumeOpen(true)}>
-        Retomar do PC
-      </button>
-
-      <label className="config-toggle workspace-mute">
-        <span>
-          <span className="config-name">Silenciar notificações</span>
-          <span className="muted small">Não avisa no celular sobre as sessões deste workspace.</span>
-        </span>
-        <input
-          type="checkbox"
-          className="switch"
-          checked={muted}
-          onChange={(event) => void toggleMuted(event.target.checked)}
-        />
-      </label>
+      <ListGroup>
+        <li className={listRowClass}>
+          {muted ? (
+            <BellOff className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <Bell className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <label htmlFor="workspace-mute" className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-base">Silenciar notificações</span>
+            <span className="text-sm text-muted-foreground">Não avisa no celular sobre as sessões deste workspace.</span>
+          </label>
+          <Switch id="workspace-mute" checked={muted} onCheckedChange={(next) => void toggleMuted(next)} />
+        </li>
+      </ListGroup>
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {list.data === null && error === null && <p className="muted">Carregando…</p>}
+      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
       {list.data !== null && sessions.length === 0 && (
-        <p className="muted">Nenhuma sessão neste workspace ainda.</p>
+        <p className="pl-1 text-muted-foreground">Nenhuma sessão neste workspace ainda.</p>
       )}
 
-      <ul className="item-list">
-        {sessions.map((session) => {
-          const label = sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
-          return (
-            <li key={session.id}>
-              <SwipeRow actionLabel="Remover do app" onAction={() => setPendingRemoval(session)}>
-                <div className="item-row">
-                  <button
-                    type="button"
-                    className="item-main"
-                    onClick={() => nav.push({ kind: 'chat', workspace, session })}
-                  >
-                    <span className="item-title">{label}</span>
-                    <span className="item-meta">
-                      <SessionStatusPill status={session.status} kind={session.kind} />
-                      {session.kind === 'pty' && <span className="badge">terminal</span>}
-                      {session.worktree !== null && (
-                        <span className="chip chip-branch">
-                          <GitBranch size={14} weight="bold" aria-hidden="true" />
-                          {session.worktree.branch}
+      {sessions.length > 0 && (
+        <ListGroup label="Sessões">
+          {sessions.map((session) => {
+            const label = sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
+            return (
+              <li key={session.id}>
+                <SwipeRow actionLabel="Remover do app" onAction={() => setPendingRemoval(session)}>
+                  <div className={listRowClass}>
+                    <button type="button" className={`${listMainClass} py-1.5`} onClick={() => nav.push({ kind: 'chat', workspace, session })}>
+                      <span className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="truncate text-base font-medium">{label}</span>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <SessionStatusPill status={session.status} kind={session.kind} />
+                          {session.kind === 'pty' && (
+                            <Badge variant="outline">
+                              <Terminal aria-hidden="true" />
+                              terminal
+                            </Badge>
+                          )}
+                          {session.worktree !== null && (
+                            <Badge variant="outline" className="font-mono">
+                              <GitBranch aria-hidden="true" />
+                              {session.worktree.branch}
+                            </Badge>
+                          )}
                         </span>
-                      )}
-                      <span className="muted small">
-                        {agentLabels.get(session.agent) ?? session.agent} ·{' '}
-                        {formatRelativeTime(session.updatedAt, now)}
+                        <span className="truncate text-sm text-muted-foreground">
+                          {session.agent === 'shell' ? 'Terminal' : (agentLabels.get(session.agent) ?? session.agent)} ·{' '}
+                          {formatRelativeTime(session.updatedAt, now)}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                  {session.status !== 'stopped' && (
-                    <button type="button" className="button ghost danger" onClick={() => stop(session)}>
-                      Encerrar
                     </button>
-                  )}
-                  <OverflowMenu
-                    label={`Mais ações de ${label}`}
-                    items={[{ label: 'Remover do app', tone: 'danger', onSelect: () => setPendingRemoval(session) }]}
-                  />
-                </div>
-              </SwipeRow>
-            </li>
-          );
-        })}
-      </ul>
+                    {session.status !== 'stopped' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Encerrar ${label}`}
+                        onClick={() => void stop(session)}
+                      >
+                        <CircleStop aria-hidden="true" />
+                      </Button>
+                    )}
+                    <ActionSheetButton
+                      label={`Mais ações de ${label}`}
+                      title={label}
+                      items={[
+                        ...(session.status === 'stopped'
+                          ? []
+                          : [{ label: 'Encerrar', tone: 'danger' as const, onSelect: () => void stop(session) }]),
+                        { label: 'Remover do app', tone: 'danger', onSelect: () => setPendingRemoval(session) },
+                      ]}
+                    />
+                  </div>
+                </SwipeRow>
+              </li>
+            );
+          })}
+        </ListGroup>
+      )}
 
       {pendingRemoval !== null && (
         <RemoveSessionSheet
@@ -219,6 +273,18 @@ export function SessionsScreen({
         />
       )}
 
+      {shellOpen && (
+        <ShellSheet
+          api={api}
+          workspace={workspace}
+          onClose={() => setShellOpen(false)}
+          onCreated={(session) => {
+            setShellOpen(false);
+            nav.push({ kind: 'chat', workspace, session });
+          }}
+        />
+      )}
+
       {sheetOpen && (
         <NewSessionSheet
           api={api}
@@ -231,6 +297,6 @@ export function SessionsScreen({
           }}
         />
       )}
-    </main>
+    </Screen>
   );
 }

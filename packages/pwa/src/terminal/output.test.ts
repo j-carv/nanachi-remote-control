@@ -58,12 +58,12 @@ describe('ingestTerminal', () => {
   it('terminal_exit registra o código de saída e não escreve nada no terminal', () => {
     const result = ingestTerminal(createTerminalState(), [out(1, 'fim'), ev(2, { kind: 'terminal_exit', exitCode: 3 })]);
     expect(result.writes).toEqual(['fim']);
-    expect(result.state.exit).toEqual({ exitCode: 3 });
+    expect(result.state.exit).toEqual({ exitCode: 3, reason: null });
   });
 
   it('terminal_exit sem código (null) é guardado como null', () => {
     const result = ingestTerminal(createTerminalState(), [ev(1, { kind: 'terminal_exit', exitCode: null })]);
-    expect(result.state.exit).toEqual({ exitCode: null });
+    expect(result.state.exit).toEqual({ exitCode: null, reason: null });
   });
 
   it('exit repetido não troca o objeto de estado', () => {
@@ -82,5 +82,17 @@ describe('ingestTerminal', () => {
   it('lote vazio devolve o mesmo estado', () => {
     const state = createTerminalState();
     expect(ingestTerminal(state, []).state).toBe(state);
+  });
+});
+
+describe('terminal_exit.reason', () => {
+  it('reason reload (o daemon recarregou) fica guardado no exit', () => {
+    const result = ingestTerminal(createTerminalState(), [ev(1, { kind: 'terminal_exit', exitCode: null, reason: 'reload' })]);
+    expect(result.state.exit).toEqual({ exitCode: null, reason: 'reload' });
+  });
+
+  it('saída normal (sem reason) fica com reason null', () => {
+    const result = ingestTerminal(createTerminalState(), [ev(1, { kind: 'terminal_exit', exitCode: 0 })]);
+    expect(result.state.exit).toEqual({ exitCode: 0, reason: null });
   });
 });

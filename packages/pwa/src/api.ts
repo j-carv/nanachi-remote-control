@@ -10,9 +10,19 @@ import {
   DevicesResponseSchema,
   EventsResponseSchema,
   FsListResponseSchema,
+  GitBranchesRepoSchema,
+  GitBranchesResponseSchema,
+  GitCheckoutRequestSchema,
   HealthResponseSchema,
+  LoopRequestSchema,
+  LoopResponseSchema,
   PairRequestSchema,
   PairResponseSchema,
+  ShellsResponseSchema,
+  type ShellsResponse,
+  TailscalePairRequestSchema,
+  TailscalePairStatusResponseSchema,
+  type TailscalePairStatusResponse,
   PushKeyResponseSchema,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
@@ -21,6 +31,11 @@ import {
   SessionSchema,
   SessionsResponseSchema,
   UpdateWorkspaceRequestSchema,
+  UsageResponseSchema,
+  WorkspaceEntriesResponseSchema,
+  WorkspaceFileResponseSchema,
+  WorkspaceFileWriteRequestSchema,
+  WorkspaceFileWriteResponseSchema,
   WorkspaceInfoResponseSchema,
   WorkspaceSchema,
   WorkspacesResponseSchema,
@@ -34,7 +49,12 @@ import {
   type CreateWorkspaceRequest,
   type DevicesResponse,
   type FsListResponse,
+  type GitBranchesRepo,
+  type GitBranchesResponse,
+  type GitCheckoutRequest,
   type HealthResponse,
+  type Loop,
+  type LoopRequest,
   type PairResponse,
   type PushSubscriptionRequest,
   type RootsResponse,
@@ -42,7 +62,12 @@ import {
   type SessionDiffResponse,
   type SessionEvent,
   type UpdateWorkspaceRequest,
+  type UsageResponse,
   type Workspace,
+  type WorkspaceEntriesResponse,
+  type WorkspaceFileResponse,
+  type WorkspaceFileWriteRequest,
+  type WorkspaceFileWriteResponse,
   type WorkspaceInfoResponse,
 } from '@nanachi/shared';
 import { z } from 'zod';
@@ -77,13 +102,25 @@ export class ApiError extends Error {
   readonly status: number | null;
   /** Sessão do app ligada ao pedido (vem no 409 de importação: `already_running` / `already_linked`). */
   readonly sessionId: string | null;
+  /** `error` of the JSON error body (e.g. `session_busy`), or null. Lets callers tell codes that share a `kind`. */
+  readonly code: string | null;
+  /** `details` of the JSON error body (e.g. `dirty` for `dirty_worktree`, `etag` for `file_changed`), or null. */
+  readonly details: Readonly<Record<string, unknown>> | null;
 
-  constructor(kind: ApiErrorKind, status: number | null = null, sessionId: string | null = null) {
+  constructor(
+    kind: ApiErrorKind,
+    status: number | null = null,
+    sessionId: string | null = null,
+    code: string | null = null,
+    details: Readonly<Record<string, unknown>> | null = null,
+  ) {
     super(`api error: ${kind}${status === null ? '' : ` (${status})`}`);
     this.name = 'ApiError';
     this.kind = kind;
     this.status = status;
     this.sessionId = sessionId;
+    this.code = code;
+    this.details = details;
   }
 }
 
@@ -130,6 +167,51 @@ export async function pair(input: PairInput, fetchFn: FetchLike = fetch): Promis
   switch (response.status) {
     case 401:
       throw new ApiError('invalid_code', 401);
+    case 403:
+      throw new ApiError('forbidden', 403);
+    case 429:
+      throw new ApiError('rate_limited', 429);
+  }
+  if (!response.ok) throw new ApiError('unexpected', response.status);
+  return readBody(response, PairResponseSchema);
+}
+
+/**
+ * `GET {baseUrl}/api/pair/tailscale` (sem token): o daemon diz se "Entrar com Tailscale" vale para este login.
+ * Não disponível é uma resposta normal (`available: false`), não um erro.
+ */
+export async function pairTailscaleStatus(
+  baseUrl: string,
+  fetchFn: FetchLike = fetch,
+): Promise<TailscalePairStatusResponse> {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized === null) throw new ApiError('invalid_input');
+
+  const response = await send(fetchFn, `${normalized}/api/pair/tailscale`);
+  if (!response.ok) throw new ApiError('unexpected', response.status);
+  return readBody(response, TailscalePairStatusResponseSchema);
+}
+
+export interface TailscalePairInput {
+  baseUrl: string;
+  deviceName: string;
+}
+
+/** `POST {baseUrl}/api/pair/tailscale`: pareia este aparelho sem código. Devolve o mesmo pareamento do código. */
+export async function pairTailscale(input: TailscalePairInput, fetchFn: FetchLike = fetch): Promise<PairResponse> {
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const request = TailscalePairRequestSchema.safeParse({ deviceName: input.deviceName });
+  if (baseUrl === null || !request.success) throw new ApiError('invalid_input');
+
+  const response = await send(fetchFn, `${baseUrl}/api/pair/tailscale`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request.data),
+  });
+
+  switch (response.status) {
+    case 400:
+      throw new ApiError('invalid_input', 400);
     case 403:
       throw new ApiError('forbidden', 403);
     case 429:
@@ -218,6 +300,8 @@ export interface ApiClient {
   fetchRoots(): Promise<RootsResponse['roots']>;
   fetchFs(path: string): Promise<FsListResponse>;
   fetchAgents(): Promise<AgentsResponse['agents']>;
+  /** Shells que este PC abre para o terminal do workspace (lista vazia se `shellSessions` estiver desligado). */
+  fetchShells(): Promise<ShellsResponse['shells']>;
   /** Conta logada em cada agente do config. `refresh` ignora o cache de 5 min do daemon. */
   agentAccounts(refresh: boolean): Promise<AgentAccount[]>;
   listWorkspaces(): Promise<Workspace[]>;
@@ -233,6 +317,11 @@ export interface ApiClient {
   sessionCommands(sessionId: string): Promise<AvailableCommand[]>;
   /** Opções de configuração que valem agora (lista vazia se nenhuma). */
   sessionConfigOptions(sessionId: string): Promise<SessionConfigOption[]>;
+  /**
+   * Usage of the session's agent (`/usage` or `/status`), raw text with ANSI codes; the caller strips them.
+   * Writes nothing to the session and does not resume it: a stopped session answers `session_not_active`.
+   */
+  fetchSessionUsage(sessionId: string): Promise<UsageResponse>;
   /**
    * Envia um arquivo do celular para a sessão (corpo cru, com progresso via XHR).
    * Devolve o arquivo gravado no PC, para ser citado no `prompt`.
@@ -261,9 +350,36 @@ export interface ApiClient {
   /** Dispositivos pareados com a máquina (não revogados). */
   devices(): Promise<DevicesResponse['devices']>;
   revokeDevice(id: string): Promise<void>;
+  /** Local branches, the current branch (or the commit when HEAD is detached) and the dirty paths. `isRepo: false` for a plain folder. */
+  gitBranches(workspaceId: string): Promise<GitBranchesResponse>;
+  /** Switches branch (or creates it with `create`). Same payload as `gitBranches`. Errors carry `code` and `details`. */
+  gitCheckout(workspaceId: string, input: GitCheckoutRequest): Promise<GitBranchesRepo>;
+  /** Entries of a workspace folder (`path` relative to the root; `""` is the root). Folders first. */
+  fsList(workspaceId: string, path: string): Promise<WorkspaceEntriesResponse['entries']>;
+  /** UTF-8 content of a text file, with the etag for the next write. */
+  fsReadFile(workspaceId: string, path: string): Promise<WorkspaceFileResponse>;
+  /** Writes a file. `baseEtag: null` creates it; an etag updates it (409 `file_changed` with `details.etag` if it changed). */
+  fsWriteFile(workspaceId: string, input: WorkspaceFileWriteRequest): Promise<WorkspaceFileWriteResponse>;
+  /** Creates a folder (not recursive). */
+  fsMkdir(workspaceId: string, path: string): Promise<void>;
+  /** Renames or moves an entry. */
+  fsRename(workspaceId: string, from: string, to: string): Promise<void>;
+  /** Deletes a file, a link or an empty folder. */
+  fsDelete(workspaceId: string, path: string): Promise<void>;
+  /** The session's loop (Loop mode, PLAN.md), or null when it has none. */
+  fetchLoop(sessionId: string): Promise<Loop | null>;
+  /** Creates or replaces the loop and starts it. `runNow` (the daemon's default is true) runs the first round now. */
+  putLoop(sessionId: string, request: LoopRequest): Promise<Loop>;
+  pauseLoop(sessionId: string): Promise<Loop>;
+  /** Paused → active, with the next round now. A stopped loop answers `loop_finished`. */
+  resumeLoop(sessionId: string): Promise<Loop>;
+  /** Runs one round now without changing the state (a paused loop stays paused). */
+  runLoopNow(sessionId: string): Promise<Loop>;
+  /** Stops and deletes the loop. */
+  deleteLoop(sessionId: string): Promise<void>;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Código `error` de um corpo JSON de erro, ou null se não houver. */
 function codeOf(body: unknown): string | null {
@@ -271,6 +387,15 @@ function codeOf(body: unknown): string | null {
     return body.error;
   }
   return null;
+}
+
+/** `details` do corpo de erro (objeto), ou null se não houver. */
+function detailsOf(body: unknown): Readonly<Record<string, unknown>> | null {
+  if (typeof body !== 'object' || body === null || !('details' in body)) return null;
+  const details = body.details;
+  return typeof details === 'object' && details !== null && !Array.isArray(details)
+    ? Object.fromEntries(Object.entries(details))
+    : null;
 }
 
 /** `sessionId` do corpo de erro (409 de importação), ou null se não houver. */
@@ -289,8 +414,18 @@ const CODED_ERROR_KINDS = new Map<string, ApiErrorKind>([
   ['not_a_directory', 'not_a_directory'],
 ]);
 
-/** Erro tipado a partir do status HTTP, do código `error` e do `sessionId` do corpo (se houver). */
-function errorFromStatus(status: number, code: string | null, sessionId: string | null = null): ApiError {
+/** Erro tipado a partir do status HTTP, do código `error` e do `sessionId` do corpo (se houver). Guarda o código. */
+function errorFromStatus(
+  status: number,
+  code: string | null,
+  sessionId: string | null = null,
+  details: Readonly<Record<string, unknown>> | null = null,
+): ApiError {
+  const typed = kindFromStatus(status, code, sessionId);
+  return new ApiError(typed.kind, typed.status, typed.sessionId, code, details);
+}
+
+function kindFromStatus(status: number, code: string | null, sessionId: string | null): ApiError {
   const coded = code === null ? undefined : CODED_ERROR_KINDS.get(code);
   if (coded !== undefined) return new ApiError(coded, status);
 
@@ -330,7 +465,7 @@ async function errorFromResponse(response: Response): Promise<ApiError> {
   } catch {
     body = undefined;
   }
-  return errorFromStatus(response.status, codeOf(body), sessionIdOf(body));
+  return errorFromStatus(response.status, codeOf(body), sessionIdOf(body), detailsOf(body));
 }
 
 /**
@@ -386,7 +521,7 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {
           const body = parseJson(xhr.responseText);
-          reject(errorFromStatus(xhr.status, codeOf(body), sessionIdOf(body)));
+          reject(errorFromStatus(xhr.status, codeOf(body), sessionIdOf(body), detailsOf(body)));
           return;
         }
         const parsed = AttachmentResponseSchema.safeParse(parseJson(xhr.responseText));
@@ -414,6 +549,11 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
     async fetchAgents() {
       const { agents } = await getJson(AgentsResponseSchema, '/api/agents');
       return agents;
+    },
+
+    async fetchShells() {
+      const { shells } = await getJson(ShellsResponseSchema, '/api/shells');
+      return shells;
     },
 
     async agentAccounts(refresh) {
@@ -476,6 +616,10 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
     async sessionConfigOptions(sessionId) {
       const { configOptions } = await getJson(ConfigOptionsResponseSchema, `/api/sessions/${pathId(sessionId)}/config`);
       return configOptions;
+    },
+
+    async fetchSessionUsage(sessionId) {
+      return postJson(UsageResponseSchema, `/api/sessions/${pathId(sessionId)}/usage`, undefined);
     },
 
     async fetchEvents(sessionId, query) {
@@ -545,7 +689,87 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
     async revokeDevice(id) {
       await remove(`/api/devices/${pathId(id)}`);
     },
+
+    async gitBranches(workspaceId) {
+      return getJson(GitBranchesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/git/branches`);
+    },
+
+    async gitCheckout(workspaceId, input) {
+      const request = GitCheckoutRequestSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return postJson(GitBranchesRepoSchema, `/api/workspaces/${pathId(workspaceId)}/git/checkout`, request.data);
+    },
+
+    async fsList(workspaceId, path) {
+      const query = new URLSearchParams({ path }).toString();
+      const { entries } = await getJson(
+        WorkspaceEntriesResponseSchema,
+        `/api/workspaces/${pathId(workspaceId)}/fs/list?${query}`,
+      );
+      return entries;
+    },
+
+    async fsReadFile(workspaceId, path) {
+      const query = new URLSearchParams({ path }).toString();
+      return getJson(WorkspaceFileResponseSchema, `/api/workspaces/${pathId(workspaceId)}/fs/file?${query}`);
+    },
+
+    async fsWriteFile(workspaceId, input) {
+      const request = WorkspaceFileWriteRequestSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(
+        await call('PUT', `/api/workspaces/${pathId(workspaceId)}/fs/file`, request.data),
+        WorkspaceFileWriteResponseSchema,
+      );
+    },
+
+    async fsMkdir(workspaceId, path) {
+      await call('POST', `/api/workspaces/${pathId(workspaceId)}/fs/mkdir`, { path });
+    },
+
+    async fsRename(workspaceId, from, to) {
+      await call('POST', `/api/workspaces/${pathId(workspaceId)}/fs/rename`, { from, to });
+    },
+
+    async fsDelete(workspaceId, path) {
+      const query = new URLSearchParams({ path }).toString();
+      await remove(`/api/workspaces/${pathId(workspaceId)}/fs/entry?${query}`);
+    },
+
+    async fetchLoop(sessionId) {
+      const { loop } = await getJson(LoopResponseSchema, `/api/sessions/${pathId(sessionId)}/loop`);
+      return loop;
+    },
+
+    async putLoop(sessionId, input) {
+      const request = LoopRequestSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return loopFrom(await call('PUT', `/api/sessions/${pathId(sessionId)}/loop`, request.data));
+    },
+
+    async pauseLoop(sessionId) {
+      return loopFrom(await call('POST', `/api/sessions/${pathId(sessionId)}/loop/pause`));
+    },
+
+    async resumeLoop(sessionId) {
+      return loopFrom(await call('POST', `/api/sessions/${pathId(sessionId)}/loop/resume`));
+    },
+
+    async runLoopNow(sessionId) {
+      return loopFrom(await call('POST', `/api/sessions/${pathId(sessionId)}/loop/run-now`));
+    },
+
+    async deleteLoop(sessionId) {
+      await remove(`/api/sessions/${pathId(sessionId)}/loop`);
+    },
   };
+}
+
+/** The loop of a response that must carry one (PUT and the actions). `loop: null` here is an unexpected response. */
+async function loopFrom(response: Response): Promise<Loop> {
+  const { loop } = await readBody(response, LoopResponseSchema);
+  if (loop === null) throw new ApiError('unexpected', response.status);
+  return loop;
 }
 
 /** JSON de um texto, ou undefined se não for JSON (o chamador valida com schema). */

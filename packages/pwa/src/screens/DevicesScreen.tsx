@@ -1,8 +1,13 @@
 import { useMemo, useState } from 'react';
+import { ShieldOff, Smartphone } from 'lucide-react';
 import type { DevicesResponse } from '@nanachi/shared';
 import { createApiClient, type ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { ListGroup, listRowClass } from '../components/ListGroup.js';
+import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import type { Machine } from '../machines.js';
 import type { Navigator } from '../navigation.js';
 import { formatRelativeTime } from '../relativeTime.js';
@@ -53,7 +58,7 @@ export function DevicesScreen({ machine, nav, onRevokedSelf }: DevicesScreenProp
   }
 
   return (
-    <main className="screen">
+    <Screen>
       <ScreenHeader
         title="Dispositivos desta máquina"
         subtitle={machine.name}
@@ -62,31 +67,36 @@ export function DevicesScreen({ machine, nav, onRevokedSelf }: DevicesScreenProp
 
       <ErrorNotice error={error} onRepair={() => nav.push({ kind: 'pair', baseUrl: machine.baseUrl })} />
 
-      {list.data === null && error === null && <p className="muted">Carregando…</p>}
+      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
 
-      <ul className="item-list">
-        {list.data?.map((device) => (
-          <li key={device.id} className="item-row">
-            <div className="item-main device-main">
-              <span className="item-title">
-                {device.name}
-                {device.current && <span className="badge device-current">este aparelho</span>}
-              </span>
-              <span className="muted small">
-                Criado {formatRelativeTime(device.createdAt, now)} · visto por último{' '}
-                {device.lastSeenAt === null ? 'nunca' : formatRelativeTime(device.lastSeenAt, now)}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="button ghost danger"
-              onClick={() => void revoke(device)}
-            >
-              Revogar
-            </button>
-          </li>
-        ))}
-      </ul>
-    </main>
+      {list.data !== null && list.data.length > 0 && (
+        <ListGroup label="Dispositivos">
+          {list.data.map((device) => (
+            <li key={device.id} className={listRowClass}>
+              <Smartphone className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="truncate text-base font-medium">{device.name}</span>
+                  {device.current && <Badge>este aparelho</Badge>}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Criado {formatRelativeTime(device.createdAt, now)} · visto por último{' '}
+                  {device.lastSeenAt === null ? 'nunca' : formatRelativeTime(device.lastSeenAt, now)}
+                </span>
+              </div>
+              <Button
+                variant="destructive-ghost"
+                className="shrink-0 px-3"
+                aria-label={`Revogar ${device.name}`}
+                onClick={() => void revoke(device)}
+              >
+                <ShieldOff aria-hidden="true" />
+                Revogar
+              </Button>
+            </li>
+          ))}
+        </ListGroup>
+      )}
+    </Screen>
   );
 }

@@ -614,3 +614,69 @@ describe('AgentSessionSummarySchema', () => {
     ).toBe(false);
   });
 });
+
+describe('SessionEventSchema: subagentes e segundo plano (tool_call)', () => {
+  const toolCall = {
+    ...meta,
+    kind: 'tool_call',
+    toolCallId: 'call-1',
+    title: 'Agent',
+    content: [],
+    locations: [],
+  };
+
+  it('evento antigo, sem os campos novos, continua válido e sem eles', () => {
+    expect(SessionEventSchema.parse(toolCall)).toEqual(toolCall);
+    const update = { ...meta, kind: 'tool_call_update', toolCallId: 'call-1', status: 'completed' };
+    expect(SessionEventSchema.parse(update)).toEqual(update);
+  });
+
+  it('aceita parentToolCallId, toolName e background de subagente com jobs', () => {
+    const event = {
+      ...toolCall,
+      parentToolCallId: 'parent-1',
+      toolName: 'Agent',
+      background: {
+        kind: 'subagent',
+        state: 'running',
+        label: 'Revisar o parser',
+        agentType: 'Explore',
+        jobs: [{ id: 'thread-1', label: 'spawnAgent', status: 'running' }],
+      },
+    };
+    expect(SessionEventSchema.parse(event)).toEqual(event);
+  });
+
+  it('aceita background de shell e de job sem label, agentType nem jobs', () => {
+    expect(
+      SessionEventSchema.safeParse({ ...toolCall, background: { kind: 'shell', state: 'running' } }).success,
+    ).toBe(true);
+    expect(
+      SessionEventSchema.safeParse({ ...toolCall, background: { kind: 'job', state: 'completed', jobs: [] } }).success,
+    ).toBe(true);
+  });
+
+  it('aceita tool_call_update com background', () => {
+    const event = {
+      ...meta,
+      kind: 'tool_call_update',
+      toolCallId: 'call-1',
+      background: { kind: 'subagent', state: 'completed' },
+    };
+    expect(SessionEventSchema.parse(event)).toEqual(event);
+  });
+
+  it.each([
+    ['kind desconhecido', { kind: 'nope' }],
+    ['state desconhecido', { background: { kind: 'subagent', state: 'done' } }],
+    ['kind de background desconhecido', { background: { kind: 'thread', state: 'running' } }],
+    ['label vazio', { background: { kind: 'shell', state: 'running', label: '' } }],
+    ['label acima de 200 caracteres', { background: { kind: 'shell', state: 'running', label: 'x'.repeat(201) } }],
+    ['mais de 50 jobs', { background: { kind: 'job', state: 'running', jobs: Array.from({ length: 51 }, (_, i) => ({ id: `j${i}`, status: 'running' })) } }],
+    ['job sem id', { background: { kind: 'job', state: 'running', jobs: [{ status: 'running' }] } }],
+    ['toolName vazio', { toolName: '' }],
+    ['parentToolCallId vazio', { parentToolCallId: '' }],
+  ])('rejeita %s', (_label, patch) => {
+    expect(SessionEventSchema.safeParse({ ...toolCall, ...patch }).success).toBe(false);
+  });
+});

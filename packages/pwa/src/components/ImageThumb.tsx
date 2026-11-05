@@ -3,6 +3,7 @@ import type { FileInfo } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
 import { useFileBlob } from '../files/useFileBlob.js';
+import { useChatAttach } from '../chat/attachContext.js';
 import { FileViewer } from './FileViewer.js';
 
 interface ImageThumbProps {
@@ -10,25 +11,47 @@ interface ImageThumbProps {
   file: FileInfo;
 }
 
-/** Miniatura de imagem do PC (baixada com o Bearer do app). Toque abre o visualizador em tela cheia. */
+/**
+ * Miniatura de imagem do PC (baixada com o Bearer do app). Toque abre o visualizador em tela cheia. Dentro do chat,
+ * o visualizador ganha "Anexar ao chat" para o recorte; fora dele, a ação some.
+ */
 export function ImageThumb({ api, file }: ImageThumbProps) {
   const [open, setOpen] = useState(false);
   const loaded = useFileBlob(api, file, true);
+  const attachToChat = useChatAttach();
 
   if (loaded.error !== null) {
-    return <p className="muted small">{describeError(loaded.error)}</p>;
+    return <p className="text-sm text-muted-foreground">{describeError(loaded.error)}</p>;
   }
   if (loaded.url === null || loaded.blob === null) {
-    return <div className="file-thumb file-thumb-loading" aria-label="Carregando imagem" />;
+    return (
+      <div
+        role="img"
+        aria-label="Carregando imagem"
+        className="aspect-[4/3] w-[min(240px,100%)] animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+      />
+    );
   }
 
   return (
     <>
-      <button type="button" className="file-thumb" aria-label={`Abrir ${file.name}`} onClick={() => setOpen(true)}>
-        <img src={loaded.url} alt={file.name} />
+      <button
+        type="button"
+        data-slot="file-thumb"
+        aria-label={`Abrir ${file.name}`}
+        onClick={() => setOpen(true)}
+        className="block aspect-[4/3] w-[min(240px,100%)] cursor-zoom-in overflow-hidden rounded-lg bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img src={loaded.url} alt={file.name} className="size-full object-cover" />
       </button>
       {open && (
-        <FileViewer file={file} blob={loaded.blob} url={loaded.url} onClose={() => setOpen(false)} />
+        <FileViewer
+          file={file}
+          blob={loaded.blob}
+          url={loaded.url}
+          onClose={() => setOpen(false)}
+          onAttachToChat={attachToChat ?? undefined}
+        />
       )}
     </>
   );

@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { findDeviceByTokenHash, insertDevice, touchDevice, type DeviceRow } from './repository.js';
+import { findDeviceByTokenHash, insertDevice, touchDevice, type DeviceRow, type PairMethod } from './repository.js';
 import { generateToken, hashToken } from './tokens.js';
 
 export const PAIR_CODE_TTL_MS = 5 * 60_000;
@@ -32,6 +32,23 @@ export function createPairCode(db: Database.Database, now: number): string {
   throw new Error('não foi possível gerar um código de pareamento único');
 }
 
+/** Cria o device com um token novo e devolve o token (só ele vê o texto puro; o banco guarda o hash). */
+function createDevice(
+  db: Database.Database,
+  input: { deviceName: string; now: number; pairMethod: PairMethod },
+): { token: string; deviceId: string } {
+  const token = generateToken();
+  const deviceId = randomUUID();
+  insertDevice(db, {
+    id: deviceId,
+    name: input.deviceName,
+    tokenHash: hashToken(token),
+    createdAt: input.now,
+    pairMethod: input.pairMethod,
+  });
+  return { token, deviceId };
+}
+
 /** Consome o código e cria o dispositivo com um token novo. Tudo numa transação. */
 export function pairDevice(
   db: Database.Database,
@@ -48,11 +65,19 @@ export function pairDevice(
     if (row.expires_at <= input.now) return { ok: false, reason: 'expired' };
 
     db.prepare<[number, string]>('UPDATE pair_codes SET used_at = ? WHERE code = ?').run(input.now, input.code);
-    const token = generateToken();
-    const deviceId = randomUUID();
-    insertDevice(db, { id: deviceId, name: input.deviceName, tokenHash: hashToken(token), createdAt: input.now });
-    return { ok: true, token, deviceId };
+    return { ok: true, ...createDevice(db, { deviceName: input.deviceName, now: input.now, pairMethod: 'code' }) };
   })();
+}
+
+/**
+ * Entrar com Tailscale: cria o device sem código. Quem chama já checou o login (peer loopback, allowlist e
+ * `tailscaleAutoPair`); aqui só se grava o device com `pair_method = 'tailscale'`.
+ */
+export function pairDeviceViaTailscale(
+  db: Database.Database,
+  input: { deviceName: string; now: number },
+): { token: string; deviceId: string } {
+  return createDevice(db, { ...input, pairMethod: 'tailscale' });
 }
 
 /** Devolve o dispositivo ativo dono do token e atualiza last_seen_at. Nunca lança. */

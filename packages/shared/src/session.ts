@@ -149,6 +149,43 @@ const PermissionOptionSchema = z.object({
   kind: z.enum(['allow_once', 'allow_always', 'reject_once', 'reject_always']),
 });
 
+/** Limites do trabalho em segundo plano: texto e lista vêm do agente e entram no banco, então ficam capados. */
+export const BACKGROUND_LABEL_MAX = 200;
+export const BACKGROUND_JOBS_MAX = 50;
+
+/** Um job dentro de um background: subagente do Codex, job do omp ou item de `wait`. `id` é a chave para juntar updates. */
+export const BackgroundJobSchema = z.object({
+  id: z.string().min(1).max(BACKGROUND_LABEL_MAX),
+  label: z.string().min(1).max(BACKGROUND_LABEL_MAX).optional(),
+  status: z.string().min(1).max(40),
+});
+
+export type BackgroundJob = z.infer<typeof BackgroundJobSchema>;
+
+/**
+ * Trabalho que segue depois do tool call: subagente (`Agent`/`Task` do Claude, `spawnAgent` do Codex), comando em
+ * segundo plano (`Bash` com `run_in_background`) ou job do omp (`task`/`wait`). `state: "running"` de um async
+ * vale até o fim do turno; o daemon não grava evento de fim para isso (ver PLAN.md, subagentes e segundo plano).
+ */
+export const BackgroundSchema = z.object({
+  kind: z.enum(['subagent', 'shell', 'job']),
+  state: z.enum(['running', 'completed', 'failed', 'stopped', 'unknown']),
+  label: z.string().min(1).max(BACKGROUND_LABEL_MAX).optional(),
+  agentType: z.string().min(1).max(BACKGROUND_LABEL_MAX).optional(),
+  jobs: z.array(BackgroundJobSchema).max(BACKGROUND_JOBS_MAX).optional(),
+});
+
+export type Background = z.infer<typeof BackgroundSchema>;
+
+/** Campos de tool call que só o trabalho em segundo plano usa. Ausentes em eventos antigos e em tool calls comuns. */
+const ToolLineageShape = {
+  /** `toolCallId` do tool call pai (subagente que fez esta chamada). */
+  parentToolCallId: z.string().min(1).max(BACKGROUND_LABEL_MAX).optional(),
+  /** Nome da ferramenta do agente (ex.: `Agent`, `Bash`), quando o agente informa. */
+  toolName: z.string().min(1).max(BACKGROUND_LABEL_MAX).optional(),
+  background: BackgroundSchema.optional(),
+};
+
 const EventMetaShape = {
   seq: z.number().int().positive(),
   sessionId: z.string().min(1),
@@ -162,6 +199,9 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     kind: z.literal('user_message'),
     text: z.string(),
     attachments: z.array(FileInfoSchema).optional(),
+    /** Prompt de uma iteração do loop (PLAN.md, modo Loop). `loopIteration` é o número dela, a partir de 1. */
+    loop: z.literal(true).optional(),
+    loopIteration: z.number().int().positive().optional(),
   }),
   z.object({
     ...EventMetaShape,
@@ -182,6 +222,7 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     status: ToolCallStatusSchema.optional(),
     content: z.array(ToolContentSchema),
     locations: z.array(z.string()),
+    ...ToolLineageShape,
   }),
   z.object({
     ...EventMetaShape,
@@ -190,6 +231,7 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     title: z.string().optional(),
     status: ToolCallStatusSchema.optional(),
     content: z.array(ToolContentSchema).optional(),
+    ...ToolLineageShape,
   }),
   z.object({
     ...EventMetaShape,
@@ -243,6 +285,8 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     ...EventMetaShape,
     kind: z.literal('terminal_exit'),
     exitCode: z.number().int().nullable(),
+    /** `reload`: o daemon encerrou o shell para recarregar (exitCode null). Ausente quando o processo saiu sozinho. */
+    reason: z.literal('reload').optional(),
   }),
 ]);
 

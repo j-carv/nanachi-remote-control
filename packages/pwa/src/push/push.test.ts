@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { notificationFromPush } from './payload.js';
 import { isPushSupported } from './support.js';
 import {
+  DEVICES_MESSAGE,
+  buildDevicesUrl,
   buildSessionUrl,
+  parseDevicesSearch,
+  parseDevicesTarget,
+  parseOpenDevicesMessage,
   parseOpenSessionMessage,
   parseSessionSearch,
   parseSessionTarget,
@@ -157,5 +162,58 @@ describe('toSubscriptionRequest', () => {
     expect(toSubscriptionRequest({ endpoint: 'https://x.test/a' })).toBeNull();
     expect(toSubscriptionRequest({ endpoint: 'nao-url', keys: { p256dh: 'p', auth: 'a' } })).toBeNull();
     expect(toSubscriptionRequest({})).toBeNull();
+  });
+});
+
+describe('device_paired (Entrar com Tailscale)', () => {
+  const paired = {
+    title: 'Nanachi Remote',
+    body: 'Novo aparelho entrou com Tailscale: iPhone do João',
+    machineId: 'm-1',
+    kind: 'device_paired',
+  };
+
+  it('mostra o aviso com o texto do daemon e leva para Dispositivos da máquina', () => {
+    expect(notificationFromPush(paired)).toEqual({
+      title: 'Nanachi Remote',
+      options: {
+        body: 'Novo aparelho entrou com Tailscale: iPhone do João',
+        tag: 'device-paired',
+        data: { machineId: 'm-1', screen: 'devices' },
+      },
+    });
+  });
+
+  it('payload de device_paired sem machineId cai no aviso genérico', () => {
+    const broken = { title: paired.title, body: paired.body, kind: paired.kind };
+    expect(notificationFromPush(broken).options.body).toBe('Nova atividade no seu PC');
+  });
+
+  it('o alvo de Dispositivos sai do clique da notificação e não confunde com uma sessão', () => {
+    const data = notificationFromPush(paired).options.data;
+    expect(parseDevicesTarget(data)).toEqual({ machineId: 'm-1' });
+    expect(parseSessionTarget(data)).toBeNull();
+  });
+
+  it('URL de abertura e mensagem do service worker levam a Dispositivos', () => {
+    expect(buildDevicesUrl({ machineId: 'm-1' })).toBe('/?machine=m-1&screen=devices');
+    expect(parseDevicesSearch('?machine=m-1&screen=devices')).toEqual({ machineId: 'm-1' });
+    expect(parseDevicesSearch('?machine=m-1&screen=chat')).toBeNull();
+    expect(parseDevicesSearch('?machine=m-1&workspace=w&session=s')).toBeNull();
+    expect(parseOpenDevicesMessage({ type: DEVICES_MESSAGE, machineId: 'm-1' })).toEqual({ machineId: 'm-1' });
+    expect(parseOpenDevicesMessage({ type: 'open-session', machineId: 'm-1' })).toBeNull();
+  });
+
+  it('uma sessão continua indo para o chat, sem virar aviso de Dispositivos', () => {
+    const data = notificationFromPush({
+      title: 'Agente',
+      body: 'terminou',
+      machineId: 'm-1',
+      workspaceId: 'w-1',
+      sessionId: 's-1',
+      kind: 'turn_end',
+    }).options.data;
+    expect(parseDevicesTarget(data)).toBeNull();
+    expect(parseSessionTarget(data)).toEqual({ machineId: 'm-1', workspaceId: 'w-1', sessionId: 's-1' });
   });
 });

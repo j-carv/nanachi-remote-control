@@ -1,5 +1,6 @@
 import { useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { classifySwipe, settleSwipe, SWIPE_ACTION_WIDTH, swipeOffset } from '../swipe.js';
+import { cn } from '@/lib/utils';
 
 interface SwipeRowProps {
   /** Texto da ação revelada (ex.: "Remover do app"). */
@@ -83,11 +84,15 @@ export function SwipeRow({ actionLabel, onAction, children }: SwipeRowProps) {
   }
 
   return (
-    <div className="swipe-row">
+    <div data-slot="swipe-row" className="relative overflow-hidden">
+      {/* A trilha vem antes da ação na árvore (leitor de tela e `first()` do E2E pegam a linha); z-10 a mantém por cima. */}
       <div
-        className={dragging ? 'swipe-track dragging' : 'swipe-track'}
-        // Fechada, sem transform: um transform cria o bloco de contenção do `position: fixed` e o menu "…" sairia
-        // deslocado da tela.
+        data-slot="swipe-track"
+        className={cn(
+          'relative z-10 touch-pan-y bg-card',
+          !dragging && 'transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        )}
+        // Fechada, sem transform: um transform cria o bloco de contenção do `position: fixed`.
         style={offset === 0 ? undefined : { transform: `translateX(${offset}px)` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -99,7 +104,9 @@ export function SwipeRow({ actionLabel, onAction, children }: SwipeRowProps) {
       </div>
       <button
         type="button"
-        className="swipe-action"
+        data-slot="swipe-action"
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-destructive px-3 text-sm font-medium text-white"
+        style={{ width: SWIPE_ACTION_WIDTH }}
         tabIndex={open ? 0 : -1}
         onClick={() => {
           close();

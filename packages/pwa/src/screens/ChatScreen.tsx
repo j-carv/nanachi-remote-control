@@ -1,25 +1,77 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { GitBranch, Paperclip } from '@phosphor-icons/react';
-import type { AvailableCommand, Session, SessionStatus, Workspace } from '@nanachi/shared';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
+import {
+  ArrowDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Gauge,
+  GitCompare,
+  Layers,
+  LoaderCircle,
+  Paperclip,
+  Repeat,
+  Repeat1,
+  SendHorizontal,
+  Settings2,
+  SlidersHorizontal,
+  SquareSlash,
+} from 'lucide-react';
+import type { AvailableCommand, LoopRequest, Session, SessionStatus, Workspace } from '@nanachi/shared';
 import { splitOptions } from '../agentConfig.js';
 import { ApiError, type ApiClient } from '../api.js';
 import { ConfigControls, ConfigSelect } from '../components/ConfigControls.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { ImageCropDialog } from '../components/ImageCropDialog.js';
+import { useCssHeight } from '../components/useCssHeight.js';
 import { NewSessionSheet } from '../components/NewSessionSheet.js';
-import { OverflowMenu } from '../components/OverflowMenu.js';
+import { ActionSheet, ActionSheetButton, type ActionSheetItem } from '../components/ActionSheet.js';
 import { RemoveSessionSheet } from '../components/RemoveSessionSheet.js';
-import { ScreenHeader } from '../components/ScreenHeader.js';
-import { SessionStatusPill } from '../components/SessionStatusPill.js';
+import { UsageDrawer } from '../components/UsageDrawer.js';
+import { ListGroup, SectionHeading } from '../components/ListGroup.js';
+import { StatusDot, type StatusTone } from '../components/StatusDot.js';
 import { useVisualViewport } from '../components/useVisualViewport.js';
 import type { Connection } from '../connection.js';
 import { AttachmentDrafts } from '../chat/AttachmentDrafts.js';
+import { ChatAttachContext } from '../chat/attachContext.js';
 import { ATTACHMENT_LIMIT, uploadFiles } from '../chat/attachments.js';
 import { ChatItemView } from '../chat/ChatItemView.js';
-import { insertCommand, slashQuery } from '../chat/commands.js';
+import { BackgroundDrawer } from '../chat/BackgroundDrawer.js';
+import { LoopChip } from '../chat/LoopChip.js';
+import { LoopSheet } from '../chat/LoopSheet.js';
+import { loopCommandFor } from '../chat/loopCommand.js';
+import { useMediaQuery } from '../chat/useMediaQuery.js';
+import { describeLoopError } from '../errorMessages.js';
+import { ITEM_FRAME_CLASS } from '../chat/itemFrame.js';
+import {
+  backgroundChipCount,
+  backgroundEntries,
+  isActiveStatus,
+  type BackgroundView,
+} from '../chat/background.js';
+import { nestItems, type ChatNode } from '../chat/nesting.js';
+import { IDLE_PROMPT_CURSOR, promptHistoryOf, recallNewer, recallOlder, type PromptCursor, type PromptStep } from '../chat/promptHistory.js';
+import {
+  bareCommandName,
+  commandSheetFor,
+  insertCommand,
+  nativePickerFor,
+  slashQuery,
+  type CommandSheet,
+} from '../chat/commands.js';
 import { SlashMenu } from '../chat/SlashMenu.js';
-import { isInputEnabled, isResumable } from '../chat/controls.js';
-import { useAttachmentDrafts } from '../chat/useAttachmentDrafts.js';
+import { acceptsPrompt, isInputEnabled, isResumable } from '../chat/controls.js';
+import { useAttachmentDrafts, type DraftAttachment } from '../chat/useAttachmentDrafts.js';
 import { useChat } from '../chat/useChat.js';
+import { sessionStatusText, sessionTitle } from '../sessionText.js';
 import { useAsync } from '../useAsync.js';
 import { PermissionCard } from '../chat/PermissionCard.js';
 import {
@@ -32,6 +84,10 @@ import {
 } from '../chat/scrollFollow.js';
 import type { StorageLike } from '../machines.js';
 import type { Navigator } from '../navigation.js';
+import { Button } from '@/components/ui/button';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { cn } from '@/lib/utils';
+import { useReloadGuard } from '@/updates/reloadGuard';
 
 interface ChatScreenProps {
   machineName: string;
@@ -53,13 +109,24 @@ const WORKING_TEXT: Partial<Record<SessionStatus, string>> = {
   error: 'A sessão deu erro',
 };
 
+/** Cor do ponto de status no cabeçalho: as mesmas do SessionStatusPill da lista. */
+const STATUS_TONE: Record<SessionStatus, StatusTone> = {
+  starting: 'muted',
+  idle: 'muted',
+  running: 'running',
+  awaiting_permission: 'attention',
+  stopped: 'muted',
+  error: 'danger',
+};
+
 const PLACEHOLDER: Record<SessionStatus, string> = {
-  starting: 'Aguarde o agente iniciar…',
-  idle: 'Escreva uma mensagem',
-  running: 'Aguarde o agente terminar…',
-  awaiting_permission: 'Responda à permissão',
-  stopped: 'Sessão encerrada',
-  error: 'Sessão com erro',
+  starting: 'Aguardando o agente',
+  idle: 'Mensagem',
+  running: 'Aguarde o agente',
+  awaiting_permission: 'Veja a permissão',
+  // Stopped and error sessions take a message: sending it resumes the session.
+  stopped: 'Retomar e enviar',
+  error: 'Retomar e enviar',
 };
 
 /** Posição da conversa por sessão, guardada enquanto o app roda: voltar ao chat retoma de onde o usuário saiu. */
@@ -89,14 +156,30 @@ export function ChatScreen({
   const current = controller.session;
   const viewport = useVisualViewport();
   const { primary, extra } = splitOptions(controller.configOptions);
+  const agentLabel = agents.data?.find((agent) => agent.id === current.agent)?.label ?? current.agent;
 
-  const [extraOpen, setExtraOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const [loopOpen, setLoopOpen] = useState(false);
+  /** Short Loop mode notice ("Loop iniciado", or why a malformed `/loop` was refused). */
+  const [loopNotice, setLoopNotice] = useState<string | null>(null);
+  /**
+   * Narrow screens (below 400 px): Uso do agente and Alterações leave the header for the "…" menu, so the title and
+   * the new Modo Loop button fit. Wider screens keep the header as it was.
+   */
+  const compactHeader = useMediaQuery('(max-width: 399px)');
+  const loopActive = controller.loop !== null && controller.loop.state !== 'stopped';
+  /** Item the header chip asked to show. The effect below scrolls to it once it is rendered. */
+  const [revealRequest, setRevealRequest] = useState<{ id: string } | null>(null);
   const [draft, setDraft] = useState('');
   /** Posição do cursor no composer: o menu de comandos abre quando o texto até aqui é `/busca`. */
   const [caret, setCaret] = useState(0);
   /** Menu aberto pelo botão `/` (com campo de busca próprio), em vez de pelo texto. */
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
+  /** Folha aberta por um comando: seletor nativo (opção da sessão) ou subcomandos do hint. */
+  const [commandSheet, setCommandSheet] = useState<CommandSheet | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   /** Cursor a aplicar depois que o comando entrou no texto (o React ainda não atualizou o campo). */
   const pendingCaret = useRef<number | null>(null);
@@ -127,6 +210,18 @@ export function ChatScreen({
   const [removeError, setRemoveError] = useState<unknown>(null);
   /** Sair da sessão uma vez só: remover pelo app e o broadcast session_removed chegam juntos. */
   const leaving = useRef(false);
+  /** Posição nas setas do histórico de prompts. Volta ao rascunho quando a mensagem é enviada. */
+  const [historyCursor, setHistoryCursor] = useState<PromptCursor>(IDLE_PROMPT_CURSOR);
+  const [composerFocused, setComposerFocused] = useState(false);
+  /** Anexo da prévia que está sendo recortado; o resultado troca o anexo. */
+  const [cropping, setCropping] = useState<DraftAttachment | null>(null);
+  const promptHistory = useMemo(() => promptHistoryOf(chat.items), [chat.items]);
+  /** Parte de baixo (indicador, anexos, comandos, setas, composer): o aviso de atualização flutua acima dela. */
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useCssHeight(bottomRef, '--chat-bottom-h');
+
+  // Unsent text or attachment drafts hold the app's reload (see updates/reloadGuard.ts).
+  useReloadGuard(draft.trim() !== '' || attachments.drafts.length > 0);
 
   function leave() {
     if (leaving.current) return;
@@ -165,6 +260,21 @@ export function ChatScreen({
     if (controller.loaded && floor === null) setFloor(start);
   }, [controller.loaded, floor, start]);
 
+  // Background work: the view the cards read their state from, the header chip count, and the nested tree of the
+  // loaded window (children under their parent card; the node cache keeps unchanged rows memoized).
+  const backgroundView = useMemo<BackgroundView>(
+    () => ({ active: isActiveStatus(chat.status), turnEnds: chat.turnEnds }),
+    [chat.status, chat.turnEnds],
+  );
+  const backgroundList = useMemo(() => backgroundEntries(chat.items, backgroundView), [chat.items, backgroundView]);
+  const chipCount = backgroundChipCount(backgroundList, chat.turnEnds);
+  const nodeCache = useRef<ReadonlyMap<string, ChatNode>>(new Map());
+  const topNodes = useMemo(() => {
+    const nested = nestItems(chat.items.slice(start), nodeCache.current);
+    nodeCache.current = nested.nodes;
+    return nested.roots;
+  }, [chat.items, start]);
+
   // Antes da pintura: ancora o item visível depois de carregar anteriores, restaura a posição salva ou gruda no fim.
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
@@ -188,6 +298,35 @@ export function ChatScreen({
     }
     seenTop.current = timeline.scrollTop;
   }, [controller.loaded, floor, chat.items, chat.permissions]);
+
+  /** Chip or drawer row: widens the window when the item is older than it, then asks the effect to scroll to it. */
+  function revealBackground(id: string) {
+    const index = chat.items.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    if (index < start) setFloor(index);
+    setRevealRequest({ id });
+  }
+
+  // After a reveal: opens the collapsed cards around the item, centres it in the timeline and flashes it briefly.
+  useEffect(() => {
+    if (revealRequest === null) return;
+    const timeline = timelineRef.current;
+    if (timeline === null) return;
+    const element = timeline.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(revealRequest.id)}"]`);
+    if (element === null) return;
+    for (let ancestor = element.parentElement; ancestor !== null && ancestor !== timeline; ancestor = ancestor.parentElement) {
+      if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+    }
+    const box = timeline.getBoundingClientRect();
+    const target = element.getBoundingClientRect();
+    timeline.scrollTop += target.top - box.top - (box.height - target.height) / 2;
+    seenTop.current = timeline.scrollTop;
+    stick.current = false;
+    element.dataset.highlighted = 'true';
+    window.setTimeout(() => {
+      delete element.dataset.highlighted;
+    }, 1600);
+  }, [revealRequest]);
 
   // Conteúdo que muda de altura sem chegar item novo (imagem carregando, bloco expandido, teclado abrindo).
   useEffect(() => {
@@ -252,12 +391,39 @@ export function ChatScreen({
   /** Sobe os anexos (um a um, com progresso) e depois manda o prompt citando os arquivos. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (chat.status !== 'idle' || sending) return;
+    if (!acceptsPrompt(chat.status) || sending) return;
 
     const text = draft;
+    // `/loop` belongs to Loop mode, not to the agent: with no arguments it opens the sheet; with arguments it creates the loop.
+    const loopDecision = loopCommandFor(text, attachments.drafts.length > 0);
+    if (loopDecision.kind === 'sheet') {
+      clearDraft();
+      openLoop();
+      return;
+    }
+    if (loopDecision.kind === 'invalid') {
+      setLoopNotice(loopDecision.message);
+      return;
+    }
+    if (loopDecision.kind === 'start') {
+      await startLoopFromComposer(loopDecision.request);
+      return;
+    }
+
+    // `/model` sent with no arguments opens its picker; with arguments, attachments, or on a stopped session
+    // (the picker's set_config needs a live agent) it is sent as text.
+    const bare = attachments.drafts.length === 0 ? bareCommandName(text) : undefined;
+    const picker =
+      bare === undefined || chat.status !== 'idle' ? undefined : nativePickerFor(bare, controller.configOptions);
+    if (bare !== undefined && picker !== undefined) {
+      clearDraft();
+      openCommandSheet({ kind: 'config', name: bare, option: picker });
+      return;
+    }
+
     if (attachments.drafts.length === 0) {
       if (controller.sendPrompt(text)) {
-        setDraft('');
+        clearDraft();
         stick.current = true;
       }
       return;
@@ -274,7 +440,7 @@ export function ChatScreen({
       );
       // Sem conexão, o send já mostra o aviso; os anexos continuam na prévia para tentar de novo.
       if (controller.sendPrompt(text, uploaded)) {
-        setDraft('');
+        clearDraft();
         attachments.clear();
         setAttachNotice(null);
         stick.current = true;
@@ -287,6 +453,14 @@ export function ChatScreen({
     }
   }
 
+  // Campo cresce com o texto (até max-h-40, pelo CSS). Vazio volta à altura do CSS (uma linha).
+  useLayoutEffect(() => {
+    const field = textarea.current;
+    if (field === null) return;
+    field.style.height = draft === '' ? '' : 'auto';
+    if (draft !== '') field.style.height = `${field.scrollHeight}px`;
+  }, [draft]);
+
   // Depois de inserir um comando: o campo já tem o texto novo, então o cursor vai para o fim do comando.
   useLayoutEffect(() => {
     const target = pendingCaret.current;
@@ -295,8 +469,119 @@ export function ChatScreen({
     textarea.current.setSelectionRange(target, target);
   }, [draft]);
 
+  /** Opens the Loop mode sheet. The composer loses focus so the iOS keyboard does not stay over the sheet. */
+  function openLoop() {
+    setCommandsOpen(false);
+    setCommandQuery('');
+    textarea.current?.blur();
+    setLoopOpen(true);
+  }
+
+  /** A typed `/loop <args>`: creates the loop directly. Success clears the composer; an error keeps the text to fix. */
+  async function startLoopFromComposer(request: LoopRequest) {
+    try {
+      await controller.saveLoop(request);
+      clearDraft();
+      setLoopNotice('Loop iniciado');
+      stick.current = true;
+    } catch (caught) {
+      setLoopNotice(describeLoopError(caught));
+    }
+  }
+
+  /** Opens the sheet of a command and closes the menu. The composer is blurred so the iOS keyboard does not stay over it. */
+  function openCommandSheet(sheet: CommandSheet) {
+    setCommandsOpen(false);
+    setCommandQuery('');
+    setCommandSheet(sheet);
+    textarea.current?.blur();
+  }
+
+  /** Empties the composer after a send and leaves the history navigation (the next Up starts from the newest again). */
+  function clearDraft() {
+    setDraft('');
+    setCaret(0);
+    setHistoryCursor(IDLE_PROMPT_CURSOR);
+  }
+
+  /** Shows a recalled prompt (or the draft back) with the caret at its end. Recalled text only fills the composer. */
+  function applyRecall(step: PromptStep) {
+    setHistoryCursor(step.cursor);
+    if (step.text !== draft) {
+      setDraft(step.text);
+      setCaret(step.text.length);
+      pendingCaret.current = step.text.length;
+    }
+  }
+
+  /** Sends a command as text and keeps the chat at the end, like a submit. */
+  function sendCommandText(text: string) {
+    if (controller.sendPrompt(text)) stick.current = true;
+  }
+
+  /** Puts `/<text> ` before the composer text and focuses it. The tap is a user gesture, so the keyboard opens. */
+  function insertCommandText(text: string) {
+    const next = insertCommand(draft, 0, text, 'prefix');
+    setDraft(next.text);
+    setCaret(next.caret);
+    pendingCaret.current = next.caret;
+    textarea.current?.focus();
+  }
+
+  /** Items of the command sheet: the config options (current one checked), or the subcommands of the hint. */
+  function commandSheetItems(sheet: CommandSheet): ActionSheetItem[] {
+    if (sheet.kind === 'config') {
+      const { name, option } = sheet;
+      return [
+        ...option.options.map((choice) => ({
+          label: choice.name,
+          detail: choice.description ?? undefined,
+          checked: choice.value === option.currentValue,
+          onSelect: () => {
+            controller.setConfig(option.id, choice.value);
+          },
+        })),
+        { label: `Enviar /${name} ao agente`, tone: 'muted', onSelect: () => sendCommandText(`/${name}`) },
+      ];
+    }
+    const { name, hint } = sheet;
+    const items: ActionSheetItem[] = [];
+    if (hint.optional) items.push({ label: 'Sem argumento', onSelect: () => sendCommandText(`/${name}`) });
+    for (const choice of hint.choices) {
+      items.push({
+        label: choice.value,
+        mono: true,
+        onSelect: () => {
+          if (choice.takesArgument) insertCommandText(`${name} ${choice.value}`);
+          else sendCommandText(`/${name} ${choice.value}`);
+        },
+      });
+    }
+    items.push({ label: 'Digitar argumentos…', tone: 'muted', onSelect: () => insertCommandText(name) });
+    return items;
+  }
+
   /** Insere o comando e devolve o foco ao campo (o clique é gesto do usuário, então o teclado continua aberto). */
   function pickCommand(command: AvailableCommand) {
+    // A `/loop` picked from the menu opens the Loop mode sheet. Typed text is handled the same way as for other commands.
+    if (command.name === 'loop') {
+      if (!commandsOpen) {
+        setDraft(draft.slice(caret).replace(/^ /, ''));
+        setCaret(0);
+      }
+      openLoop();
+      return;
+    }
+    const sheet = commandSheetFor(command, controller.configOptions);
+    if (sheet !== undefined) {
+      // Opened by typing `/busca`: that trigger leaves the composer. Opened by the `/` button: the typed text stays.
+      if (!commandsOpen) {
+        setDraft(draft.slice(caret).replace(/^ /, ''));
+        setCaret(0);
+      }
+      openCommandSheet(sheet);
+      return;
+    }
     const next = insertCommand(draft, caret, command.name, commandsOpen ? 'prefix' : 'typed');
     setDraft(next.text);
     setCaret(next.caret);
@@ -316,263 +601,541 @@ export function ChatScreen({
     );
   }
 
+  /** Recorte aberto no visualizador de imagens: entra como anexo da prévia, igual a um arquivo escolhido. */
+  function attachFromViewer(file: File) {
+    const rejected = attachments.add([file]);
+    setAttachNotice(rejected > 0 ? `Limite de ${ATTACHMENT_LIMIT} anexos por mensagem.` : null);
+  }
+
+  /** Abre o recorte de uma imagem da prévia. Só imagens (com prévia) podem ser recortadas. */
+  function openCrop(id: string) {
+    const target = attachments.drafts.find((draft) => draft.id === id);
+    if (target !== undefined && target.previewUrl !== null) setCropping(target);
+  }
+
   const resumable = isResumable(chat.status);
   const working = controller.resuming ? 'Retomando…' : WORKING_TEXT[chat.status];
-  const placeholder = controller.resuming ? 'Retomando a sessão…' : PLACEHOLDER[chat.status];
+  const placeholder = controller.resuming ? 'Retomando…' : PLACEHOLDER[chat.status];
   const inputEnabled = isInputEnabled(chat.status);
+  // Stopped and error sessions keep the composer open: a message resumes the session (see acceptsPrompt).
+  const composerOpen = inputEnabled || resumable;
   const notResumable =
     controller.resumeError instanceof ApiError && controller.resumeError.kind === 'not_resumable';
-  const visibleItems = chat.items.slice(start);
   const unseen = unseenSince(baseline.current, chat.items.length);
   const hasContent = draft.trim() !== '' || attachments.drafts.length > 0;
-  const canSend = chat.status === 'idle' && hasContent && !sending;
+  const canSend = acceptsPrompt(chat.status) && hasContent && !sending;
   // Menu: aberto pelo botão, ou pelo texto `/busca` no começo do composer. Só com o campo habilitado.
   const typedQuery = inputEnabled ? slashQuery(draft, caret) : undefined;
   const menuQuery = !inputEnabled ? undefined : commandsOpen ? commandQuery : typedQuery;
   const boxStyle = viewport === null ? undefined : { top: viewport.top, height: viewport.height };
 
+  /**
+   * Setas do teclado físico: ↑ com o cursor no início recupera a mensagem anterior, ↓ com o cursor no fim vai para a
+   * seguinte. Com o menu de comandos aberto as setas são dele, então aqui não fazem nada.
+   */
+  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (menuQuery !== undefined || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    const field = event.currentTarget;
+    if (field.selectionStart !== field.selectionEnd) return;
+    if (event.key === 'ArrowUp' && field.selectionStart === 0) {
+      const step = recallOlder(promptHistory, historyCursor, draft);
+      if (step === null) return;
+      event.preventDefault();
+      applyRecall(step);
+    } else if (event.key === 'ArrowDown' && field.selectionStart === draft.length) {
+      const step = recallNewer(promptHistory, historyCursor);
+      if (step === null) return;
+      event.preventDefault();
+      applyRecall(step);
+    }
+  }
+
+  /** Botões ↑ e ↓ ao lado do composer. O toque não tira o foco do campo, então o teclado do iOS continua aberto. */
+  function recallOlderPrompt() {
+    const step = recallOlder(promptHistory, historyCursor, draft);
+    if (step !== null) applyRecall(step);
+    textarea.current?.focus();
+  }
+
+  function recallNewerPrompt() {
+    const step = recallNewer(promptHistory, historyCursor);
+    if (step !== null) applyRecall(step);
+    textarea.current?.focus();
+  }
+
+  // The history row shows while the composer has focus, or while a recalled prompt is on screen (so the way back stays).
+  const historyRowVisible = promptHistory.length > 0 && composerOpen && (composerFocused || historyCursor.index !== null);
+  const place =
+    current.worktree === null
+      ? `${workspace.name} · ${machineName}`
+      : `${workspace.name} · ${current.worktree.branch} · ${machineName}`;
+
   return (
-    <div className="chat-screen" style={boxStyle}>
-      <div className="chat-inner">
-        <ScreenHeader
-          title={current.title}
-          subtitle={`${workspace.name} · ${machineName}`}
-          meta={
-            current.worktree === null ? null : (
-              <span className="chip chip-branch">
-                <GitBranch size={14} weight="bold" aria-hidden="true" />
-                {current.worktree.branch}
-              </span>
-            )
-          }
-          onBack={() => nav.back()}
-          actions={
-            <>
-              <SessionStatusPill status={chat.status} />
-              <button
-                type="button"
-                className="button secondary header-button"
+    <ChatAttachContext.Provider value={composerOpen ? attachFromViewer : null}>
+      <div
+        className="fixed inset-x-0 top-0 bottom-0 z-[5] flex justify-center bg-background text-foreground"
+        style={boxStyle}
+      >
+        <div className="flex h-full min-h-0 w-full max-w-[560px] flex-col gap-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pr-[calc(env(safe-area-inset-right,0px)+12px)] pl-[calc(env(safe-area-inset-left,0px)+12px)]">
+          <div className="flex shrink-0 flex-col">
+          <header className="flex min-h-11 items-center gap-1">
+            <Button variant="ghost" size="icon" className="-ml-2" aria-label="Voltar" onClick={() => nav.back()}>
+              <ChevronLeft className="size-6" aria-hidden="true" />
+            </Button>
+            <div className="flex min-w-0 flex-1 flex-col px-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  role="img"
+                  aria-label={sessionStatusText(chat.status, 'acp')}
+                  data-status={chat.status}
+                  className="flex shrink-0"
+                >
+                  <StatusDot tone={STATUS_TONE[chat.status]} pulse={chat.status === 'starting'} />
+                </span>
+                <h1 className="min-w-0 truncate text-base leading-6 font-semibold tracking-tight">{current.title}</h1>
+              </div>
+            </div>
+            {current.kind === 'acp' && !compactHeader && (
+              <Button variant="ghost" size="icon" aria-label="Uso do agente" onClick={() => setUsageOpen(true)}>
+                <Gauge aria-hidden="true" />
+              </Button>
+            )}
+            {current.kind === 'acp' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Modo Loop"
+                aria-haspopup="dialog"
+                aria-expanded={loopOpen}
+                onClick={openLoop}
+              >
+                {loopActive ? <Repeat1 aria-hidden="true" /> : <Repeat aria-hidden="true" />}
+              </Button>
+            )}
+            {!compactHeader && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Alterações"
                 onClick={() => nav.push({ kind: 'changes', workspace, session: current })}
               >
-                Alterações
-              </button>
-              <OverflowMenu
-                label="Mais ações da sessão"
-                items={[{ label: 'Remover do app', tone: 'danger', onSelect: () => setRemoving(true) }]}
-              />
-            </>
-          }
-        />
-
-        {primary.length > 0 && (
-          <div className="config-bar">
-            {primary.map((control) => (
-              <ConfigSelect
-                key={control.option.id}
-                label={control.label}
-                option={control.option}
-                onChange={(value) => controller.setConfig(control.option.id, value)}
-              />
-            ))}
-            {extra.length > 0 && (
-              <button
-                type="button"
-                className="button secondary config-more"
-                aria-expanded={extraOpen}
-                aria-label="Mais opções"
-                onClick={() => setExtraOpen((open) => !open)}
-              >
-                Mais
-              </button>
+                <GitCompare aria-hidden="true" />
+              </Button>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Configurar sessão"
+              aria-haspopup="dialog"
+              aria-expanded={configOpen}
+              onClick={() => setConfigOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" />
+            </Button>
+            <ActionSheetButton
+              label="Mais ações da sessão"
+              title={sessionTitle(current, agentLabel)}
+              items={[
+                ...(compactHeader && current.kind === 'acp'
+                  ? [{ label: 'Uso do agente', onSelect: () => setUsageOpen(true) }]
+                  : []),
+                ...(compactHeader
+                  ? [{ label: 'Alterações', onSelect: () => nav.push({ kind: 'changes', workspace, session: current }) }]
+                  : []),
+                { label: 'Remover do app', tone: 'danger', onSelect: () => setRemoving(true) },
+              ]}
+            />
+          </header>
+            {/* Place line and chips span the whole header, so they keep room beside the buttons. Indented to the title. */}
+            <div className="-mt-1 flex min-w-0 items-center gap-2 pr-1 pl-[62px]">
+              <p data-slot="session-place" className="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground">{place}</p>
+              {current.kind === 'acp' && <LoopChip loop={controller.loop} onOpen={openLoop} />}
+              {/* 44px tap area around a 24px pill; the negative margins keep the header's height unchanged. */}
+              {chipCount > 0 && (
+                <button
+                  type="button"
+                  data-slot="background-chip"
+                  aria-label={`Trabalho em segundo plano: ${chipCount}`}
+                  aria-haspopup="dialog"
+                  aria-expanded={backgroundOpen}
+                  onClick={() => setBackgroundOpen(true)}
+                  className="-my-2.5 flex shrink-0 items-center py-2.5"
+                >
+                  <span className="flex h-6 items-center gap-1 rounded-full bg-secondary px-2 text-xs font-medium tabular-nums text-foreground">
+                    <Layers className="size-3.5" aria-hidden="true" />
+                    {chipCount}
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
-        )}
 
-        {extraOpen && extra.length > 0 && (
-          <section className="card config-extra" aria-label="Mais opções">
-            <h2 className="section-title">Mais opções</h2>
-            <ConfigControls options={extra} onChange={(id, value) => controller.setConfig(id, value)} />
-          </section>
-        )}
+          <UsageDrawer
+            open={usageOpen}
+            onOpenChange={setUsageOpen}
+            client={api}
+            sessionId={current.id}
+            agentName={agentLabel}
+            onResume={() => void controller.resume()}
+          />
 
-        <ErrorNotice error={controller.loadError} onRepair={onRepair} />
-        <ErrorNotice
-          error={controller.resumeError}
-          action={notResumable ? { label: '+ Nova sessão', onClick: () => setSheetOpen(true) } : undefined}
-        />
-        <ErrorNotice error={sendError} onRepair={onRepair} />
+          <BackgroundDrawer
+            open={backgroundOpen}
+            onOpenChange={setBackgroundOpen}
+            entries={backgroundList}
+            onPick={(id) => {
+              setBackgroundOpen(false);
+              revealBackground(id);
+            }}
+          />
 
-        {controller.notice !== null && (
-          <div className="notice" role="status">
-            <p>{controller.notice}</p>
-            <button type="button" className="button ghost" onClick={controller.dismissNotice}>
-              OK
-            </button>
-          </div>
-        )}
+          {current.kind === 'acp' && (
+            <LoopSheet
+              open={loopOpen}
+              onOpenChange={setLoopOpen}
+              loop={controller.loop}
+              loaded={controller.loopLoaded}
+              busy={controller.loopBusy}
+              canSend={acceptsPrompt(chat.status)}
+              nativeClaude={current.agent === 'claude'}
+              actions={controller}
+              onNotice={setLoopNotice}
+              onNativeSend={(text) => {
+                if (!controller.sendPrompt(text)) return false;
+                stick.current = true;
+                return true;
+              }}
+            />
+          )}
 
-        <div className="chat-body">
-          <div className="chat-timeline" ref={timelineRef} onScroll={onTimelineScroll}>
-            {!controller.loaded && controller.loadError === null && (
-              <p className="muted">Carregando conversa…</p>
-            )}
-            {start > 0 && (
-              <button type="button" className="button secondary load-earlier" onClick={loadEarlier}>
-                Carregar anteriores
-              </button>
-            )}
-            <div className="chat-feed" ref={feedRef}>
-              {visibleItems.map((item) => (
-                <ChatItemView key={item.id} item={item} api={api} />
+          <Drawer open={configOpen} onOpenChange={setConfigOpen}>
+            <DrawerContent>
+              <DrawerHeader>
+                <DrawerTitle>Configurar sessão</DrawerTitle>
+              </DrawerHeader>
+              <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
+                {primary.length > 0 && (
+                  <ListGroup label="Opções da sessão">
+                    {primary.map((control) => (
+                      <li key={control.option.id}>
+                        <ConfigSelect
+                          label={control.label}
+                          option={control.option}
+                          onChange={(value) => controller.setConfig(control.option.id, value)}
+                        />
+                      </li>
+                    ))}
+                  </ListGroup>
+                )}
+                {extra.length > 0 && (
+                  <section aria-labelledby="config-extra-title" className="flex flex-col gap-2">
+                    <SectionHeading icon={Settings2} id="config-extra-title">
+                      Mais opções
+                    </SectionHeading>
+                    <ConfigControls options={extra} onChange={(id, value) => controller.setConfig(id, value)} />
+                  </section>
+                )}
+              </div>
+            </DrawerContent>
+          </Drawer>
+
+          <ErrorNotice error={controller.loadError} onRepair={onRepair} />
+          <ErrorNotice
+            error={controller.resumeError}
+            action={notResumable ? { label: '+ Nova sessão', onClick: () => setSheetOpen(true) } : undefined}
+          />
+          <ErrorNotice error={sendError} onRepair={onRepair} />
+
+          {controller.notice !== null && (
+            <div
+              data-slot="notice"
+              role="status"
+              className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+            >
+              <p className="text-[15px] leading-snug">{controller.notice}</p>
+              <Button variant="ghost" onClick={controller.dismissNotice}>
+                OK
+              </Button>
+            </div>
+          )}
+
+          {loopNotice !== null && (
+            <div
+              data-slot="loop-notice"
+              role="status"
+              className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+            >
+              <p className="text-[15px] leading-snug">{loopNotice}</p>
+              <Button variant="ghost" onClick={() => setLoopNotice(null)}>
+                OK
+              </Button>
+            </div>
+          )}
+
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              data-slot="chat-timeline"
+              ref={timelineRef}
+              onScroll={onTimelineScroll}
+              className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain px-0.5 py-2 *:shrink-0"
+            >
+              {!controller.loaded && controller.loadError === null && (
+                <p className="text-sm text-muted-foreground">Carregando conversa…</p>
+              )}
+              {start > 0 && (
+                <Button variant="secondary" className="self-center" onClick={loadEarlier}>
+                  Carregar anteriores
+                </Button>
+              )}
+              <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3">
+                {topNodes.map((node) => (
+                  <div key={node.item.id} data-item-id={node.item.id} className={ITEM_FRAME_CLASS}>
+                    <ChatItemView node={node} api={api} view={backgroundView} />
+                  </div>
+                ))}
+              </div>
+              {chat.permissions.map((request) => (
+                <PermissionCard
+                  key={request.requestId}
+                  api={api}
+                  request={request}
+                  onRespond={(optionId) => controller.respond(request.requestId, optionId)}
+                />
               ))}
             </div>
-            {chat.permissions.map((request) => (
-              <PermissionCard
-                key={request.requestId}
-                api={api}
-                request={request}
-                onRespond={(optionId) => controller.respond(request.requestId, optionId)}
-              />
-            ))}
+            {!atBottom && (
+              <Button
+                variant="outline"
+                data-slot="jump-bottom"
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-card shadow-lg"
+                onClick={jumpToEnd}
+              >
+                <ArrowDown aria-hidden="true" />
+                Ir para o fim
+                {unseen > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground">
+                    {unseen}
+                  </span>
+                )}
+              </Button>
+            )}
           </div>
-          {!atBottom && (
-            <button type="button" className="jump-bottom" onClick={jumpToEnd}>
-              Ir para o fim
-              {unseen > 0 && <span className="jump-count">{unseen}</span>}
-            </button>
+
+          <div ref={bottomRef} className="flex shrink-0 flex-col gap-2">
+            {working !== undefined && (
+              <div role="status" className="flex min-h-11 shrink-0 items-center gap-2.5 pl-1 text-sm text-muted-foreground">
+                {chat.status === 'running' || controller.resuming ? (
+                  <LoaderCircle className="size-4 shrink-0 animate-spin text-running motion-reduce:animate-none" aria-hidden="true" />
+                ) : (
+                  <StatusDot tone={STATUS_TONE[chat.status]} pulse={chat.status === 'starting'} />
+                )}
+                <span className="min-w-0 flex-1 truncate">{working}</span>
+                {chat.status === 'running' && (
+                  <Button variant="destructive-ghost" onClick={() => controller.cancel()}>
+                    Parar
+                  </Button>
+                )}
+                {resumable && !controller.resuming && (
+                  <Button onClick={() => void controller.resume()}>Retomar</Button>
+                )}
+              </div>
+            )}
+
+            {(attachments.drafts.length > 0 || attachNotice !== null) && (
+              <div className="flex shrink-0 flex-col gap-1.5">
+                <AttachmentDrafts drafts={attachments.drafts} onRemove={attachments.remove} onCrop={openCrop} />
+                {attachNotice !== null && (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {attachNotice}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {progress !== null && (
+              <div role="status" className="flex shrink-0 items-center gap-2.5">
+                <div
+                  role="progressbar"
+                  aria-label="Progresso do envio"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progress * 100)}
+                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
+                >
+                  <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
+                </div>
+                <span className="text-sm text-muted-foreground tabular-nums">Enviando… {Math.round(progress * 100)}%</span>
+              </div>
+            )}
+
+            {menuQuery !== undefined && (
+              <SlashMenu
+                commands={controller.commands}
+                query={menuQuery}
+                search={
+                  commandsOpen
+                    ? { onChange: setCommandQuery, onClose: () => setCommandsOpen(false) }
+                    : undefined
+                }
+                onPick={pickCommand}
+              />
+            )}
+
+            {historyRowVisible && (
+              <div data-slot="prompt-history" className="flex justify-end gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Mensagem anterior"
+                  className="text-muted-foreground"
+                  disabled={historyCursor.index === 0}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={recallOlderPrompt}
+                >
+                  <ChevronUp aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Próxima mensagem"
+                  className="text-muted-foreground"
+                  disabled={historyCursor.index === null}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={recallNewerPrompt}
+                >
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </div>
+            )}
+
+            <form
+              data-slot="chat-input"
+              className="flex shrink-0 items-end gap-1.5 border-t border-border pt-2 pb-[max(8px,env(safe-area-inset-bottom,0px))]"
+              onSubmit={(event) => void submit(event)}
+            >
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                tabIndex={-1}
+                onChange={onFilesPicked}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-slot="attach-button"
+                aria-label="Anexar arquivo"
+                className="text-muted-foreground"
+                disabled={!composerOpen || sending}
+                onClick={() => fileInput.current?.click()}
+              >
+                <Paperclip aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-slot="command-button"
+                aria-label="Comandos do agente"
+                aria-expanded={commandsOpen}
+                className={cn('text-muted-foreground', commandsOpen && 'bg-accent text-foreground')}
+                disabled={!inputEnabled || sending}
+                onClick={() => {
+                  setCommandQuery('');
+                  setCommandsOpen((open) => !open);
+                }}
+              >
+                <SquareSlash aria-hidden="true" />
+              </Button>
+              <textarea
+                ref={textarea}
+                data-slot="chat-textarea"
+                rows={1}
+                value={draft}
+                placeholder={placeholder}
+                disabled={!composerOpen}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setCaret(event.target.selectionStart);
+                }}
+                onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+                onKeyDown={onComposerKeyDown}
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
+                className={cn(
+                  'max-h-40 min-w-0 flex-1 resize-none rounded-md border border-input bg-card px-3 py-2.5 text-base leading-snug text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50',
+                  // Stopped and error sessions show a longer placeholder ("Retomar e enviar"), which needs two lines at 320 px.
+                  resumable ? 'min-h-[4.25rem]' : 'min-h-11',
+                )}
+              />
+              {/* Below 360px the text would take the room the field needs: an icon, with the text kept for screen readers. */}
+              <Button type="submit" className="px-3.5 max-[359px]:size-11 max-[359px]:px-0" disabled={!canSend}>
+                <SendHorizontal className="hidden max-[359px]:block" aria-hidden="true" />
+                <span className="max-[359px]:sr-only">{sending ? 'Enviando…' : 'Enviar'}</span>
+              </Button>
+            </form>
+          </div>
+
+          {removing && (
+            <RemoveSessionSheet
+              agentLabel={agentLabel}
+              status={chat.status}
+              busy={removeBusy}
+              error={removeError}
+              onCancel={() => {
+                setRemoving(false);
+                setRemoveError(null);
+              }}
+              onConfirm={() => void removeFromApp()}
+            />
+          )}
+
+          {commandSheet !== null && (
+            <ActionSheet
+              label={
+                commandSheet.kind === 'config'
+                  ? `Opções de /${commandSheet.name}`
+                  : `Subcomandos de /${commandSheet.name}`
+              }
+              title={`/${commandSheet.name}`}
+              items={commandSheetItems(commandSheet)}
+              onClose={() => setCommandSheet(null)}
+            />
+          )}
+
+          {cropping !== null && cropping.previewUrl !== null && (
+            <ImageCropDialog
+              src={cropping.previewUrl}
+              name={cropping.file.name}
+              mime={cropping.file.type}
+              confirmLabel="Usar recorte"
+              onCancel={() => setCropping(null)}
+              onConfirm={(file) => {
+                attachments.replace(cropping.id, file);
+                setCropping(null);
+              }}
+            />
+          )}
+
+          {sheetOpen && (
+            <NewSessionSheet
+              api={api}
+              storage={storage}
+              workspace={workspace}
+              initialAgentId={current.agent}
+              onClose={() => setSheetOpen(false)}
+              onCreated={(next) => {
+                setSheetOpen(false);
+                nav.push({ kind: 'chat', workspace, session: next });
+              }}
+            />
           )}
         </div>
-
-        {working !== undefined && (
-          <div className="working-bar" role="status">
-            <span
-              className={chat.status === 'running' || controller.resuming ? 'spinner' : 'dot dot-connecting'}
-              aria-hidden="true"
-            />
-            <span className="working-text">{working}</span>
-            {chat.status === 'running' && (
-              <button type="button" className="button danger" onClick={() => controller.cancel()}>
-                Parar
-              </button>
-            )}
-            {resumable && !controller.resuming && (
-              <button type="button" className="button primary" onClick={() => void controller.resume()}>
-                Retomar
-              </button>
-            )}
-          </div>
-        )}
-
-        {(attachments.drafts.length > 0 || attachNotice !== null) && (
-          <div className="composer-attachments">
-            <AttachmentDrafts drafts={attachments.drafts} onRemove={attachments.remove} />
-            {attachNotice !== null && (
-              <p className="muted small" role="status">
-                {attachNotice}
-              </p>
-            )}
-          </div>
-        )}
-
-        {progress !== null && (
-          <div className="upload-bar" role="status">
-            <progress className="upload-progress" max={1} value={progress} />
-            <span className="muted small">Enviando… {Math.round(progress * 100)}%</span>
-          </div>
-        )}
-
-        {menuQuery !== undefined && (
-          <SlashMenu
-            commands={controller.commands}
-            query={menuQuery}
-            search={
-              commandsOpen
-                ? { onChange: setCommandQuery, onClose: () => setCommandsOpen(false) }
-                : undefined
-            }
-            onPick={pickCommand}
-          />
-        )}
-
-        <form className="chat-input" onSubmit={(event) => void submit(event)}>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            tabIndex={-1}
-            onChange={onFilesPicked}
-          />
-          <button
-            type="button"
-            className="icon-button attach-button"
-            aria-label="Anexar arquivo"
-            disabled={!inputEnabled || sending}
-            onClick={() => fileInput.current?.click()}
-          >
-            <Paperclip size={22} weight="regular" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="icon-button command-button"
-            aria-label="Comandos do agente"
-            aria-expanded={commandsOpen}
-            disabled={!inputEnabled || sending}
-            onClick={() => {
-              setCommandQuery('');
-              setCommandsOpen((open) => !open);
-            }}
-          >
-            <span className="command-glyph" aria-hidden="true">
-              /
-            </span>
-          </button>
-          <textarea
-            ref={textarea}
-            className="chat-textarea"
-            rows={1}
-            value={draft}
-            placeholder={placeholder}
-            disabled={!inputEnabled}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setCaret(event.target.selectionStart);
-            }}
-            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          />
-          <button type="submit" className="button primary" disabled={!canSend}>
-            {sending ? 'Enviando…' : 'Enviar'}
-          </button>
-        </form>
-
-        {removing && (
-          <RemoveSessionSheet
-            agentLabel={agents.data?.find((agent) => agent.id === current.agent)?.label ?? current.agent}
-            status={chat.status}
-            busy={removeBusy}
-            error={removeError}
-            onCancel={() => {
-              setRemoving(false);
-              setRemoveError(null);
-            }}
-            onConfirm={() => void removeFromApp()}
-          />
-        )}
-
-        {sheetOpen && (
-          <NewSessionSheet
-            api={api}
-            storage={storage}
-            workspace={workspace}
-            initialAgentId={current.agent}
-            onClose={() => setSheetOpen(false)}
-            onCreated={(next) => {
-              setSheetOpen(false);
-              nav.push({ kind: 'chat', workspace, session: next });
-            }}
-          />
-        )}
       </div>
-    </div>
+    </ChatAttachContext.Provider>
   );
 }

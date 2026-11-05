@@ -142,9 +142,9 @@ async function runFlow() {
   // 5. Chat: prompt real ao omp
   await until('sessão ociosa (Pronta)', () => statusIs('idle'), 90_000);
   await shot('07-chat-pronto');
-  await page.locator('.chat-textarea').fill('Create a file named hello.txt containing exactly: hi');
+  await page.locator('[data-slot="chat-textarea"]').fill('Create a file named hello.txt containing exactly: hi');
   await button('Enviar').click();
-  await until('cartão de tool call aparece', () => hasCount(page.locator('.tool-card')), 120_000);
+  await until('cartão de tool call aparece', () => hasCount(page.locator('[data-slot="tool-card"]')), 120_000);
   await shot('08-chat-streaming-tool');
   await until('turno termina (volta a Pronta)', () => statusIs('idle'), 180_000);
   await page.waitForTimeout(500);
@@ -154,9 +154,10 @@ async function runFlow() {
   assert.equal(onDisk, 'hi', 'hello.txt no disco');
   log('hello.txt conferido no disco');
 
-  // 6. Seletores de Acesso / Modelo / Effort refletem a troca
+  // 6. Seletores de Acesso / Modelo / Effort (na folha "Configurar sessão") refletem a troca
+  await button('Configurar sessão').click();
   for (const label of ['Acesso', 'Modelo', 'Effort']) {
-    const select = page.locator('.config-select', { hasText: label }).locator('select');
+    const select = page.locator('[data-slot="config-select"]', { hasText: label }).locator('select');
     const current = await select.inputValue();
     const values = await select.locator('option').evaluateAll((nodes) => nodes.map((node) => node.value));
     const next = values.find((value) => value !== current);
@@ -169,6 +170,8 @@ async function runFlow() {
     log(`${label}: ${current} -> ${next}`);
   }
   await shot('10-chat-seletores-trocados');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-slot="drawer-content"]').waitFor({ state: 'detached' });
 
   // 7. Recarregar: a página volta à home (estado de navegação é em memória) e o histórico reaparece sem duplicar.
   await page.reload({ waitUntil: 'networkidle' });
@@ -176,13 +179,16 @@ async function runFlow() {
   await button('Workspaces').click();
   await workspaceRow.click();
   await page.locator('.item-main', { hasText: 'Create a file named' }).first().click();
-  await until('histórico recarregado', () => hasCount(page.locator('.bubble-user')));
+  await until('histórico recarregado', () => hasCount(page.locator('[data-slot="bubble-user"]')));
   await page.waitForTimeout(800);
-  const userBubbles = await page.locator('.bubble-user').count();
-  const toolCards = await page.locator('.tool-card').count();
+  const userBubbles = await page.locator('[data-slot="bubble-user"]').count();
+  const toolCards = await page.locator('[data-slot="tool-card"]').count();
   assert.equal(userBubbles, 1, 'mensagem do usuário não pode duplicar após reload');
   assert.equal(toolCards, 1, 'cartão de tool call não pode duplicar após reload');
-  const selectedEffort = await page.locator('.config-select', { hasText: 'Effort' }).locator('select').inputValue();
+  await button('Configurar sessão').click();
+  const selectedEffort = await page.locator('[data-slot="config-select"]', { hasText: 'Effort' }).locator('select').inputValue();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-slot="drawer-content"]').waitFor({ state: 'detached' });
   log(`após reload: ${userBubbles} mensagem, ${toolCards} tool call, Effort=${selectedEffort}`);
   await shot('11-chat-apos-reload');
 
@@ -200,17 +206,17 @@ async function runFlow() {
   await page.locator('.agent-choice', { hasText: 'Fake' }).click();
   await button('Criar sessão').click();
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
-  await page.locator('.chat-textarea').fill('please ask permission now');
+  await page.locator('[data-slot="chat-textarea"]').fill('please ask permission now');
   await button('Enviar').click();
-  await until('cartão de permissão aparece', () => hasCount(page.locator('.permission-card')), 30_000);
+  await until('cartão de permissão aparece', () => hasCount(page.locator('[data-slot="permission-card"]')), 30_000);
   await until('status aguardando permissão', () => statusIs('awaiting_permission'), 10_000);
   await shot('13-permissao-pendente');
-  await page.locator('.permission-card').getByRole('button', { name: 'Permitir', exact: true }).click();
-  await until('cartão de permissão some', async () => !(await hasCount(page.locator('.permission-card'))), 10_000);
+  await page.locator('[data-slot="permission-card"]').getByRole('button', { name: 'Permitir', exact: true }).click();
+  await until('cartão de permissão some', async () => !(await hasCount(page.locator('[data-slot="permission-card"]'))), 10_000);
   await until('turno termina após permissão', () => statusIs('idle'), 30_000);
   await page.waitForTimeout(300);
   await shot('14-permissao-aprovada');
-  await page.locator('.agent-text', { hasText: 'Escolhida: allow' }).waitFor();
+  await page.locator('[data-slot="agent-text"]', { hasText: 'Escolhida: allow' }).waitFor();
   log('permissão: cartão apareceu, foi aprovado, sumiu e o turno terminou');
 
   // 10. Nenhuma resposta /api pode estar guardada em CacheStorage (SW com NetworkOnly).
