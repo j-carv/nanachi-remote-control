@@ -81,11 +81,11 @@ export function runUninstaller(): void {
   }
 
   let finalized = false;
-  /** The detached `cmd` that clears what the running exe held; started once, at exit. */
+  /** The detached `wscript.exe` that clears what the running exe held; started once, at exit. */
   function finalize(): void {
     if (finalized) return;
     finalized = true;
-    // One detached `cmd` per folder: a path `cmd` cannot take safely is left in place without holding the others back.
+    // One detached `wscript.exe` per folder: a path it refuses is left in place without holding the others back.
     for (const dir of [...pendingRemovals, uiProfile]) {
       try {
         scheduleRemoval([dir]);

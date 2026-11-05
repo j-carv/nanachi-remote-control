@@ -100,7 +100,7 @@ export interface UninstallDeps {
 }
 
 export interface UninstallResult {
-  /** The install folder could not be emptied while the uninstaller ran; a detached `cmd` finishes it. */
+  /** The install folder could not be emptied while the uninstaller ran; a detached `wscript.exe` finishes it. */
   removalScheduled: boolean;
   /** Things that did not work but did not stop the uninstall. */
   warnings: string[];

@@ -65,7 +65,7 @@ function fail(message: string): never {
 }
 
 // The installer's own Chromium profile goes to a throwaway folder, not to %APPDATA%. Chromium holds it open while this
-// process runs, so it is removed by a detached `cmd` once the process is gone (`cleanUp`, at every way out).
+// process runs, so it is removed by a detached `wscript` (no console window) once the process is gone (`cleanUp`, at every way out).
 const uiProfile = join(tmpdir(), 'nanachi-setup-ui');
 app.setPath('userData', uiProfile);
 app.setAppUserModelId('org.nanachi.setup');
