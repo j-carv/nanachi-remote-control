@@ -1,0 +1,70 @@
+{
+  "actions": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "pairAgain": "Pair again",
+    "gotIt": "Got it"
+  },
+  "states": {
+    "loading": "Loading…",
+    "wait": "Please wait…"
+  },
+  "fields": {
+    "name": "Name"
+  },
+  "showAll_one": "Show all ({{count}} line)",
+  "showAll_other": "Show all ({{count}} lines)",
+  "sessionStatus": {
+    "starting": "Starting",
+    "idle": "Ready",
+    "running": "Working",
+    "awaiting_permission": "Awaiting permission",
+    "stopped": "Stopped",
+    "error": "Error",
+    "runningTerminal": "Running",
+    "stoppedTerminal": "Stopped"
+  },
+  "sessionTitle": {
+    "default": "New session",
+    "terminal": "{{agent}} · terminal"
+  },
+  "relativeTime": {
+    "now": "now",
+    "minutes": "{{minutes}} min ago",
+    "hours": "{{hours}} h ago",
+    "yesterday": "yesterday"
+  },
+  "access": {
+    "saveFailed": "Could not save access on this device",
+    "readFailed": "Could not read the access saved on this device. Pair again to continue."
+  },
+  "removeMachineConfirm": "Remove \"{{name}}\" from this phone?",
+  "update": {
+    "available": "New Nanachi version",
+    "action": "Update"
+  },
+  "forceUpdate": {
+    "button": "Force app update",
+    "title": "Force update",
+    "description": "Downloads the latest Nanachi version and reloads the app. Your pairings are kept.",
+    "version": "Version: {{id}}",
+    "unknownBuild": "unknown",
+    "failed": "Could not update: {{reason}}",
+    "unexpected": "unexpected error",
+    "start": "Update now",
+    "retry": "Try again",
+    "phase": {
+      "checking": "Looking for a new version…",
+      "downloading": "Downloading the new version…",
+      "clearing": "Clearing the cache…",
+      "reloading": "Reloading the app…"
+    },
+    "reason": {
+      "registration": "the browser did not respond to the service worker",
+      "update": "no connection to check for a new version",
+      "caches": "could not clear the cache",
+      "refill": "could not reload the app files",
+      "unregister": "could not restart the service worker"
+    }
+  }
+}

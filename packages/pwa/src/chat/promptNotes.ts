@@ -4,6 +4,7 @@
  * (session/load replay) can, so the chat removes them when it shows a user message. Both notes come last in the
  * prompt, so everything from the first note to the end is removed.
  */
+// Portuguese on purpose: these are the first words of the notes the daemon writes, matched as they are stored.
 const NOTE_STARTS = [
   '[Nanachi Remote] Esta execução faz parte de um loop',
   '[Nanachi Remote] O usuário está no celular.',

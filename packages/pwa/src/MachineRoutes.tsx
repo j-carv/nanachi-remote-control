@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createApiClient } from './api.js';
 import type { Connection } from './connection.js';
 import type { Machine, StorageLike } from './machines.js';
@@ -34,9 +35,10 @@ interface MachineRoutesProps {
 }
 
 function LazyFallback() {
+  const { t } = useTranslation();
   return (
     <Screen>
-      <p className="text-muted-foreground">Carregando…</p>
+      <p className="text-muted-foreground">{t('states.loading')}</p>
     </Screen>
   );
 }

@@ -4,6 +4,7 @@ import {
   type SessionConfigOption,
 } from '@nanachi/shared';
 import { z } from 'zod';
+import { t } from './i18n/index.js';
 import type { StorageLike } from './machines.js';
 
 export const AGENT_CONFIG_PREFIX = 'nanachi.agentConfig.';
@@ -76,12 +77,8 @@ export function toCreateConfig(options: readonly SessionConfigOption[]): Record<
   );
 }
 
-/** Seletores fixos do topo do chat: categoria ACP -> rótulo da UI. */
-export const PRIMARY_CATEGORIES = [
-  { category: 'mode', label: 'Acesso' },
-  { category: 'model', label: 'Modelo' },
-  { category: 'thought_level', label: 'Effort' },
-] as const;
+/** Seletores fixos do topo do chat, na ordem em que aparecem. O rótulo vem de `chat:agentConfig.<categoria>`. */
+export const PRIMARY_CATEGORIES = ['mode', 'model', 'thought_level'] as const;
 
 export type SelectOption = Extract<SessionConfigOption, { type: 'select' }>;
 
@@ -99,9 +96,9 @@ export function splitOptions(options: readonly SessionConfigOption[]): {
   extra: SessionConfigOption[];
 } {
   const primary: PrimaryControl[] = [];
-  for (const { category, label } of PRIMARY_CATEGORIES) {
+  for (const category of PRIMARY_CATEGORIES) {
     const found = options.find((option) => option.category === category && option.type === 'select');
-    if (found?.type === 'select') primary.push({ label, option: found });
+    if (found?.type === 'select') primary.push({ label: t(`chat:agentConfig.${category}`), option: found });
   }
 
   const primaryIds = new Set(primary.map((control) => control.option.id));

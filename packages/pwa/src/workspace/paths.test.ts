@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { breadcrumbs, formatSize, joinPath, parentOf, validateEntryName } from './paths.js';
 
 describe('parentOf e joinPath', () => {
@@ -74,5 +75,25 @@ describe('formatSize', () => {
     expect(formatSize(512)).toBe('512 B');
     expect(formatSize(1536)).toBe('1,5 KB');
     expect(formatSize(3 * 1024 * 1024)).toBe('3,0 MB');
+  });
+});
+
+describe('validateEntryName in English', () => {
+  it('writes each refusal in English and still accepts a normal name', () => {
+    setLanguage('en');
+    expect(validateEntryName('relatório final.md')).toBeNull();
+    expect(validateEntryName('   ')).toBe('Enter a name.');
+    expect(validateEntryName('a/b')).toBe('Use a name without slashes.');
+    expect(validateEntryName('CON')).toBe("This name isn't allowed.");
+    expect(validateEntryName('a'.repeat(256))).toBe('Name too long (max 255 characters).');
+  });
+});
+
+describe('formatSize in English', () => {
+  it('uses a decimal point', () => {
+    setLanguage('en');
+    expect(formatSize(512)).toBe('512 B');
+    expect(formatSize(1536)).toBe('1.5 KB');
+    expect(formatSize(3 * 1024 * 1024)).toBe('3.0 MB');
   });
 });

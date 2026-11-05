@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CircleExclamationPoint, RefreshCw } from 'lucide-react';
 import type { SessionAccountInfo } from '../agentAccounts.js';
 import type { ApiClient } from '../api.js';
 import { describeUsageError, usageNeedsResume } from '../errorMessages.js';
+import { t as translate } from '../i18n/index.js';
 import { formatRelativeTime } from '../relativeTime.js';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,10 +31,10 @@ import { headerSubtitle } from '../usage/usageModel.js';
 
 export { startUsageRequest, type UsageState };
 
-/** Footer line for the time of the last successful reply, e.g. "Atualizado há 5 min · do cache". */
+/** Footer line for the time of the last successful reply, e.g. "Atualizado há 5 min · do cache" / "Updated 5 min ago · from cache". */
 export function updatedLabel(fetchedAt: number, now: number, cached = false): string {
-  const label = `Atualizado ${formatRelativeTime(fetchedAt, now)}`;
-  return cached ? `${label} · do cache` : label;
+  const time = formatRelativeTime(fetchedAt, now);
+  return cached ? translate('usage:drawer.updatedCached', { time }) : translate('usage:drawer.updated', { time });
 }
 
 interface UsageErrorProps {
@@ -42,6 +44,7 @@ interface UsageErrorProps {
 
 /** Inline error block, styled like ErrorNotice (which only knows the general texts). */
 function UsageError({ error, onResume }: UsageErrorProps) {
+  const { t } = useTranslation('usage');
   return (
     <div role="alert" className="flex flex-col gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-foreground">
       <div className="flex gap-3">
@@ -50,7 +53,7 @@ function UsageError({ error, onResume }: UsageErrorProps) {
       </div>
       {usageNeedsResume(error) && (
         <div className="flex flex-wrap gap-2">
-          <Button onClick={onResume}>Retomar</Button>
+          <Button onClick={onResume}>{t('drawer.resume')}</Button>
         </div>
       )}
     </div>
@@ -80,10 +83,11 @@ interface UsageContentProps {
 
 /** Footer line for a quiet refresh that failed: the numbers above are the last ones that worked. */
 function RefreshFailedLine({ error }: { error: unknown }) {
+  const { t } = useTranslation('usage');
   return (
     <p data-slot="usage-refresh-error" role="alert" className="flex items-start gap-1.5 text-sm text-foreground">
       <CircleExclamationPoint className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-      <span className="min-w-0">Não deu para atualizar o uso. {describeUsageError(error)}</span>
+      <span className="min-w-0">{t('drawer.refreshFailed', { reason: describeUsageError(error) })}</span>
     </p>
   );
 }
@@ -96,6 +100,7 @@ function RefreshFailedLine({ error }: { error: unknown }) {
  * (loading, or an error on a new open) it is shown on its own at the top of the panel.
  */
 export function UsageContent({ state, now, onRefresh, onResume, resets, refreshFailed }: UsageContentProps) {
+  const { t } = useTranslation('usage');
   const resetsSection =
     resets === undefined ? undefined : (
       <ResetsSection
@@ -121,7 +126,7 @@ export function UsageContent({ state, now, onRefresh, onResume, resets, refreshF
         {state.status === 'loading' && <UsageSkeleton />}
         {state.status === 'ready' && state.text.trim().length === 0 && (
           <div className="flex flex-col gap-5">
-            <p className="text-sm text-muted-foreground">O agente não devolveu nada.</p>
+            <p className="text-sm text-muted-foreground">{t('drawer.empty')}</p>
             {resetsSection}
           </div>
         )}
@@ -141,7 +146,7 @@ export function UsageContent({ state, now, onRefresh, onResume, resets, refreshF
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Atualizar uso"
+          aria-label={t('drawer.refresh')}
           disabled={state.status === 'loading' || redeeming}
           onClick={onRefresh}
         >
@@ -154,9 +159,10 @@ export function UsageContent({ state, now, onRefresh, onResume, resets, refreshF
 
 /** "Conta: <nome>" under the title, for agents that have accounts: which account the numbers belong to. */
 export function UsageAccountLine({ account }: { account: SessionAccountInfo }) {
+  const { t } = useTranslation('usage');
   return (
     <p data-slot="usage-account" className="text-sm text-foreground">
-      Conta: <span className="font-medium">{account.label}</span>
+      {t('drawer.account')} <span className="font-medium">{account.label}</span>
       {account.email !== null && <span className="text-muted-foreground"> · {account.email}</span>}
     </p>
   );
@@ -215,6 +221,7 @@ function useUsagePanel(client: ApiClient, sessionId: string, withResets: boolean
  * sozinho.
  */
 export function UsageDrawer({ open, onOpenChange, client, sessionId, agentId, agentName, account, onResume }: UsageDrawerProps) {
+  const { t } = useTranslation('usage');
   const withResets = supportsResets(agentId);
   const panel = useUsagePanel(client, sessionId, withResets, open);
   const { usage: state, list, redeem, refreshFailed } = panel.state;
@@ -225,8 +232,8 @@ export function UsageDrawer({ open, onOpenChange, client, sessionId, agentId, ag
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Uso do {agentName}</DrawerTitle>
-          <DrawerDescription>{subtitle ?? 'Limites e consumo informados pelo agente.'}</DrawerDescription>
+          <DrawerTitle>{t('drawer.title', { agent: agentName })}</DrawerTitle>
+          <DrawerDescription>{subtitle ?? t('drawer.description')}</DrawerDescription>
           {account != null && <UsageAccountLine account={account} />}
         </DrawerHeader>
         <UsageContent

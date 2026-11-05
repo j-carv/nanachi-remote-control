@@ -1,0 +1,88 @@
+{
+  "section": {
+    "title": "Agent accounts",
+    "description": "Each agent's login on {{machine}}.",
+    "refresh": "Refresh accounts",
+    "refreshing": "Refreshing accounts",
+    "checking": "Checking…",
+    "checked": "Checked {{time}}"
+  },
+  "status": {
+    "logged_in": "Signed in",
+    "logged_out": "Signed out",
+    "unknown": "Not checked",
+    "loginHelp": "Sign in from the PC's terminal (e.g. claude, codex login, agy)."
+  },
+  "badge": {
+    "inUse": "In use"
+  },
+  "actions": {
+    "label": "Account actions",
+    "use": "Use for new sessions",
+    "login": "Sign in",
+    "rename": "Rename",
+    "remove": "Remove"
+  },
+  "add": {
+    "title": "Add account",
+    "description": "Name the new {{agent}} account. You sign in with it next.",
+    "submit": "Create"
+  },
+  "rename": {
+    "title": "Rename account",
+    "description": "New name for {{account}} in {{agent}}.",
+    "submit": "Save"
+  },
+  "remove": {
+    "title": "Remove account",
+    "text": "Remove \"{{account}}\" from {{agent}}? The login for this account on this PC is deleted, and the sessions that used it go back to the main account. The account itself is not affected.",
+    "confirm": "Remove",
+    "removing": "Removing…"
+  },
+  "validation": {
+    "empty": "Enter a name.",
+    "tooLong": "Name too long (max {{max}} characters)."
+  },
+  "select": {
+    "label": "Account",
+    "removed": "Removed account",
+    "lockedHint": "Switch when the agent is done"
+  },
+  "login": {
+    "title": "Sign in to the account",
+    "openLinkPrompt": "Open the link and sign in with the account you want to add",
+    "openLink": "Open link",
+    "copyLink": "Copy link",
+    "pcTabNote": "The PC may also open a login tab; you can ignore it.",
+    "enterCode": "Enter this code on the page",
+    "copyCode": "Copy code",
+    "pasteCodePrompt": "After signing in, copy the code that appears and paste it here",
+    "send": "Send",
+    "sending": "Sending…",
+    "showOutput": "Show the login output",
+    "close": "Close",
+    "cancelling": "Canceling…",
+    "step": {
+      "starting": "Getting ready…",
+      "waiting": "Waiting for you to sign in…",
+      "codeSent": "Code sent. Waiting for the login to finish…",
+      "verifying": "Verifying…",
+      "success": "Account connected",
+      "successAs": "Account connected: {{account}}",
+      "cancelled": "Login canceled.",
+      "genericFailure": "the login failed"
+    }
+  },
+  "copy": {
+    "copied": "Copied"
+  },
+  "removeSession": {
+    "title": "Remove from app",
+    "text": "Remove this session from the app? The history stays in {{agent}}, and you can bring it back from Resume from PC.",
+    "running": "The session is working. Removing it now interrupts the work.",
+    "awaiting_permission": "The session is waiting for your permission. Removing it now interrupts the work.",
+    "starting": "The session is starting. Removing it now interrupts the start.",
+    "confirm": "Remove",
+    "removing": "Removing…"
+  }
+}

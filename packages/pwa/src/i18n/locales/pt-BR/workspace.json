@@ -1,0 +1,161 @@
+{
+  "agent": "Agente",
+  "terminalBadge": "terminal",
+  "workspaces": {
+    "title": "Workspaces",
+    "add": "Adicionar workspace",
+    "empty": "Nenhum workspace ainda. Toque em + para escolher uma pasta do PC.",
+    "confirmRemove": "Remover \"{{name}}\"? As sessões dele são encerradas.",
+    "remove": "Remover {{name}}"
+  },
+  "sessions": {
+    "terminal": "Terminal",
+    "files": "Arquivos",
+    "new": "Nova sessão",
+    "resume": "Retomar do PC",
+    "muteTitle": "Silenciar notificações",
+    "muteHint": "Não avisa no celular sobre as sessões deste workspace.",
+    "empty": "Nenhuma sessão neste workspace ainda.",
+    "listLabel": "Sessões",
+    "stop": "Encerrar",
+    "stopNamed": "Encerrar {{title}}",
+    "removeFromApp": "Remover do app",
+    "moreActions": "Mais ações de {{title}}",
+    "confirmRemoveWorktree": "Remover o worktree também?"
+  },
+  "folders": {
+    "title": "Escolher pasta",
+    "allowed": "Pastas permitidas no PC",
+    "typePath": "Digitar caminho",
+    "checkingPath": "Verificando caminho",
+    "goToPath": "Ir para o caminho digitado",
+    "roots": "Raízes",
+    "parent": "Pasta acima",
+    "empty": "Nenhuma subpasta aqui.",
+    "listLabel": "Pastas",
+    "adding": "Adicionando…",
+    "use": "Usar esta pasta",
+    "pathError": {
+      "outside_roots": "Fora das pastas liberadas no PC",
+      "not_found": "Pasta não encontrada",
+      "not_a_directory": "Isso não é uma pasta"
+    }
+  },
+  "files": {
+    "title": "Arquivos",
+    "refresh": "Atualizar",
+    "newFile": "Novo arquivo",
+    "newFolder": "Nova pasta",
+    "path": "Caminho da pasta",
+    "copied": "Caminho copiado: {{path}}",
+    "empty": "Pasta vazia.",
+    "contents": "Conteúdo de {{folder}}",
+    "moreActions": "Mais ações de {{name}}",
+    "rename": "Renomear",
+    "delete": "Excluir",
+    "copyPath": "Copiar caminho",
+    "create": "Criar",
+    "folder": "Pasta",
+    "link": "Link",
+    "ignored": "{{kind}} · ignorado pelo git",
+    "newFileHint": "Na pasta {{folder}}. O arquivo abre no editor logo depois de criado.",
+    "newFolderHint": "Dentro de {{folder}}.",
+    "renameHint": "Nome atual: {{name}}."
+  },
+  "entryName": {
+    "empty": "Digite um nome.",
+    "tooLong": "Nome longo demais (máx. 255 caracteres).",
+    "noSlashes": "Use um nome sem barras.",
+    "notAllowed": "Este nome não é permitido."
+  },
+  "deleteEntry": {
+    "title": "Excluir {{name}}?",
+    "dir": "A pasta só é apagada se estiver vazia. Esta ação não pode ser desfeita.",
+    "file": "O arquivo é apagado do PC. Esta ação não pode ser desfeita.",
+    "deleting": "Excluindo…",
+    "confirm": "Excluir"
+  },
+  "editor": {
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "wrap": "Quebra de linha",
+    "unsaved": "Não salvo",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "label": "Editor de {{name}}",
+    "discardConfirm": "Descartar as alterações não salvas?",
+    "plainText": "Texto",
+    "conflict": {
+      "title": "O arquivo mudou no PC",
+      "description": "Outro programa salvou este arquivo depois que você abriu. Escolha o que fazer com as suas edições.",
+      "reload": "Recarregar do PC (perde suas edições)",
+      "overwrite": "Sobrescrever mesmo assim",
+      "overwriting": "Sobrescrevendo…"
+    }
+  },
+  "branches": {
+    "detached": "HEAD destacado",
+    "chip": "Branch {{title}}. Trocar de branch",
+    "switchTitle": "Trocar de branch",
+    "switchHint": "Branches locais de {{name}}",
+    "search": "Buscar branch",
+    "dirtyFiles": "Arquivos com alterações",
+    "andMore": "e mais {{count}}",
+    "local": "Branches locais",
+    "noMatch": "Nenhuma branch com esse nome.",
+    "newNameLabel": "Nome da nova branch",
+    "newNamePlaceholder": "nome/da-branch",
+    "creating": "Criando…",
+    "create": "Criar",
+    "new": "Nova branch"
+  },
+  "infoBar": {
+    "label": "Estado do workspace",
+    "noChanges": "sem alterações",
+    "changes_one": "{{count}} alteração",
+    "changes_other": "{{count}} alterações"
+  },
+  "changesScreen": {
+    "title": "Alterações",
+    "refresh": "Atualizar alterações",
+    "truncated": "A lista foi cortada no limite de 1 MB. Os arquivos que faltam não aparecem aqui.",
+    "empty": "Nenhuma alteração nesta sessão.",
+    "listLabel": "Arquivos alterados",
+    "status": {
+      "added": "Novo",
+      "modified": "Alterado",
+      "deleted": "Excluído",
+      "renamed": "Renomeado"
+    }
+  },
+  "diff": {
+    "newFile": "(novo)",
+    "noText": "Sem diff de texto (arquivo binário ou vazio)."
+  },
+  "newSession": {
+    "title": "Nova sessão",
+    "noAgents": "Nenhum agente configurado no daemon.",
+    "account": "Conta",
+    "worktreeTitle": "Em worktree separado",
+    "worktreeHint": "Cria um branch e uma pasta próprios para esta sessão; o seu checkout fica intacto.",
+    "options": "Opções",
+    "noOptions": "Ainda sem opções lembradas para este agente. Elas aparecem no chat depois da primeira sessão e passam a ser usadas aqui.",
+    "creating": "Criando…",
+    "create": "Criar sessão"
+  },
+  "resume": {
+    "title": "Retomar do PC",
+    "hint": "{{name}} · sessões criadas no terminal desta pasta",
+    "noAgents": "Nenhum agente de chat configurado no daemon.",
+    "importing": "Importando histórico…",
+    "opening": "Abrindo o {{agent}} no PC… pode levar alguns segundos",
+    "unsupported": "Este agente não lista sessões.",
+    "none": "Nenhuma sessão deste agente nesta pasta.",
+    "listLabel": "Sessões do PC",
+    "linked": "já no app",
+    "loadMore": "Carregar mais",
+    "close": "Fechar",
+    "untitled": "Sessão sem título",
+    "sessionOf": "Sessão de {{date}} às {{time}}"
+  }
+}

@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.js';
+
 /**
  * Linguagem do editor. `plain`: texto sem realce. Cada chave tem um carregador em `editor/languages.ts`.
  * `LANGUAGE_KEYS` mantém a lista para testes e para quem precisa percorrê-la.
@@ -48,7 +50,8 @@ export const LANGUAGE_KEYS = [
 
 export type LanguageKey = (typeof LANGUAGE_KEYS)[number];
 
-const LABELS: Readonly<Record<LanguageKey, string>> = {
+/** Proper names of the languages. `plain` (text without highlighting) is not a proper name: it comes from the translation. */
+const LABELS: Readonly<Record<Exclude<LanguageKey, 'plain'>, string>> = {
   javascript: 'JavaScript',
   jsx: 'JSX',
   typescript: 'TypeScript',
@@ -89,12 +92,11 @@ const LABELS: Readonly<Record<LanguageKey, string>> = {
   graphql: 'GraphQL',
   protobuf: 'Protobuf',
   diff: 'Diff',
-  plain: 'Texto',
 };
 
-/** Nome da linguagem para o rótulo do editor. Nomes de linguagem são próprios: não se traduzem. */
+/** Language name for the editor label. Language names are proper names and are not translated; only plain text is ("Texto" / "Plain text"). */
 export function languageLabelFor(key: LanguageKey): string {
-  return LABELS[key];
+  return key === 'plain' ? t('workspace:editor.plainText') : LABELS[key];
 }
 
 /** Extensão (sem ponto, minúscula) → linguagem. */

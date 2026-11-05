@@ -1,0 +1,72 @@
+{
+  "title": "Desktop",
+  "group": "Nanachi Desktop",
+  "failure": {
+    "action": "Could not complete that right now. Try again.",
+    "update": "Could not check for updates right now."
+  },
+  "daemon": {
+    "label": "Daemon",
+    "checking": "Checking…",
+    "starting": "Starting…",
+    "running": "Running",
+    "attached": "Connected to the existing daemon",
+    "attachedDetail": "{{line}}. Desktop does not stop it when you quit.",
+    "stopped": "Stopped",
+    "error": "Error",
+    "notRunning": "The daemon is not running.",
+    "port": "Port {{port}}",
+    "portVersion": "Port {{port}} · version {{version}}",
+    "restricted": "Local access blocked",
+    "restrictedText": "The daemon only accepts access through Tailscale (allowedTailscaleLogins in config.json), so this local panel can't use it. Use another data folder (NANACHI_HOME) for Desktop, or open the Tailscale address.",
+    "logTail": "Last lines of the daemon log"
+  },
+  "autostart": {
+    "title": "Start with Windows",
+    "description": "Nanachi opens in the tray when you sign in to Windows."
+  },
+  "pairing": {
+    "row": "Generate pairing code",
+    "rowHint": "To pair an iPhone or another browser with this PC.",
+    "title": "Pairing code",
+    "description": "Enter this code in Nanachi on the iPhone, or in another browser, to pair with this PC.",
+    "codeLabel": "Code {{digits}}",
+    "generating": "Generating the code…",
+    "failed": "Could not generate the code right now. Check that the daemon is running and try again.",
+    "close": "Close",
+    "retry": "Try again",
+    "another": "Generate another",
+    "expiresIn": "Expires in {{time}}",
+    "expired": "Expired"
+  },
+  "update": {
+    "row": "Check for updates",
+    "checking": "Checking…",
+    "version": "Version {{version}}",
+    "upToDate": "Version {{current}}. You're on the latest.",
+    "available": "Version {{current}}. New version {{latest}} available.",
+    "availableLink": "New version {{latest}}",
+    "error": "Version {{current}}. {{message}}"
+  },
+  "tailscale": {
+    "title": "Built-in Tailscale",
+    "description": "This PC joins your tailnet as a separate device. The Tailscale installed on Windows is not changed.",
+    "off": "Off",
+    "starting": "Starting…",
+    "needsLogin": "Sign in to your Tailscale account",
+    "needsLoginDetail": "Open the link, sign in and approve this PC. The address shows up here when it's done.",
+    "connected": "Connected",
+    "tailnet": "Tailnet {{name}}",
+    "error": "Error",
+    "login": "Sign in to Tailscale",
+    "address": "Address for the iPhone",
+    "copyAddress": "Copy address",
+    "requirements": "The tailnet needs MagicDNS and HTTPS certificates enabled.",
+    "steps": {
+      "install": "Install the Tailscale app on the iPhone and sign in with the same account.",
+      "open": "Open {{address}} in Safari.",
+      "code": "If the app asks for a code, use \"Generate pairing code\" here.",
+      "share": "Tap Share, then \"Add to Home Screen\"."
+    }
+  }
+}

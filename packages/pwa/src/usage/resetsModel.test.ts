@@ -1,5 +1,6 @@
 import type { ResetEntry, ResetRedeemResponse } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { ApiError } from '../api.js';
 import {
   canRedeem,
@@ -162,6 +163,61 @@ describe('redeemFailureOf', () => {
     expect(redeemFailureOf(new ApiError('agent_timeout', 504, null, 'agent_timeout'))).toEqual({
       tone: 'error',
       message: 'Não deu para confirmar se o reset foi usado. Confira o uso antes de tentar de novo.',
+    });
+  });
+});
+
+describe('in English', () => {
+  it('resetCountsText says saved and available now, in the right number', () => {
+    setLanguage('en');
+    expect(resetCountsText(entry({ available: 2, usable: 1 }))).toBe('2 saved · 1 available now');
+    expect(resetCountsText(entry({ available: 1, usable: 0 }))).toBe('1 saved · 0 available now');
+    expect(resetCountsText(entry({ available: 0, usable: 0 }))).toBe('0 saved · 0 available now');
+  });
+
+  it('resetExpiryText keeps the text omp prints and words the ISO dates of codex', () => {
+    setLanguage('en');
+    expect(resetExpiryText('in 3 days', NOW)).toBe('expires in 3 days');
+    expect(resetExpiryText(new Date(NOW + 45 * MINUTE_MS).toISOString(), NOW)).toBe('expires in 45 min');
+    expect(resetExpiryText(new Date(NOW + 5 * HOUR_MS + 30 * MINUTE_MS).toISOString(), NOW)).toBe('expires in 5 h');
+    expect(resetExpiryText(new Date(NOW + 30 * HOUR_MS).toISOString(), NOW)).toBe('expires in 1 day');
+    expect(resetExpiryText(new Date(NOW + 3 * DAY_MS + HOUR_MS).toISOString(), NOW)).toBe('expires in 3 days');
+    expect(resetExpiryText(new Date(NOW - MINUTE_MS).toISOString(), NOW)).toBe('expired');
+  });
+
+  it('resetExpiryText writes a far date in the language of the app', () => {
+    setLanguage('en');
+    expect(resetExpiryText(new Date(2026, 10, 20, 9, 0).toISOString(), NOW)).toBe('expires on Nov 20, 2026');
+  });
+
+  it('redeemConfirmText', () => {
+    setLanguage('en');
+    expect(redeemConfirmText(entry())).toEqual({
+      title: 'Use 1 reset?',
+      body: "fake@example.com · Anthropic. Spends one saved reset and lifts the limit now. This can't be undone.",
+    });
+    expect(redeemConfirmText(entry({ providerLabel: null })).body).toMatch(/^fake@example\.com\. Spends one/);
+  });
+
+  it('redeemResultOf shows the agent line as it is, and a fixed text only when it is empty', () => {
+    setLanguage('en');
+    expect(redeemResultOf({ outcome: 'reset', message: 'Reset applied for fake@example.com.' }).message).toBe(
+      'Reset applied for fake@example.com.',
+    );
+    expect(redeemResultOf({ outcome: 'reset', message: '' }).message).toBe('Reset applied.');
+    expect(redeemResultOf({ outcome: 'nothing_to_reset', message: ' ' }).message).toBe(
+      'Nothing to reset right now; no reset was spent.',
+    );
+    expect(redeemResultOf({ outcome: 'no_credit', message: '' }).message).toBe('There are no saved resets to spend.');
+    expect(redeemResultOf({ outcome: 'already_redeemed', message: '' }).message).toBe('That reset was already used.');
+    expect(redeemResultOf({ outcome: 'failed', message: '' }).message).toBe('The agent did not confirm the reset.');
+  });
+
+  it('redeemFailureOf uses the English error text', () => {
+    setLanguage('en');
+    expect(redeemFailureOf(new ApiError('unexpected', 409, null, 'reset_in_progress'))).toEqual({
+      tone: 'error',
+      message: 'A reset is already in progress.',
     });
   });
 });

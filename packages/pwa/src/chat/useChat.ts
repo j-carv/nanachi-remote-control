@@ -13,6 +13,7 @@ import type {
 import type { ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
 import { writeAgentConfig } from '../agentConfig.js';
+import { t } from '../i18n/index.js';
 import type { StorageLike } from '../machines.js';
 import { applyAccountReply } from './accountReply.js';
 import { applyEvents, createChatState, withStatus, type ChatState } from './reducer.js';
@@ -20,7 +21,10 @@ import { loadHistory } from './history.js';
 import { pickLoop } from './loop.js';
 import { createFrameBatcher } from './frameBatch.js';
 
-export const OFFLINE_NOTICE = 'Sem conexão com o PC. Tente de novo quando voltar.';
+/** Notice for an action that needs the connection to the PC, in the current language. */
+export function offlineNotice(): string {
+  return t('chat:offline');
+}
 
 export interface ChatOptions {
   api: ApiClient;
@@ -190,7 +194,7 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
 
   function send(message: ClientMessage): boolean {
     if (connection?.send(message) === true) return true;
-    setNotice(OFFLINE_NOTICE);
+    setNotice(offlineNotice());
     return false;
   }
 

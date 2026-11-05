@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import {
   awaitActivation,
   deleteAllCaches,
@@ -205,6 +206,15 @@ describe('runForceUpdate', () => {
     expect(failure).toHaveProperty('message', 'não foi possível apagar o cache');
     expect(registration.unregister).not.toHaveBeenCalled();
     expect(env.reload).not.toHaveBeenCalled();
+  });
+
+  it('writes the reason in the current language', async () => {
+    setLanguage('en');
+    const registration = fakeRegistration({ updateError: new TypeError('Failed to fetch') });
+
+    const failure = await runForceUpdate(fakeEnv(registration), recordPhases().onPhase).catch((error: unknown) => error);
+
+    expect(failure).toHaveProperty('message', 'no connection to check for a new version');
   });
 
   it('precache refill fails: does not reload (the app keeps running and a retry redoes everything)', async () => {

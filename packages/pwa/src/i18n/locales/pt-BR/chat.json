@@ -1,0 +1,240 @@
+{
+  "offline": "Sem conexão com o PC. Tente de novo quando voltar.",
+  "header": {
+    "usage": "Uso do agente",
+    "loop": "Modo Loop",
+    "changes": "Alterações",
+    "configure": "Configurar sessão",
+    "moreActions": "Mais ações da sessão",
+    "removeFromApp": "Remover do app",
+    "backgroundWork": "Trabalho em segundo plano: {{count}}"
+  },
+  "working": {
+    "starting": "Iniciando o agente…",
+    "running": "Trabalhando…",
+    "awaiting_permission": "Aguardando a sua permissão",
+    "stopped": "Sessão encerrada",
+    "error": "A sessão deu erro",
+    "resuming": "Retomando…"
+  },
+  "placeholder": {
+    "starting": "Aguardando o agente",
+    "idle": "Mensagem",
+    "running": "Aguarde o agente",
+    "awaiting_permission": "Veja a permissão",
+    "stopped": "Retomar e enviar",
+    "error": "Retomar e enviar",
+    "resuming": "Retomando…"
+  },
+  "timeline": {
+    "loading": "Carregando conversa…",
+    "loadEarlier": "Carregar anteriores",
+    "jumpToEnd": "Ir para o fim"
+  },
+  "composer": {
+    "send": "Enviar",
+    "sending": "Enviando…",
+    "uploading": "Enviando… {{percent}}%",
+    "uploadProgress": "Progresso do envio",
+    "attach": "Anexar arquivo",
+    "commands": "Comandos do agente",
+    "previous": "Mensagem anterior",
+    "next": "Próxima mensagem",
+    "stop": "Parar",
+    "resume": "Retomar",
+    "attachmentLimit": "Limite de {{limit}} anexos por mensagem.",
+    "useCrop": "Usar recorte",
+    "newSession": "+ Nova sessão"
+  },
+  "configSheet": {
+    "title": "Configurar sessão",
+    "account": "Conta da sessão",
+    "options": "Opções da sessão",
+    "more": "Mais opções"
+  },
+  "commandSheet": {
+    "configLabel": "Opções de /{{name}}",
+    "choicesLabel": "Subcomandos de /{{name}}",
+    "sendToAgent": "Enviar /{{name}} ao agente",
+    "noArgument": "Sem argumento",
+    "typeArguments": "Digitar argumentos…"
+  },
+  "slash": {
+    "label": "Comandos do agente",
+    "search": "Buscar comando",
+    "close": "Fechar comandos",
+    "none": "Este agente não anunciou comandos.",
+    "noMatch": "Nenhum comando combina com “{{query}}”."
+  },
+  "attachments": {
+    "label": "Anexos",
+    "crop": "Recortar {{name}}",
+    "remove": "Remover {{name}}"
+  },
+  "permission": {
+    "label": "Pedido de permissão"
+  },
+  "plan": {
+    "title": "Plano"
+  },
+  "status": {
+    "pending": "Pendente",
+    "in_progress": "Em andamento",
+    "completed": "Concluído",
+    "failed": "Falhou"
+  },
+  "tool": {
+    "fallbackTitle": "Ferramenta",
+    "noStatus": "Ferramenta",
+    "linesAdded_one": "{{count}} linha acrescentada",
+    "linesAdded_other": "{{count}} linhas acrescentadas",
+    "linesRemoved_one": "{{count}} removida",
+    "linesRemoved_other": "{{count}} removidas",
+    "innerActions_one": "{{count}} ação interna",
+    "innerActions_other": "{{count}} ações internas",
+    "innerWithLast": "{{summary}} · última: {{title}}"
+  },
+  "background": {
+    "title": "Segundo plano",
+    "empty": "Nada rodando em segundo plano.",
+    "untitled": "Sem título",
+    "subagents": "Subagentes",
+    "commands": "Comandos",
+    "jobs": "Jobs",
+    "startedAgo": "Iniciado há {{time}}",
+    "lasted": "Durou {{time}}",
+    "state": {
+      "running": "Em andamento",
+      "completed": "Concluído",
+      "failed": "Falhou",
+      "stopped": "Parado",
+      "unknown": "Estado desconhecido"
+    }
+  },
+  "item": {
+    "loopRound": "Loop #{{number}}",
+    "thought": "Pensamento",
+    "thoughtSize_one": "{{count}} caractere",
+    "thoughtSize_other": "{{count}} caracteres",
+    "accountChanged": "Conta trocada para {{label}}"
+  },
+  "markdown": {
+    "image": "imagem",
+    "imageWithAlt": "imagem: {{alt}}"
+  },
+  "model": {
+    "others": "Outros"
+  },
+  "agentConfig": {
+    "mode": "Acesso",
+    "model": "Modelo",
+    "thought_level": "Effort"
+  },
+  "loop": {
+    "started": "Loop iniciado",
+    "stopped": "Loop parado",
+    "saved": "Alterações salvas",
+    "chip": {
+      "error": "Loop · erro",
+      "paused": "Loop pausado",
+      "running": "Loop · rodando",
+      "queued": "Loop · na fila",
+      "countdown": "Loop · próxima em {{time}}",
+      "countdownShort": "Loop · {{time}}",
+      "open": "{{label}}. Abrir o Modo Loop"
+    },
+    "status": {
+      "stopped": "Encerrado",
+      "paused": "Pausado",
+      "pausedError": "Pausado após um erro",
+      "running": "Rodando agora",
+      "queued": "Na fila: aguarda o agente ficar livre",
+      "next": "Próxima rodada em {{time}}",
+      "endedByAgent": "Loop encerrado pelo agente"
+    },
+    "rounds": {
+      "none": "Nenhuma rodada ainda",
+      "count": "Rodadas: {{count}}",
+      "countOf": "Rodadas: {{count}} de {{limit}}"
+    },
+    "command": {
+      "intervalHelp": "Intervalo entre 30 s e 24 h, seguido do prompt. Ex.: /loop 5m revise os testes.",
+      "noAttachments": "Loop não aceita anexos. Mande o arquivo numa mensagem comum.",
+      "promptTooLong": "O prompt do loop passa de {{max}} caracteres."
+    },
+    "form": {
+      "intervalEmpty": "Digite um intervalo, como 5m ou 1h30m.",
+      "intervalFormat": "Use um formato como 90s, 10m ou 1h30m.",
+      "intervalRange": "O intervalo vai de 30 s a 24 h.",
+      "promptEmpty": "Escreva o prompt que o loop vai repetir.",
+      "promptTooLong": "O prompt passa de {{max}} caracteres.",
+      "roundsInvalid": "Limite de rodadas: use um número inteiro, a partir de 1.",
+      "firstRoundDynamic": "Se desligado, começa em {{time}}.",
+      "firstRoundInterval": "Se desligado, a primeira rodada espera o intervalo."
+    },
+    "summary": {
+      "interval": "Vai mandar {{prompt}} {{first}} e depois a cada {{every}}, {{limit}}.",
+      "intervalNow": "agora",
+      "intervalLater": "pela primeira vez em {{time}}",
+      "noLimit": "sem limite de rodadas",
+      "upTo_one": "até {{count}} rodada",
+      "upTo_other": "até {{count}} rodadas",
+      "dynamic": "Vai mandar {{prompt}} {{first}}; depois o agente decide quando repetir, {{stop}}.",
+      "dynamicNow": "agora",
+      "dynamicLater": "em {{time}}",
+      "untilDone": "até ele dizer que terminou",
+      "untilDoneOrUpTo_one": "até ele dizer que terminou ou chegar a {{count}} rodada",
+      "untilDoneOrUpTo_other": "até ele dizer que terminou ou chegar a {{count}} rodadas"
+    },
+    "sheet": {
+      "title": "Modo Loop",
+      "description": "Repete um prompt nesta sessão, mesmo com o celular fechado.",
+      "loading": "Carregando o loop…",
+      "current": "Loop atual",
+      "automatic": "Automático",
+      "every": "Intervalo de {{interval}}",
+      "lastError": "Último erro",
+      "resume": "Retomar",
+      "pause": "Pausar",
+      "runNow": "Rodar agora",
+      "confirmStop": "Confirmar parada",
+      "confirmStopText": "Parar o loop? Uma rodada em andamento termina, e nenhuma outra começa.",
+      "stop": "Parar loop",
+      "formEdit": "Alterar o loop",
+      "formNew": "Novo loop",
+      "prompt": "Prompt",
+      "promptPlaceholder": "Ex.: /review ou revise os testes que falharam",
+      "when": "Quando rodar",
+      "interval": "Intervalo",
+      "otherInterval": "Outro intervalo",
+      "intervalPlaceholder": "Ex.: 90s, 10m, 1h30m",
+      "intervalHint": "Roda a cada {{interval}}, contando do fim de cada rodada.",
+      "options": "Opções do loop",
+      "rounds": "Limite de rodadas",
+      "roundsHint": "O loop para sozinho depois desse número de rodadas.",
+      "roundsPlaceholder": "Sem limite",
+      "firstRound": "Primeira rodada agora",
+      "save": "Salvar alterações",
+      "start": "Iniciar loop",
+      "saveNote": "Salvar reinicia a contagem de rodadas.",
+      "native": "Usar /loop nativo do Claude",
+      "nativeNote": "Manda o comando como mensagem comum ao Claude.",
+      "howTitle": "Como funciona",
+      "how1": "Roda no PC, mesmo com o celular fechado.",
+      "how2": "Espera se o agente estiver ocupado ou pedindo permissão.",
+      "how3": "Pausa e te avisa no celular se der erro."
+    },
+    "modes": {
+      "interval": {
+        "title": "Intervalo fixo",
+        "description": "Repete o prompt sempre no mesmo intervalo. O tempo conta a partir do fim da resposta anterior, então nunca roda duas vezes ao mesmo tempo.",
+        "example": "Ex.: a cada 15 min, rodar os testes e consertar o que falhar."
+      },
+      "dynamic": {
+        "title": "Automático",
+        "description": "O agente decide quando rodar de novo: no fim de cada resposta ele diz quanto esperar (de 30 s a 24 h) ou que terminou, e o loop para sozinho. Sem resposta, espera 10 min.",
+        "example": "Ex.: continuar uma refatoração até acabar."
+      }
+    }
+  }
+}

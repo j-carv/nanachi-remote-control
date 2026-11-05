@@ -1,4 +1,5 @@
 import { RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useVisualViewport } from '../components/useVisualViewport.js';
 import { useAppUpdate } from './useAppUpdate.js';
@@ -13,6 +14,7 @@ import { useAppUpdate } from './useAppUpdate.js';
  * z-40 keeps it under the sheets and the viewer (z-50), so it never covers a sheet's buttons, and above the chat (z-5).
  */
 export function UpdateBar() {
+  const { t } = useTranslation();
   const showBar = useAppUpdate();
   const viewport = useVisualViewport();
   if (!showBar) return null;
@@ -28,10 +30,10 @@ export function UpdateBar() {
         role="status"
         className="pointer-events-auto flex w-full max-w-[560px] items-center gap-3 rounded-xl border border-border bg-popover py-1 pr-1 pl-4 text-popover-foreground"
       >
-        <p className="min-w-0 flex-1 text-sm">Nova versão do Nanachi</p>
+        <p className="min-w-0 flex-1 text-sm">{t('update.available')}</p>
         <Button onClick={() => window.location.reload()}>
           <RefreshCw />
-          Atualizar
+          {t('update.action')}
         </Button>
       </div>
     </div>

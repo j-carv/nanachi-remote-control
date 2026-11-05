@@ -1,4 +1,5 @@
 import { BACKGROUND_JOBS_MAX, type Background, type BackgroundJob, type SessionStatus } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 import type { BackgroundTiming, ChatItem } from './reducer.js';
 
 /*
@@ -100,7 +101,7 @@ export function backgroundEntries(items: readonly ChatItem[], view: BackgroundVi
       id: item.id,
       kind: item.background.kind,
       state: effectiveState({ background: item.background, timing: item.timing }, view),
-      label: item.background.label ?? (item.title !== '' ? item.title : 'Sem título'),
+      label: item.background.label ?? (item.title !== '' ? item.title : t('chat:background.untitled')),
       agentType: item.background.agentType,
       jobs: item.background.jobs ?? [],
       startedAt: item.timing.startedAt,
@@ -133,7 +134,7 @@ export function groupEntries(entries: readonly BackgroundEntry[]): BackgroundGro
   };
 }
 
-/** Elapsed time in Portuguese: "45 s", "2 min", "1 h 5 min". Negative values (clock skew) read as zero. */
+/** Elapsed time: "45 s", "2 min", "1 h 5 min" (the units read the same in Portuguese and English). Negative values (clock skew) read as zero. */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) return `${seconds} s`;

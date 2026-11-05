@@ -1,17 +1,14 @@
 import { Check, CircleDashed, Square, X } from 'lucide-react';
 import type { BackgroundJob } from '@nanachi/shared';
 import { StatusDot } from '../components/StatusDot.js';
+import { t } from '../i18n/index.js';
 import { cn } from '@/lib/utils';
 import { jobStateOf, type BackgroundState } from './background.js';
 
-/* UI strings of the background states, in one place (the label a later i18n pass will replace). */
-export const BACKGROUND_STATE_TEXT: Record<BackgroundState, string> = {
-  running: 'Em andamento',
-  completed: 'Concluído',
-  failed: 'Falhou',
-  stopped: 'Parado',
-  unknown: 'Estado desconhecido',
-};
+/** Words of a background state, in the current language. */
+export function backgroundStateText(state: BackgroundState): string {
+  return t(`chat:background.state.${state}`);
+}
 
 /**
  * Glyph of a background state. Running is a pulsing dot (the only motion), completed a check, failed a cross, stopped
@@ -44,11 +41,11 @@ export function BackgroundStatus({ state, showText = false }: BackgroundStatusPr
       data-slot="background-status"
       data-state={state}
       role={showText ? undefined : 'img'}
-      aria-label={showText ? undefined : BACKGROUND_STATE_TEXT[state]}
+      aria-label={showText ? undefined : backgroundStateText(state)}
       className={cn('flex shrink-0 items-center gap-1.5', showText && 'text-xs text-muted-foreground')}
     >
       <Glyph state={state} />
-      {showText && <span>{BACKGROUND_STATE_TEXT[state]}</span>}
+      {showText && <span>{backgroundStateText(state)}</span>}
     </span>
   );
 }
@@ -64,7 +61,7 @@ export function BackgroundJobRows({ jobs, parent }: { jobs: readonly BackgroundJ
           <li key={job.id} data-job-state={state} className="flex min-h-9 items-center gap-2.5 text-sm">
             <BackgroundStatus state={state} />
             <span className="min-w-0 flex-1 truncate">{job.label ?? job.id}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{BACKGROUND_STATE_TEXT[state]}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{backgroundStateText(state)}</span>
           </li>
         );
       })}

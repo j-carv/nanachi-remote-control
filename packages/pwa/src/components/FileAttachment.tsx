@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { FileInfo } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ export function FileAttachment({ api, file, caption }: FileAttachmentProps) {
 }
 
 function FileCard({ api, file }: { api: ApiClient; file: FileInfo }) {
+  const { t } = useTranslation('files');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -55,7 +57,7 @@ function FileCard({ api, file }: { api: ApiClient; file: FileInfo }) {
         <span data-slot="file-size" className="text-sm text-muted-foreground">{formatBytes(file.size)}</span>
       </div>
       <Button variant="secondary" disabled={busy} onClick={() => void download()}>
-        {busy ? 'Baixando…' : 'Baixar'}
+        {busy ? t('attachment.downloading') : t('attachment.download')}
       </Button>
       {error !== null && <p className="w-full text-sm text-destructive [overflow-wrap:anywhere]">{describeError(error)}</p>}
     </div>

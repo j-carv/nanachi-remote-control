@@ -16,7 +16,7 @@
 
   <p><sub><em>Disclaimer: Nanachi is a character from <strong>Made in Abyss</strong>, created by Akihito Tsukushi and published by Takeshobo; the anime adaptation is produced by Kinema Citrus. All rights to the character and the series belong to their respective owners. This is an unofficial fan-named Open-Source Project with no affiliation with, or endorsement by, the author, the publisher, or the studio.</em></sub></p>
 
-  <p><a href="#get-started-on-your-pc">Setup</a> · <a href="#install-on-your-phone">Android and iPhone</a> · <a href="#everyday-use">How to use it</a> · <a href="#troubleshooting">Help</a></p>
+  <p><a href="#get-started-on-your-pc">Setup</a> · <a href="#install-on-your-phone">Android and iPhone</a> · <a href="#everyday-use">How to use it</a> · <a href="#nanachi-desktop">Desktop</a> · <a href="#troubleshooting">Help</a></p>
 </div>
 
 ---
@@ -43,9 +43,12 @@ Your own PC serves the dashboard inside your Tailscale network. **There is no ne
 ### What you can do
 
 - **Chat with agents** with real-time responses, Markdown, code, and tool details.
-- **Choose model, access, and effort settings** when the agent supports them, and respond to permission requests in chat.
+- **Choose model, access, and effort settings** when the agent supports them, and respond to permission requests in chat. Long model lists are [grouped by provider](#model-picker-with-many-providers).
 - **Use `/` commands** advertised by the agent, with search built into the message field.
 - **Resume PC sessions** when the agent supports listing and reopening its history.
+- **Keep several logins per agent** for Claude Code and Codex, and [switch between them](#agent-accounts) per session.
+- **Spend saved rate-limit resets** for Oh My Pi and Codex from the [usage drawer](#saved-rate-limit-resets).
+- **Use the app in Portuguese or English** ([language](#language)).
 - **Send photos and files** and receive files or PC screenshots in chat.
 - **View Git changes** and open sessions in separate worktrees without changing the main checkout.
 - **Switch between PCs**, mute projects, and revoke paired devices.
@@ -149,7 +152,7 @@ This displays a **6-digit code**, valid for **5 minutes** and usable only once. 
 
 ## Install on your phone
 
-The app's interface currently uses Portuguese labels. The instructions below give their English meanings and preserve the labels you need to find.
+The app opens in Brazilian Portuguese, and an English interface is available under [Language](#language). This README gives the Portuguese labels with their English meanings, so you can find them in either language.
 
 ### Android
 
@@ -224,6 +227,92 @@ When ending a session, the app can remove the worktree. If it contains uncommitt
 
 Antigravity sessions open a terminal with keys such as Esc, Tab, Ctrl+C, arrows, and Enter. Complete the first login and accept folder trust in your PC's terminal before using it from your phone.
 
+### Agent accounts
+
+Claude Code and Codex can have several logins on the same PC, for example a personal and a work account, and you can choose which one a session uses. Oh My Pi and Antigravity are not supported (see the limits below).
+
+- The login already on your PC is the **principal** account. Nanachi never creates, moves, or deletes it.
+- Every other account has its own folder under `accounts\<agent>\` in your data folder (`%USERPROFILE%\.nanachi-remote` by default) and keeps its own credentials there.
+- Accounts share the principal's configuration, so every account behaves the same (see below).
+
+**Add an account**
+
+1. Open **Settings → Agent accounts (Ajustes → Contas dos agentes)**, find the agent, and tap **Add account (Adicionar conta)**.
+2. Name the account. The login sheet opens.
+3. Tap **Open link (Abrir link)** and sign in with the account you want to add.
+   - **Codex** shows a one-time code to type on the login page.
+   - **Claude Code** shows a code on the page after you sign in. Copy it, paste it into the sheet, and tap **Send (Enviar)**.
+4. The sheet confirms with "Conta conectada: ..." (account connected) and closes. **Cancel (Cancelar)** stops the login, and a login that does not finish within 15 minutes fails.
+
+Only one login per agent can run at a time.
+
+**Choose the account**
+
+- Tap an account to open its actions: **Use for new sessions (Usar em novas sessões)**, **Sign in (Entrar)** again, **Rename (Renomear)**, and **Remove (Remover)**. The account that new sessions use has an **In use (Em uso)** badge. The principal account cannot be renamed or removed.
+- When an agent has more than one account, the new-session sheet has an **Account (Conta)** row. The default is the account in use.
+- In an open session, **Configure session (Configurar sessão) → Account (Conta)** switches the account. It is disabled while the agent is working or waiting for permission ("Troque quando o agente terminar", switch when the agent finishes). A switch restarts the agent's process and resumes the session under the new account; the chat shows "Conta trocada para ..." (account changed to).
+- Removing an account deletes its login from this PC and returns its sessions to the principal account. It does not affect the account itself, and it is refused while a session on that account is running. Each agent can have up to 10 extra accounts.
+
+The usage drawer shows which account the session uses.
+
+**What is shared and what is private**
+
+Shared with the principal: settings, instruction files (`CLAUDE.md`, `AGENTS.md`), skills, commands, hooks, plugins, MCP servers, and session history. Private to each account: credentials, account identity, and per-account state and caches. Nanachi links or copies the shared items from the principal's home before every agent start.
+
+<details>
+<summary><strong>Exact shared items</strong></summary>
+
+Folders are shared with directory junctions (no administrator rights needed) and files are copied from the principal on every start.
+
+- **Claude Code:** `settings.json`, `keybindings.json`, every top-level `*.md` file, and the `projects`, `skills`, `agents`, `commands`, `hooks`, `plugins`, `plans`, `file-history`, `todos`, `tasks`, and `output-styles` folders. From `.claude.json`: `mcpServers`, `projects`, `theme`, `hasCompletedOnboarding`, and `lastOnboardingVersion`. Everything else in `.claude.json` stays per account.
+- **Codex:** `config.toml`, `AGENTS.md`, `AGENTS.override.md`, `hooks.json`, `cap_sid`, and the `sessions`, `archived_sessions`, `skills`, `prompts`, `rules`, and `memories` folders. The Windows sandbox folders (`.sandbox`, `.sandbox-bin`, `.sandbox-secrets`) are linked only if the principal already has them. Credentials, thread names, and Codex's state database are per account; threads still list from the shared session files.
+
+</details>
+
+**Limits**
+
+- Settings changed while you use an extra account are overwritten from the principal the next time the agent starts. This covers Claude's `/config` and trusting a project in Codex. Change settings on the principal account.
+- Claude's login also opens a browser tab on the PC. The login sheet says you can ignore it.
+- Oh My Pi keeps several accounts by itself (its own `/login`). Antigravity keeps its login in the Windows Credential Manager, so a second home cannot hold a second login. Neither has account support here.
+- Automated tests use fake login commands. A login with a real second Claude Code or Codex account has not been tried yet, and neither has Codex with `[windows] sandbox = "elevated"` on an extra account.
+
+### Saved rate-limit resets
+
+Some providers give your account saved rate-limit resets. A reset lifts a usage limit immediately. For **Oh My Pi** and **Codex** sessions, Nanachi lists them and can spend one from your phone. Claude Code and Antigravity have no reset source, so those sessions do not show the section.
+
+1. In a session, tap **Agent usage (Uso do agente)** in the chat header.
+2. Find **Saved resets (Resets salvos)** under the limit cards. Each row shows the account, its provider, how many resets are saved and how many are available now ("salvos · disponíveis agora"), and when they expire.
+3. Tap **Use reset (Usar reset)** on a row. The button is enabled only when at least one reset is available now.
+4. A confirmation asks **Use 1 reset? (Usar 1 reset?)**. Tap **Use reset** to confirm. **Cancel (Cancelar)**, the back gesture, or a tap outside sends nothing.
+
+**Spending a reset cannot be undone** and uses one of your account's saved resets. Nanachi runs one at a time and never retries a redeem automatically. The agent's reply appears under the section heading and the usage numbers refresh afterward.
+
+If the app cannot tell what happened, for example when the request times out after it was sent, it says "Não deu para confirmar se o reset foi usado. Confira o uso antes de tentar de novo." (could not confirm whether the reset was used; check usage before trying again). Refresh the usage and check the saved count before you try again, because a second attempt could spend another reset.
+
+Oh My Pi lists the accounts it has stored for the Anthropic and OpenAI Codex providers, and its own text is shown as it prints it. Codex shows the account the session uses. Automated tests use fake agents only.
+
+### Model picker with many providers
+
+Oh My Pi can connect many providers at once, such as OpenRouter, Cursor, OpenAI Codex, and Claude CLI, and the same model name often exists under several of them. When an agent's model list comes from at least two providers, the model picker groups the options by provider, and the closed **Model (Modelo)** row shows the provider under the model name. A model that arrives through OpenRouter also shows its upstream vendor after the name, such as "· Anthropic". Options with no recognizable provider are listed under "Outros" (others), and a provider the app does not know is shown by the id the agent sent.
+
+This applies to **Configure session (Configurar sessão)**, the new-session sheet, and the `/model` picker. Agents with a single provider, such as Claude Code, look the same as before.
+
+### Language
+
+The app is available in Brazilian Portuguese (the default) and English.
+
+1. Open **Settings → Language (Ajustes → Idioma / Language)**.
+2. Choose **Português (Brasil)** or **English**. The change applies immediately, without reloading.
+
+The choice is saved on each device, so set it on every phone or browser you use. The section title and the option names stay the same in both languages, so you can find the row after switching.
+
+Not translated:
+
+- Text that agents and the daemon send, such as agent output, session titles, their error messages, login output, and the lines Oh My Pi prints for resets.
+- Command names such as `/model`.
+- Push notifications. The daemon builds them in Portuguese.
+- The Nanachi Desktop tray, windows, and installer (see [Nanachi Desktop](#nanachi-desktop)).
+
 ## Keep it ready when you need it
 
 ### Windows launcher
@@ -259,6 +348,72 @@ To follow activity in the terminal, use `npm run supervise`. Ctrl+C stops the su
 
 </details>
 
+## Nanachi Desktop
+
+Nanachi Desktop is a Windows app that runs the daemon for you. It adds a tray icon, a control panel window, and its own installer, which needs no Node.js, Git, or clone of this repository on the machine where you install it. It is a preview: it is not code-signed, no installer is distributed yet, and you build it from source (below). Read [Desktop limits](#desktop-limits) first.
+
+### What it does
+
+- **Runs the daemon** with its own bundled Node.js and restarts it after a crash (it stops retrying after more than 5 crashes in 2 minutes and shows an error). It uses the same data folder as the command line, `%USERPROFILE%\.nanachi-remote` or `NANACHI_HOME`, so `config.json` and paired devices are shared with a daemon started the other way. The daemon's log is `desktop-daemon.log` in that folder.
+- **Attaches to a daemon that is already running.** If a Nanachi daemon answers on the configured port (the supervisor or `Nanachi.bat`, for example), Desktop starts nothing, shows "conectado ao daemon existente" (connected to the existing daemon), and never stops that daemon when you quit.
+- **Tray icon.** The first menu line is the status: `Nanachi · rodando` (running), `· iniciando` (starting), `· conectado ao daemon existente`, `· parado` (stopped), or `· erro` (error). The items are **Abrir painel** (open the panel), **Gerar código de pareamento** (generate a pairing code: a 6-digit code with its expiry and a QR code), **Iniciar com o Windows** (start in the tray when you sign in), and **Sair** (quit). Quitting stops the daemon only if Desktop started it.
+- **Control panel.** The panel is this same web app, loaded from the local daemon, with an extra **Desktop** group in Settings: daemon status, **Iniciar com o Windows**, **Gerar código de pareamento**, **Procurar atualização** (check for updates), and **Tailscale embutido** (built-in Tailscale). On first run the panel registers itself as a device named "Nanachi Desktop (PC name)", which you can revoke like any other device.
+
+### Build it
+
+You need Windows x64, **Node.js 22** (the packaging script refuses other major versions, because it bundles a copy of that Node), and Go for the Tailscale sidecar. `packages/desktop/tsnet/go.mod` requires Go 1.27.3. Install a current Go: unless `GOTOOLCHAIN` is set to `local`, the `go` command downloads the required toolchain on first use.
+
+The packaging script does not compile the daemon, `shared`, or the web app. It copies their existing build output, so build them first. If the supervisor is running, its watch build has already done it and you can skip `npm run build`.
+
+```powershell
+npm install
+npm run build
+npm run package -w @nanachi/desktop
+```
+
+Add `-- --fresh` after the package command to rebuild the staged runtime, or `-- --skip-installer` to stop after the unpacked app.
+
+The build folder reaches several GB (the first build used about 4.5 GB), so it goes under `%LOCALAPPDATA%\nanachi-desktop-build` instead of the repository, which may live in OneDrive. Set `NANACHI_DESKTOP_BUILD_DIR` to another absolute path outside the repository to move it:
+
+| Output | Path inside the build folder |
+| --- | --- |
+| Installer | `release\Nanachi-Setup-<version>.exe` |
+| Unpacked app | `release\win-unpacked\Nanachi.exe` |
+| Tailscale sidecar | `stage\bin\nanachi-tsnet.exe` |
+
+The root `npm run build` does not build Desktop, so a Desktop build problem cannot stop the supervisor.
+
+### Install and uninstall
+
+Run `Nanachi-Setup-<version>.exe`. It opens its own window instead of a Windows wizard: **Instalar** (install), a progress bar, then **Abrir o Nanachi** (open Nanachi). **Opções** (options) changes the install folder, the desktop shortcut, and start with Windows; the last two are on by default. If Nanachi Desktop is running, the installer asks to close it.
+
+The install is per user and does not ask for administrator rights. The default folder is `%LOCALAPPDATA%\Programs\Nanachi`. It creates a Start Menu shortcut, a desktop shortcut unless you turn that off, and an uninstall entry for your user.
+
+To uninstall, remove **Nanachi** in Windows **Settings → Apps**, or run `Nanachi.exe --uninstall` from the install folder. A confirmation window opens and stops the daemon Desktop owns. Your data folder (sessions, devices, `config.json`) is kept unless you tick **Apagar também os dados do Nanachi** (also delete Nanachi's data).
+
+### Built-in Tailscale
+
+The **Tailscale embutido** switch in Settings → Desktop starts a small sidecar (`nanachi-tsnet`, built on Tailscale's `tsnet`) that serves the daemon over HTTPS. It is off by default.
+
+1. Turn it on and use **Entrar no Tailscale** (sign in to Tailscale) to approve this PC. It joins your tailnet as a separate device named `nanachi-<PC name>`. The Tailscale app installed on Windows, `tailscale serve`, and Funnel are not touched.
+2. When it connects, the panel shows **Endereço para o iPhone** (address for the iPhone), an `https://` address on your tailnet.
+3. On the iPhone, install the Tailscale app, sign in with the same account, open that address in Safari, and add it to the Home Screen. Pair with the code from **Gerar código de pareamento**.
+
+The tailnet needs **MagicDNS** and **HTTPS Certificates** enabled, the same as for `tailscale serve`. If your tailnet requires device approval, approve the new device in the Tailscale admin console. The sidecar sends the same identity headers as `tailscale serve`, so `allowedTailscaleLogins` still applies to phones that connect through it. You do not need it if you already use `tailscale serve` as described above.
+
+### Updates
+
+On start and from **Procurar atualização**, Desktop asks GitHub for the latest release of this repository (without a token). If a newer release has a `Nanachi-Setup-*.exe` asset, the panel shows **Nova versão** (new version) with a link to the release page. Desktop never downloads or installs anything by itself.
+
+### Desktop limits
+
+- **Not code-signed.** Windows SmartScreen will warn that the publisher is unknown.
+- **Large.** The installer is about 850 MiB (844 MiB for the first build) and the installed app about 1.3 GiB, mostly Electron, Node.js, and the native binaries of the Claude Code and Codex SDKs.
+- **Windows x64 only.**
+- **Portuguese only.** The tray, the installer, and the uninstaller are not translated. The panel's content follows the app [language](#language).
+- **The local panel can be blocked by `allowedTailscaleLogins`.** With that list set, which the setup above recommends, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`. The panel then shows an explanation page instead of the app. This is unresolved and the daemon's authentication is unchanged. Its own message suggests a separate data folder (`NANACHI_HOME`) for Desktop or opening the Tailscale address instead. A separate folder has its own `config.json`, and an empty `allowedTailscaleLogins` accepts any login forwarded by Tailscale, so read [Security](#security-without-the-fine-print) before choosing that.
+- **Not tested on a clean machine or a real iPhone.** The unit tests, the Go tests, and the smoke scripts use temporary folders and a fake sidecar. Not checked: the installer on a fresh Windows, the SmartScreen prompt, the Tailscale login and HTTPS serving to a phone through the built-in node, and start with Windows after a reboot.
+
 ## More than one PC
 
 Each PC has its own daemon and data. Install the web app once, then add your other machines to it.
@@ -284,7 +439,7 @@ Nanachi lets you control processes running as **your Windows user**. Treat a pai
 - Each device receives its own token. The database stores its hash, not the original token. Pairing codes expire after 5 minutes and have an attempt limit.
 - **`allowedRoots` does not isolate the agent.** It can access other folders with your user's permissions. Use the agent's approval modes, especially with third-party projects.
 - Lost your phone? Revoke it under **Settings → Devices on this machine (Ajustes → Dispositivos desta máquina)** or through the CLI below. Revocation closes the connection.
-- Do not publish `config.json` with personal data, `data.db`, `vapid.json`, tokens, attachments, or logs from your data folder.
+- Do not publish `config.json` with personal data, `data.db`, `vapid.json`, tokens, attachments, or logs from your data folder. The `accounts` folder there holds the credentials of extra [agent accounts](#agent-accounts).
 - Do not use Funnel or expose the daemon's port to the internet.
 
 <details>
@@ -313,6 +468,7 @@ Run these from the repository root. Startup commands use the output of `npm run 
 | `npm run autostart -w @nanachi/daemon -- uninstall` | Remove the sign-in shortcut; does not stop running processes. |
 | `npm run vapid -w @nanachi/daemon -- show` | Show the push key path and its public part. |
 | `npm run supervise` | Build and watch builds and the daemon in the terminal. |
+| `npm run package -w @nanachi/desktop` | Build the [Nanachi Desktop](#nanachi-desktop) installer from the existing build output. |
 
 <details>
 <summary><strong>config.json reference</strong></summary>
@@ -350,6 +506,8 @@ An entry in `agents` overrides the default for the same ID. Default agents not d
 | Antigravity asks for login or folder trust | Open `agy` once on your PC and answer its prompts in the desired folder. |
 | Screenshots are black | Run the daemon in your user's desktop session. A Windows service cannot see the same desktop. |
 | Port 7777 is in use | Do not mix a manual daemon and supervisor on the same port. If you change `port`, update Tailscale Serve too. |
+| Nanachi Desktop shows "O painel local não consegue usar este daemon" | `allowedTailscaleLogins` is set and the local panel has no Tailscale identity. See [Desktop limits](#desktop-limits). |
+| A reset's result is unclear ("Não deu para confirmar...") | Refresh the usage and check the saved resets count before trying again. See [Saved rate-limit resets](#saved-rate-limit-resets). |
 | Error reading `config.json` | Check for valid JSON and inspect the field named in the message. PowerShell 5.1's UTF-8 BOM is accepted. |
 
 ## Working on the code
@@ -361,6 +519,7 @@ packages/
   shared/   Protocol types and Zod schemas
   daemon/   Fastify API, WebSocket, SQLite, agents, and CLI
   pwa/      React, Vite, service worker, and mobile interface
+  desktop/  Nanachi Desktop: Electron shell, tray, installer, and the Go Tailscale sidecar
 e2e/        End-to-end scenarios with Playwright and Edge
 ```
 
@@ -371,7 +530,7 @@ npm test
 npm run typecheck
 ```
 
-For integrated reloading, use `npm run supervise`. You can also use `npm run dev -w @nanachi/daemon` and `npm run dev -w @nanachi/pwa` to work on individual packages; build `shared` first. Vite proxies `/api` and `/ws` to `127.0.0.1:7777`. Check installation and notifications with the **built PWA served over HTTPS**, not just the development server.
+For integrated reloading, use `npm run supervise`. You can also use `npm run dev -w @nanachi/daemon` and `npm run dev -w @nanachi/pwa` to work on individual packages; build `shared` first. Vite proxies `/api` and `/ws` to `127.0.0.1:7777`. Check installation and notifications with the **built PWA served over HTTPS**, not just the development server. `npm run dev -w @nanachi/desktop` compiles Nanachi Desktop and starts it in Electron against the repository's daemon build, so run `npm run build` first.
 
 <details>
 <summary><strong>End-to-end tests</strong></summary>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -37,6 +38,7 @@ interface CopyButtonProps {
 
 /** Icon button that copies `text` and shows a check mark for a moment. */
 export function CopyButton({ text, label }: CopyButtonProps) {
+  const { t } = useTranslation('accounts');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function CopyButton({ text, label }: CopyButtonProps) {
       variant="outline"
       size="icon"
       data-slot="copy-button"
-      aria-label={copied ? 'Copiado' : label}
+      aria-label={copied ? t('copy.copied') : label}
       onClick={() => {
         void copyText(text).then((done) => setCopied(done));
       }}

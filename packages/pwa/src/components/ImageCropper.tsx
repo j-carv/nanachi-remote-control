@@ -1,4 +1,5 @@
 import { useRef, useState, type SyntheticEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type PercentCrop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { X } from 'lucide-react';
@@ -18,19 +19,6 @@ interface ImageCropperProps {
   /** Recebe o arquivo recortado, já no formato do original (JPEG ou PNG). */
   onConfirm(file: File): void;
 }
-
-/** Rótulos das alças do recorte em português (o padrão da biblioteca é inglês). */
-const CROP_LABELS = {
-  cropArea: 'Área do recorte',
-  nwDragHandle: 'Alça do canto superior esquerdo',
-  nDragHandle: 'Alça de cima',
-  neDragHandle: 'Alça do canto superior direito',
-  eDragHandle: 'Alça da direita',
-  seDragHandle: 'Alça do canto inferior direito',
-  sDragHandle: 'Alça de baixo',
-  swDragHandle: 'Alça do canto inferior esquerdo',
-  wDragHandle: 'Alça da esquerda',
-};
 
 /** Fração da imagem que a moldura inicial ocupa, antes de o usuário mexer. */
 const INITIAL_FRAME_PERCENT = 90;
@@ -56,6 +44,7 @@ function freeFrame(): PercentCrop {
  * decide o que Esc e o voltar do navegador fazem.
  */
 export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfirm }: ImageCropperProps) {
+  const { t } = useTranslation('files');
   const image = useRef<HTMLImageElement>(null);
   const [preset, setPreset] = useState<CropPresetId>('free');
   const [crop, setCrop] = useState<PercentCrop>(freeFrame);
@@ -108,13 +97,13 @@ export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfir
   return (
     <div data-slot="image-cropper" className="flex min-h-0 flex-1 flex-col text-white">
       <div className="flex items-center gap-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pr-2 pb-2 pl-4">
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">Recortar</span>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{t('cropper.title')}</span>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="text-white hover:bg-white/15"
-          aria-label="Cancelar recorte"
+          aria-label={t('cropper.cancel')}
           onClick={onCancel}
         >
           <X aria-hidden="true" />
@@ -125,7 +114,17 @@ export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfir
         <ReactCrop
           crop={crop}
           {...aspectProps}
-          ariaLabels={CROP_LABELS}
+          ariaLabels={{
+            cropArea: t('cropper.handles.cropArea'),
+            nwDragHandle: t('cropper.handles.nwDragHandle'),
+            nDragHandle: t('cropper.handles.nDragHandle'),
+            neDragHandle: t('cropper.handles.neDragHandle'),
+            eDragHandle: t('cropper.handles.eDragHandle'),
+            seDragHandle: t('cropper.handles.seDragHandle'),
+            sDragHandle: t('cropper.handles.sDragHandle'),
+            swDragHandle: t('cropper.handles.swDragHandle'),
+            wDragHandle: t('cropper.handles.wDragHandle'),
+          }}
           ruleOfThirds
           keepSelection
           onChange={(pixel, percent) => {
@@ -146,7 +145,7 @@ export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfir
       </div>
 
       <div className="flex flex-col gap-2 px-4 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
-        <div role="group" aria-label="Proporção do recorte" className="grid grid-cols-4 gap-1.5">
+        <div role="group" aria-label={t('cropper.ratio')} className="grid grid-cols-4 gap-1.5">
           {CROP_PRESETS.map((option) => (
             <button
               key={option.id}
@@ -164,7 +163,7 @@ export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfir
         </div>
         {failed && (
           <p role="alert" className="text-sm text-white">
-            Não foi possível recortar esta imagem.
+            {t('cropper.failed')}
           </p>
         )}
         <Button
@@ -175,7 +174,7 @@ export function ImageCropper({ src, name, mime, confirmLabel, onCancel, onConfir
           disabled={busy || pixels === null}
           onClick={() => void confirm()}
         >
-          {busy ? 'Recortando…' : confirmLabel}
+          {busy ? t('cropper.cropping') : confirmLabel}
         </Button>
       </div>
     </div>

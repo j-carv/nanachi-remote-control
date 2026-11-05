@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { UsageResponse } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { ApiError } from '../api.js';
 import { parseUsage } from '../usage/parseUsage.js';
 import type { SessionAccountInfo } from '../agentAccounts.js';
@@ -403,5 +404,88 @@ describe('UsageAccountLine', () => {
   it('o nome vai como texto, nunca como HTML', () => {
     const html = render({ label: '<i>x</i>', email: null });
     expect(html).not.toContain('<i>x</i>');
+  });
+});
+
+describe('the usage drawer in English', () => {
+  it('updatedLabel says when the numbers are from', () => {
+    setLanguage('en');
+    expect(updatedLabel(NOW - 5 * MINUTE_MS, NOW)).toBe('Updated 5 min ago');
+    expect(updatedLabel(NOW - 5 * MINUTE_MS, NOW, true)).toBe('Updated 5 min ago · from cache');
+  });
+
+  it('the account line', () => {
+    setLanguage('en');
+    const html = renderToStaticMarkup(createElement(UsageAccountLine, { account: { label: 'Work', email: 'work@example.com' } }));
+    expect(html).toContain('Account:');
+    expect(html).toContain('work@example.com');
+  });
+
+  it('the limit cards, session tiles and footer of a claude reply', () => {
+    setLanguage('en');
+    const html = renderToStaticMarkup(
+      createElement(UsageContent, { state: ready('claude', CLAUDE_TEXT), now: NOW, onRefresh: noop, onResume: noop }),
+    );
+    expect(html).toContain('Limits');
+    expect(html).toContain('5 hours');
+    expect(html).toContain('Weekly');
+    expect(html).toContain('Resets Nov 4, 12:30 PM GMT-3');
+    expect(html).toContain('aria-label="Usage: 5 hours"');
+    expect(html).toContain('aria-label="Refresh usage"');
+    expect(html).toContain('Updated now');
+    expect(html).toContain('Details');
+    expect(html).not.toContain('Renova');
+  });
+
+  it('the session tiles and the token rows', () => {
+    setLanguage('en');
+    const text = [
+      '### This session',
+      '',
+      '| Cost | API time | Active |',
+      '|:--|:--|:--|',
+      '| $0.42 | 3m 10s | 14m |',
+      '',
+      '| Breakdown | Tokens |',
+      '|:--|--:|',
+      '| Input | 1.2k |',
+      '| Output | 35.4k |',
+      '| Cache read | 2.1M |',
+      '| Cache write | 180k |',
+    ].join('\n');
+    const html = renderToStaticMarkup(
+      createElement(UsageContent, { state: ready('claude', text), now: NOW, onRefresh: noop, onResume: noop }),
+    );
+    for (const label of ['Session', 'Cost', 'Tokens', 'Active time', 'Input', 'Output', 'Cache (read)', 'Cache (write)', 'API time']) {
+      expect(html).toContain('>' + label + '<');
+    }
+    expect(html).toContain('$0.42');
+    expect(html).toContain('2.3M');
+  });
+
+  it('an omp reply: the agent reset text keeps its words and the card says "Resets in"', () => {
+    setLanguage('en');
+    const html = renderToStaticMarkup(
+      createElement(UsageContent, { state: ready('omp', OMP_TEXT), now: NOW, onRefresh: noop, onResume: noop }),
+    );
+    expect(html).toContain('Resets in 2h');
+    expect(html).toContain('in use');
+  });
+
+  it('loading, empty and error states', () => {
+    setLanguage('en');
+    const loading = renderToStaticMarkup(createElement(UsageContent, { state: { status: 'loading' }, now: NOW, onRefresh: noop, onResume: noop }));
+    expect(loading).toContain('aria-label="Loading usage"');
+    const empty = renderToStaticMarkup(createElement(UsageContent, { state: ready('omp', ' '), now: NOW, onRefresh: noop, onResume: noop }));
+    expect(empty).toContain('The agent returned nothing.');
+    const error = renderToStaticMarkup(
+      createElement(UsageContent, {
+        state: { status: 'error', error: new ApiError('unexpected', 409, null, 'session_not_active') },
+        now: NOW,
+        onRefresh: noop,
+        onResume: noop,
+      }),
+    );
+    expect(error).toContain('>Resume</button>');
   });
 });

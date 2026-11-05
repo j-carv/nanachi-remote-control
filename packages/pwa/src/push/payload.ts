@@ -1,5 +1,7 @@
 import { DevicePairedPushPayloadSchema, PushPayloadSchema } from '@nanachi/shared';
 
+// The daemon writes push texts in Portuguese, and the service worker cannot read the app language (it must not bundle
+// i18next), so the fallback shown for an unreadable payload stays Portuguese too. See the i18n README.
 export const FALLBACK_TITLE = 'Nanachi Remote';
 export const FALLBACK_BODY = 'Nova atividade no seu PC';
 

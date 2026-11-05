@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, SquareTerminal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Session, ShellId, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { useAsync } from '../useAsync.js';
@@ -27,6 +28,7 @@ interface ShellSheetProps {
  * terminal na pasta do workspace (a sessão já nasce rodando, sem perguntar mais nada).
  */
 export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetProps) {
+  const { t } = useTranslation('terminal');
   const shells = useAsync(() => api.fetchShells(), [api]);
   const [creating, setCreating] = useState<ShellId | null>(null);
   const [createError, setCreateError] = useState<unknown>(null);
@@ -56,18 +58,18 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Terminal</DrawerTitle>
-          <DrawerDescription>Abre um terminal na pasta de {workspace.name}.</DrawerDescription>
+          <DrawerTitle>{t('shellSheet.title')}</DrawerTitle>
+          <DrawerDescription>{t('shellSheet.hint', { name: workspace.name })}</DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-4 overflow-y-auto px-5 pt-4 pb-[max(env(safe-area-inset-bottom),16px)]">
           <ErrorNotice error={error} />
 
           {shells.data !== null && shells.error === null && ordered.length === 0 && (
-            <p className="text-muted-foreground">Nenhum terminal disponível neste PC.</p>
+            <p className="text-muted-foreground">{t('shellSheet.none')}</p>
           )}
 
           {ordered.length > 0 && (
-            <ListGroup label="Shells disponíveis">
+            <ListGroup label={t('shellSheet.listLabel')}>
               {ordered.map((shell) => (
                 <li key={shell.id}>
                   <button
@@ -81,10 +83,10 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
                     <SquareTerminal className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                       <span className="text-base">{shell.label}</span>
-                      {shell.isDefault && <span className="text-sm text-muted-foreground">Padrão deste PC</span>}
+                      {shell.isDefault && <span className="text-sm text-muted-foreground">{t('shellSheet.default')}</span>}
                     </span>
                     {shell.isDefault && <Check className="size-5 shrink-0 text-foreground" aria-hidden="true" />}
-                    {creating === shell.id && <span className="text-sm text-muted-foreground">Abrindo…</span>}
+                    {creating === shell.id && <span className="text-sm text-muted-foreground">{t('shellSheet.opening')}</span>}
                   </button>
                 </li>
               ))}
@@ -92,7 +94,7 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
           )}
 
           <Button variant="ghost" size="wide" onClick={onClose}>
-            Cancelar
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
         </div>
       </DrawerContent>

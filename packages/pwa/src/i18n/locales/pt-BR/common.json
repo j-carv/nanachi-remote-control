@@ -1,0 +1,70 @@
+{
+  "actions": {
+    "back": "Voltar",
+    "cancel": "Cancelar",
+    "pairAgain": "Parear de novo",
+    "gotIt": "Entendi"
+  },
+  "states": {
+    "loading": "Carregando…",
+    "wait": "Aguarde…"
+  },
+  "fields": {
+    "name": "Nome"
+  },
+  "showAll_one": "Mostrar tudo ({{count}} linha)",
+  "showAll_other": "Mostrar tudo ({{count}} linhas)",
+  "sessionStatus": {
+    "starting": "Iniciando",
+    "idle": "Pronta",
+    "running": "Trabalhando",
+    "awaiting_permission": "Aguarda permissão",
+    "stopped": "Encerrada",
+    "error": "Erro",
+    "runningTerminal": "Em execução",
+    "stoppedTerminal": "Encerrado"
+  },
+  "sessionTitle": {
+    "default": "Nova sessão",
+    "terminal": "{{agent}} · terminal"
+  },
+  "relativeTime": {
+    "now": "agora",
+    "minutes": "há {{minutes}} min",
+    "hours": "há {{hours}} h",
+    "yesterday": "ontem"
+  },
+  "access": {
+    "saveFailed": "Não foi possível salvar o acesso neste aparelho",
+    "readFailed": "Não foi possível ler os acessos salvos neste aparelho. Pareie de novo para continuar."
+  },
+  "removeMachineConfirm": "Remover \"{{name}}\" deste celular?",
+  "update": {
+    "available": "Nova versão do Nanachi",
+    "action": "Atualizar"
+  },
+  "forceUpdate": {
+    "button": "Forçar atualização do app",
+    "title": "Forçar atualização",
+    "description": "Baixa a versão mais recente do Nanachi e recarrega o app. Seus pareamentos ficam salvos.",
+    "version": "Versão: {{id}}",
+    "unknownBuild": "desconhecida",
+    "failed": "Não foi possível atualizar: {{reason}}",
+    "unexpected": "erro inesperado",
+    "start": "Atualizar agora",
+    "retry": "Tentar de novo",
+    "phase": {
+      "checking": "Procurando versão nova…",
+      "downloading": "Baixando versão nova…",
+      "clearing": "Limpando o cache…",
+      "reloading": "Recarregando o app…"
+    },
+    "reason": {
+      "registration": "o navegador não respondeu ao service worker",
+      "update": "sem conexão para verificar a versão nova",
+      "caches": "não foi possível apagar o cache",
+      "refill": "não foi possível recarregar os arquivos do app",
+      "unregister": "não foi possível reiniciar o service worker"
+    }
+  }
+}

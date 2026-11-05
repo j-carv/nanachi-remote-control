@@ -26,7 +26,7 @@ function TextOutput({ text }: { text: string }) {
       <pre className="m-0 overflow-x-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-5 whitespace-pre text-foreground">
         {shown}
       </pre>
-      <ShowAll hidden={expanded ? 0 : clipped.hidden} unit="linhas" onExpand={() => setExpanded(true)} />
+      <ShowAll hidden={expanded ? 0 : clipped.hidden} onExpand={() => setExpanded(true)} />
     </>
   );
 }

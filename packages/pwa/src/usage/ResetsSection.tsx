@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CircleCheck, Info, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import type { ResetEntry } from '@nanachi/shared';
 import { Badge } from '@/components/ui/badge';
@@ -28,8 +29,9 @@ import { SkeletonBlock } from './UsageView.js';
 
 /** Placeholder while the list loads: the shape of one row. */
 function ResetsSkeleton() {
+  const { t } = useTranslation('usage');
   return (
-    <div role="status" aria-label="Carregando resets" className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+    <div role="status" aria-label={t('loading.resets')} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
       <SkeletonBlock className="h-5 w-2/3" />
       <SkeletonBlock className="h-4 w-1/2" />
     </div>
@@ -62,6 +64,7 @@ function RedeemResultBody({ result }: { result: RedeemResult }) {
  * the user dismisses it, so it is still there when a redeem ended while the usage panel was closed.
  */
 export function RedeemResultNotice({ result, onDismiss }: { result: RedeemResult; onDismiss?: (() => void) | undefined }) {
+  const { t } = useTranslation('usage');
   if (onDismiss === undefined) return <RedeemResultBody result={result} />;
   return (
     <div className="flex items-start gap-1">
@@ -72,7 +75,7 @@ export function RedeemResultNotice({ result, onDismiss }: { result: RedeemResult
         type="button"
         variant="ghost"
         size="icon"
-        aria-label="Dispensar aviso"
+        aria-label={t('resets.dismiss')}
         data-slot="reset-result-dismiss"
         onClick={onDismiss}
       >
@@ -93,6 +96,7 @@ interface ResetRowProps {
 }
 
 function ResetRow({ entry, now, redeeming, spinning, onAsk }: ResetRowProps) {
+  const { t } = useTranslation('usage');
   const expiry = resetExpiryText(entry.expiresAt, now);
   return (
     <li data-slot="reset-row" className="flex items-center gap-3 px-4 py-3">
@@ -108,13 +112,13 @@ function ResetRow({ entry, now, redeeming, spinning, onAsk }: ResetRowProps) {
       <Button
         type="button"
         variant="outline"
-        aria-label={`Usar reset de ${entry.accountLabel}`}
+        aria-label={t('resets.useFor', { account: entry.accountLabel })}
         aria-busy={spinning ? true : undefined}
         disabled={!canRedeem(entry, redeeming)}
         onClick={onAsk}
       >
         {spinning && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-        Usar reset
+        {t('resets.use')}
       </Button>
     </li>
   );
@@ -122,13 +126,14 @@ function ResetRow({ entry, now, redeeming, spinning, onAsk }: ResetRowProps) {
 
 /** The two buttons of the confirmation. Only "Usar reset" spends anything; "Cancelar" is the one focused first. */
 export function ResetConfirmActions({ onCancel, onConfirm }: { onCancel(): void; onConfirm(): void }) {
+  const { t } = useTranslation('usage');
   return (
     <DrawerFooter className="flex-row">
       <Button type="button" variant="secondary" className="flex-1" data-slot="reset-cancel" onClick={onCancel}>
-        Cancelar
+        {t('actions.cancel', { ns: 'common' })}
       </Button>
       <Button type="button" className="flex-1" data-slot="reset-confirm" onClick={onConfirm}>
-        Usar reset
+        {t('resets.use')}
       </Button>
     </DrawerFooter>
   );
@@ -181,13 +186,14 @@ interface ResetsSectionProps {
  * confirmation; only the confirmation's "Usar reset" calls `onRedeem`. While a redeem runs every row button is disabled.
  */
 export function ResetsSection({ list, redeem, now, onRedeem, onDismissRedeem }: ResetsSectionProps) {
+  const { t } = useTranslation('usage');
   const [asking, setAsking] = useState<ResetEntry | null>(null);
   const redeeming = redeem.status === 'running';
 
   return (
     <section aria-labelledby="usage-resets" className="flex flex-col gap-2">
       <SectionHeading id="usage-resets" icon={RotateCcw}>
-        Resets salvos
+        {t('resets.title')}
       </SectionHeading>
 
       {redeem.status === 'done' && <RedeemResultNotice result={redeem.result} onDismiss={onDismissRedeem} />}
@@ -196,11 +202,11 @@ export function ResetsSection({ list, redeem, now, onRedeem, onDismissRedeem }: 
       {list.status === 'error' && <ErrorNotice message={describeResetsError(list.error)} />}
       {list.status === 'ready' && list.entries.length === 0 && (
         <p data-slot="reset-message" className="px-1 text-sm text-muted-foreground">
-          {list.message ?? 'Nenhum reset salvo.'}
+          {list.message ?? t('resets.empty')}
         </p>
       )}
       {list.status === 'ready' && list.entries.length > 0 && (
-        <ListGroup label="Resets salvos">
+        <ListGroup label={t('resets.title')}>
           {list.entries.map((entry, index) => (
             <ResetRow
               key={`${index}-${entry.target}`}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { CROP_PRESETS, croppedFileName, cropOutputMime, presetRatio, sourceRect } from './cropMath.js';
 
 describe('sourceRect', () => {
@@ -67,5 +68,13 @@ describe('presetRatio', () => {
 
   it('os rótulos são os da interface, na ordem Livre, 1:1, 4:3, 16:9', () => {
     expect(CROP_PRESETS.map((preset) => preset.label)).toEqual(['Livre', '1:1', '4:3', '16:9']);
+  });
+});
+
+describe('crop texts in English', () => {
+  it('names the free preset and the cropped file in English', () => {
+    setLanguage('en');
+    expect(CROP_PRESETS.map((preset) => preset.label)).toEqual(['Free', '1:1', '4:3', '16:9']);
+    expect(croppedFileName('photo.jpeg', 'image/jpeg')).toBe('photo-cropped.jpg');
   });
 });

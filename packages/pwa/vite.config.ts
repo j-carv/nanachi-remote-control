@@ -70,5 +70,7 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts', 'build/**/*.test.ts'],
+    // Every test starts in pt-BR (the tests assert Portuguese texts); see src/i18n/vitest.setup.ts.
+    setupFiles: ['./src/i18n/vitest.setup.ts'],
   },
 });

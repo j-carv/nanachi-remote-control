@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api.js';
+import { setLanguage } from './i18n/index.js';
 import { normalizeTypedPath, typedPathErrorText } from './folderPath.js';
 
 describe('normalizeTypedPath', () => {
@@ -64,5 +65,19 @@ describe('typedPathErrorText', () => {
     expect(typedPathErrorText(new ApiError('network'))).toBe(
       'Não consegui falar com o PC. Confira o endereço e se o Tailscale está conectado.',
     );
+  });
+});
+
+describe('typedPathErrorText in English', () => {
+  it('writes the three folder refusals in English', () => {
+    setLanguage('en');
+    expect(typedPathErrorText(new ApiError('outside_roots', 403))).toBe('Outside the folders allowed on your PC');
+    expect(typedPathErrorText(new ApiError('not_found', 404))).toBe('Folder not found');
+    expect(typedPathErrorText(new ApiError('not_a_directory', 400))).toBe('That is not a folder');
+  });
+
+  it('other errors use the general API text in English', () => {
+    setLanguage('en');
+    expect(typedPathErrorText(new ApiError('network'))).toContain('Could not reach the PC');
   });
 });

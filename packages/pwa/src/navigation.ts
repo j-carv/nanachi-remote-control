@@ -37,7 +37,7 @@ export function initialNav(route: Route): NavState {
 
 export function activeRoute(nav: NavState): Route {
   const route = nav.routes[nav.index];
-  if (route === undefined) throw new Error('pilha de telas vazia');
+  if (route === undefined) throw new Error('screen stack is empty');
   return route;
 }
 

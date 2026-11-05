@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Redo2, TextWrap, Undo2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { redo, undo } from '@codemirror/commands';
 import { EditorState, type Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -44,6 +45,7 @@ function nameOf(path: string): string {
  * pede confirmação.
  */
 export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScreenProps) {
+  const { t } = useTranslation('workspace');
   const file = useAsync(() => api.fsReadFile(workspace.id, path), [api, workspace.id, path]);
   const name = nameOf(path);
   const language = languageKeyFor(name);
@@ -135,7 +137,7 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
   }
 
   function goBack() {
-    if (dirty && !window.confirm('Descartar as alterações não salvas?')) return;
+    if (dirty && !window.confirm(t('editor.discardConfirm'))) return;
     nav.back();
   }
 
@@ -152,16 +154,16 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
 
       {file.data !== null && (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label="Desfazer" onClick={() => viewRef.current && undo(viewRef.current)}>
+          <Button variant="ghost" size="icon" aria-label={t('editor.undo')} onClick={() => viewRef.current && undo(viewRef.current)}>
             <Undo2 aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Refazer" onClick={() => viewRef.current && redo(viewRef.current)}>
+          <Button variant="ghost" size="icon" aria-label={t('editor.redo')} onClick={() => viewRef.current && redo(viewRef.current)}>
             <Redo2 aria-hidden="true" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Quebra de linha"
+            aria-label={t('editor.wrap')}
             aria-pressed={wrapping}
             className={wrapping ? 'bg-accent' : undefined}
             onClick={toggleWrap}
@@ -172,7 +174,7 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
             {dirty && (
               <>
                 <span className="size-2 shrink-0 rounded-full bg-foreground" aria-hidden="true" />
-                <span className="truncate">Não salvo</span>
+                <span className="truncate">{t('editor.unsaved')}</span>
               </>
             )}
           </span>
@@ -180,18 +182,18 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
             disabled={!dirty || saving || etagRef.current === null}
             onClick={() => saveRef.current()}
           >
-            {saving ? 'Salvando…' : 'Salvar'}
+            {saving ? t('editor.saving') : t('editor.save')}
           </Button>
         </div>
       )}
 
       <ErrorNotice error={error} onRepair={onRepair} />
-      {file.data === null && file.error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
+      {file.data === null && file.error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
 
       {file.data !== null && (
         <div
           ref={hostRef}
-          aria-label={`Editor de ${name}`}
+          aria-label={t('editor.label', { name })}
           className="h-[68dvh] min-h-64 overflow-hidden rounded-xl border border-border bg-card"
         />
       )}
@@ -206,9 +208,9 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
         >
           <DrawerContent>
             <DrawerHeader>
-              <DrawerTitle>O arquivo mudou no PC</DrawerTitle>
+              <DrawerTitle>{t('editor.conflict.title')}</DrawerTitle>
               <DrawerDescription className="text-base leading-6 text-foreground/80">
-                Outro programa salvou este arquivo depois que você abriu. Escolha o que fazer com as suas edições.
+                {t('editor.conflict.description')}
               </DrawerDescription>
             </DrawerHeader>
             <DrawerFooter>
@@ -216,13 +218,13 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
                 setConflictEtag(null);
                 file.reload();
               }} disabled={saving}>
-                Recarregar do PC (perde suas edições)
+                {t('editor.conflict.reload')}
               </Button>
               <Button variant="destructive" size="wide" onClick={() => void saveWith(conflictEtag)} disabled={saving}>
-                {saving ? 'Sobrescrevendo…' : 'Sobrescrever mesmo assim'}
+                {saving ? t('editor.conflict.overwriting') : t('editor.conflict.overwrite')}
               </Button>
               <Button variant="ghost" size="wide" onClick={() => setConflictEtag(null)} disabled={saving}>
-                Cancelar
+                {t('actions.cancel', { ns: 'common' })}
               </Button>
             </DrawerFooter>
           </DrawerContent>

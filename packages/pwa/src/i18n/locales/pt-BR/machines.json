@@ -1,0 +1,52 @@
+{
+  "status": {
+    "online": {
+      "label": "Online",
+      "hint": "Conectado ao daemon desta máquina."
+    },
+    "connecting": {
+      "label": "Conectando…",
+      "hint": "Abrindo a conexão com o PC."
+    },
+    "offline": {
+      "label": "Offline",
+      "hint": "Sem conexão com o PC. Tentando de novo automaticamente."
+    },
+    "unauthorized": {
+      "label": "Não autorizado",
+      "hint": "Este celular não tem mais acesso a esta máquina. Pareie de novo com um código novo."
+    }
+  },
+  "main": {
+    "settings": "Ajustes",
+    "addMachine": "Adicionar máquina",
+    "machineStatus": "Estado da máquina",
+    "summary": "Resumo das máquinas",
+    "machines": "Máquinas",
+    "noneRunning": "Nenhuma sessão rodando",
+    "workspaces": "Workspaces",
+    "removeMachine": "Remover máquina"
+  },
+  "summary": {
+    "running": "{{count}} rodando",
+    "awaiting": "{{count}} aguardando você"
+  },
+  "card": {
+    "checking": "Verificando…",
+    "online": "Online · {{latencyMs}} ms",
+    "loading": "Carregando",
+    "noWorkspaces": "Nenhum workspace ainda. Adicione uma pasta em Workspaces.",
+    "workspaces_one": "{{count}} workspace",
+    "workspaces_other": "{{count}} workspaces",
+    "idle_one": "{{count}} pronta",
+    "idle_other": "{{count}} prontas",
+    "noSessions": "Nenhuma sessão ainda",
+    "lastActivity": "Última atividade {{time}}",
+    "agents": "Agentes logados",
+    "sessions": "Sessões",
+    "awaitingPermission": "Aguarda permissão",
+    "unauthorized": "Este celular não tem mais acesso a este PC. Pareie de novo.",
+    "noResponse": "Sem resposta do PC.",
+    "loadFailed": "Não foi possível carregar as sessões."
+  }
+}

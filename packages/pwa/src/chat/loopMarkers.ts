@@ -1,4 +1,5 @@
 import { LOOP_INTERVAL_MAX_MS, LOOP_INTERVAL_MIN_MS, parseLoopDuration } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 import { formatCountdown } from './loop.js';
 
 /*
@@ -46,7 +47,9 @@ function noteOf(text: string): string | null {
     if (marker !== undefined) last = marker;
   }
   if (last === undefined) return null;
-  return last.kind === 'stop' ? 'Loop encerrado pelo agente' : `Próxima rodada em ${formatCountdown(last.delayMs)}`;
+  return last.kind === 'stop'
+    ? t('chat:loop.status.endedByAgent')
+    : t('chat:loop.status.next', { time: formatCountdown(last.delayMs) });
 }
 
 /** Index where an unfinished marker starts at the end of the text, or -1. */

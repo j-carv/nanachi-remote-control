@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronRight, Folder, Plus, Trash } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
@@ -18,12 +19,13 @@ interface WorkspacesScreenProps {
 }
 
 export function WorkspacesScreen({ machineName, api, nav, onRepair }: WorkspacesScreenProps) {
+  const { t } = useTranslation('workspace');
   const list = useAsync(() => api.listWorkspaces(), [api]);
   const [actionError, setActionError] = useState<unknown>(null);
   const error = actionError ?? list.error;
 
   async function remove(workspace: Workspace) {
-    if (!window.confirm(`Remover "${workspace.name}"? As sessões dele são encerradas.`)) return;
+    if (!window.confirm(t('workspaces.confirmRemove', { name: workspace.name }))) return;
     try {
       await api.deleteWorkspace(workspace.id);
       setActionError(null);
@@ -38,11 +40,11 @@ export function WorkspacesScreen({ machineName, api, nav, onRepair }: Workspaces
   return (
     <Screen>
       <ScreenHeader
-        title="Workspaces"
+        title={t('workspaces.title')}
         subtitle={machineName}
         onBack={() => nav.back()}
         actions={
-          <Button variant="ghost" size="icon" aria-label="Adicionar workspace" onClick={() => nav.push({ kind: 'folders' })}>
+          <Button variant="ghost" size="icon" aria-label={t('workspaces.add')} onClick={() => nav.push({ kind: 'folders' })}>
             <Plus aria-hidden="true" />
           </Button>
         }
@@ -50,15 +52,15 @@ export function WorkspacesScreen({ machineName, api, nav, onRepair }: Workspaces
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {workspaces === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
+      {workspaces === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
       {workspaces !== null && workspaces.length === 0 && (
         <p className="pl-1 text-muted-foreground">
-          Nenhum workspace ainda. Toque em + para escolher uma pasta do PC.
+          {t('workspaces.empty')}
         </p>
       )}
 
       {workspaces !== null && workspaces.length > 0 && (
-        <ListGroup label="Workspaces">
+        <ListGroup label={t('workspaces.title')}>
           {workspaces.map((workspace) => (
             <li key={workspace.id} className={listRowClass}>
               <button type="button" className={listMainClass} onClick={() => nav.push({ kind: 'sessions', workspace })}>
@@ -73,7 +75,7 @@ export function WorkspacesScreen({ machineName, api, nav, onRepair }: Workspaces
                 variant="ghost"
                 size="icon"
                 className="text-destructive"
-                aria-label={`Remover ${workspace.name}`}
+                aria-label={t('workspaces.remove', { name: workspace.name })}
                 onClick={() => void remove(workspace)}
               >
                 <Trash aria-hidden="true" />

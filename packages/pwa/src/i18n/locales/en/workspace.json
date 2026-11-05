@@ -1,0 +1,161 @@
+{
+  "agent": "Agent",
+  "terminalBadge": "terminal",
+  "workspaces": {
+    "title": "Workspaces",
+    "add": "Add workspace",
+    "empty": "No workspaces yet. Tap + to pick a folder on your PC.",
+    "confirmRemove": "Remove \"{{name}}\"? Its sessions will be stopped.",
+    "remove": "Remove {{name}}"
+  },
+  "sessions": {
+    "terminal": "Terminal",
+    "files": "Files",
+    "new": "New session",
+    "resume": "Resume from PC",
+    "muteTitle": "Mute notifications",
+    "muteHint": "Your phone won't be notified about this workspace's sessions.",
+    "empty": "No sessions in this workspace yet.",
+    "listLabel": "Sessions",
+    "stop": "Stop",
+    "stopNamed": "Stop {{title}}",
+    "removeFromApp": "Remove from app",
+    "moreActions": "More actions for {{title}}",
+    "confirmRemoveWorktree": "Remove the worktree too?"
+  },
+  "folders": {
+    "title": "Choose folder",
+    "allowed": "Allowed folders on your PC",
+    "typePath": "Type a path",
+    "checkingPath": "Checking path",
+    "goToPath": "Go to the typed path",
+    "roots": "Roots",
+    "parent": "Parent folder",
+    "empty": "No subfolders here.",
+    "listLabel": "Folders",
+    "adding": "Adding…",
+    "use": "Use this folder",
+    "pathError": {
+      "outside_roots": "Outside the folders allowed on your PC",
+      "not_found": "Folder not found",
+      "not_a_directory": "That is not a folder"
+    }
+  },
+  "files": {
+    "title": "Files",
+    "refresh": "Refresh",
+    "newFile": "New file",
+    "newFolder": "New folder",
+    "path": "Folder path",
+    "copied": "Path copied: {{path}}",
+    "empty": "Empty folder.",
+    "contents": "Contents of {{folder}}",
+    "moreActions": "More actions for {{name}}",
+    "rename": "Rename",
+    "delete": "Delete",
+    "copyPath": "Copy path",
+    "create": "Create",
+    "folder": "Folder",
+    "link": "Link",
+    "ignored": "{{kind}} · ignored by git",
+    "newFileHint": "In {{folder}}. The file opens in the editor as soon as it is created.",
+    "newFolderHint": "Inside {{folder}}.",
+    "renameHint": "Current name: {{name}}."
+  },
+  "entryName": {
+    "empty": "Enter a name.",
+    "tooLong": "Name too long (max 255 characters).",
+    "noSlashes": "Use a name without slashes.",
+    "notAllowed": "This name isn't allowed."
+  },
+  "deleteEntry": {
+    "title": "Delete {{name}}?",
+    "dir": "The folder is only deleted if it is empty. This can't be undone.",
+    "file": "The file is deleted from your PC. This can't be undone.",
+    "deleting": "Deleting…",
+    "confirm": "Delete"
+  },
+  "editor": {
+    "undo": "Undo",
+    "redo": "Redo",
+    "wrap": "Word wrap",
+    "unsaved": "Unsaved",
+    "save": "Save",
+    "saving": "Saving…",
+    "label": "Editor for {{name}}",
+    "discardConfirm": "Discard unsaved changes?",
+    "plainText": "Plain text",
+    "conflict": {
+      "title": "The file changed on your PC",
+      "description": "Another program saved this file after you opened it. Choose what to do with your edits.",
+      "reload": "Reload from PC (discards your edits)",
+      "overwrite": "Overwrite anyway",
+      "overwriting": "Overwriting…"
+    }
+  },
+  "branches": {
+    "detached": "Detached HEAD",
+    "chip": "Branch {{title}}. Switch branch",
+    "switchTitle": "Switch branch",
+    "switchHint": "Local branches of {{name}}",
+    "search": "Search branches",
+    "dirtyFiles": "Files with changes",
+    "andMore": "and {{count}} more",
+    "local": "Local branches",
+    "noMatch": "No branch with that name.",
+    "newNameLabel": "New branch name",
+    "newNamePlaceholder": "feature/my-branch",
+    "creating": "Creating…",
+    "create": "Create",
+    "new": "New branch"
+  },
+  "infoBar": {
+    "label": "Workspace status",
+    "noChanges": "no changes",
+    "changes_one": "{{count}} change",
+    "changes_other": "{{count}} changes"
+  },
+  "changesScreen": {
+    "title": "Changes",
+    "refresh": "Refresh changes",
+    "truncated": "The list was cut at the 1 MB limit. Files that did not fit are not shown here.",
+    "empty": "No changes in this session.",
+    "listLabel": "Changed files",
+    "status": {
+      "added": "New",
+      "modified": "Modified",
+      "deleted": "Deleted",
+      "renamed": "Renamed"
+    }
+  },
+  "diff": {
+    "newFile": "(new)",
+    "noText": "No text diff (binary or empty file)."
+  },
+  "newSession": {
+    "title": "New session",
+    "noAgents": "No agents configured in the daemon.",
+    "account": "Account",
+    "worktreeTitle": "In a separate worktree",
+    "worktreeHint": "Creates a branch and a folder just for this session; your checkout stays untouched.",
+    "options": "Options",
+    "noOptions": "No remembered options for this agent yet. They show up in the chat after the first session and are used here from then on.",
+    "creating": "Creating…",
+    "create": "Create session"
+  },
+  "resume": {
+    "title": "Resume from PC",
+    "hint": "{{name}} · sessions created in the terminal in this folder",
+    "noAgents": "No chat agents configured in the daemon.",
+    "importing": "Importing history…",
+    "opening": "Opening {{agent}} on your PC… this can take a few seconds",
+    "unsupported": "This agent doesn't list sessions.",
+    "none": "No sessions from this agent in this folder.",
+    "listLabel": "PC sessions",
+    "linked": "already in the app",
+    "loadMore": "Load more",
+    "close": "Close",
+    "untitled": "Untitled session",
+    "sessionOf": "Session from {{date}} at {{time}}"
+  }
+}

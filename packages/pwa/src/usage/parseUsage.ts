@@ -1,6 +1,7 @@
 import { stripAnsi } from '../chat/ansi.js';
+import { t } from '../i18n/index.js';
 
-/** One limit window, e.g. "5 horas" at 10% that resets in 2h. Labels are the UI text (Portuguese). */
+/** One limit window, e.g. "5 hours" at 10% that resets in 2h. Labels are the UI text, in the language current when the reply was parsed. */
 export interface UsageWindow {
   label: string;
   /** Percentage of the window already used, 0 to 100. `null` when the agent reply has no percentage. */
@@ -46,7 +47,7 @@ export interface ParsedUsage {
   session?: UsageSession;
   model?: string;
   extras: UsageExtra[];
-  /** Text the parser did not understand, as markdown. Shown under "Detalhes". */
+  /** Text the parser did not understand, as markdown. Shown under "Detalhes" ("Details"). */
   unparsed: string;
 }
 
@@ -197,11 +198,11 @@ function readTable(lines: readonly string[], start: number): { rows: string[][];
 const CLAUDE_LIMIT = /^(.+?)\s+—\s+(?:(\d+(?:\.\d+)?)%\s*)?(?:·\s*)?(?:Resets\s+(.+))?$/;
 
 function claudeLabel(raw: string): string {
-  if (/^5-hour limit$/i.test(raw)) return '5 horas';
+  if (/^5-hour limit$/i.test(raw)) return t('usage:windows.fiveHours');
   const weekly = /^Weekly\s*·\s*(.+)$/i.exec(raw);
   if (weekly !== null) {
     const scope = (weekly[1] ?? '').trim();
-    return scope.toLowerCase() === 'all models' ? 'Semanal' : `Semanal · ${scope}`;
+    return scope.toLowerCase() === 'all models' ? t('usage:windows.weekly') : t('usage:windows.weeklyScope', { scope });
   }
   return raw;
 }
@@ -292,7 +293,7 @@ function applySessionTable(out: Outcome, rows: readonly string[][]): boolean {
     const apiTime = cell('api time');
     if (cost !== null) session.costUsd = cost;
     if (active !== '') session.durationText = active;
-    if (apiTime !== '') out.extras.push({ label: 'Tempo de API', value: apiTime });
+    if (apiTime !== '') out.extras.push({ label: t('usage:info.apiTime'), value: apiTime });
     out.session = session;
     return true;
   }
@@ -320,11 +321,11 @@ function applySessionTable(out: Outcome, rows: readonly string[][]): boolean {
 /** "Cursor Models — Monthly", "5 hours", "7 days": the window headers are the lines that start with "- ". */
 function ompLabel(name: string): string {
   const hours = /^(\d+) hours?$/i.exec(name);
-  if (hours !== null) return hours[1] === '1' ? '1 hora' : `${hours[1]} horas`;
+  if (hours !== null) return t('usage:windows.hours', { count: Number(hours[1]) });
   const days = /^(\d+) days?$/i.exec(name);
-  if (days !== null) return days[1] === '1' ? '1 dia' : `${days[1]} dias`;
+  if (days !== null) return t('usage:windows.days', { count: Number(days[1]) });
   const monthly = /^(.+?) — Monthly$/i.exec(name);
-  if (monthly !== null) return `${monthly[1]} · Mensal`;
+  if (monthly !== null) return t('usage:windows.monthly', { name: monthly[1] ?? '' });
   return name;
 }
 
@@ -390,7 +391,7 @@ function readOmpBlock(name: string, provider: string | undefined, rows: readonly
   }
 
   const label = ompLabel(name);
-  const resetsAt = resets !== undefined ? `em ${resets.text}` : undefined;
+  const resetsAt = resets !== undefined ? t('usage:windows.resetsIn', { time: resets.text }) : undefined;
   const consumed = [usage?.index, usd?.index, bar?.index, resets?.index].filter((index): index is number => index !== undefined);
 
   if (usage !== undefined) {
@@ -475,14 +476,28 @@ const CODEX_LIMIT = /^(?:codex\s+)?(.+?)\s+limit:\s*(\d+(?:\.\d+)?)%\s*(left|use
 const CODEX_ACCOUNT = /^(\S+)\s+(\S+)\s+\((.+)\)$/;
 
 function codexLabel(raw: string): string {
-  if (/^5h$/i.test(raw)) return '5 horas';
-  if (/^weekly$/i.test(raw)) return 'Semanal';
+  if (/^5h$/i.test(raw)) return t('usage:windows.fiveHours');
+  if (/^weekly$/i.test(raw)) return t('usage:windows.weekly');
   return raw;
 }
 
-/** codex prints "data not available yet" until the first turn; shown in Portuguese. */
+/** codex prints "data not available yet" until the first turn; shown as "unavailable" in the current language. */
 function codexValue(raw: string): string {
-  return raw === 'data not available yet' ? 'indisponível' : raw;
+  return raw === 'data not available yet' ? t('usage:info.unavailable') : raw;
+}
+
+/** The label of a codex extra line (`token usage`, `context window`, `credits`), or undefined for any other name. */
+function codexExtraLabel(name: string): string | undefined {
+  switch (name) {
+    case 'token usage':
+      return t('usage:session.tokens');
+    case 'context window':
+      return t('usage:info.contextWindow');
+    case 'credits':
+      return t('usage:info.credits');
+    default:
+      return undefined;
+  }
 }
 
 function parseCodex(lines: readonly string[]): Outcome {
@@ -518,8 +533,7 @@ function parseCodex(lines: readonly string[]): Outcome {
     }
     const extra = /^(?:codex\s+)?(Token usage|Context window|Credits):\s*(.+)$/i.exec(text);
     if (extra !== null) {
-      const names: Record<string, string> = { 'token usage': 'Tokens', 'context window': 'Janela de contexto', credits: 'Créditos' };
-      const label = names[(extra[1] ?? '').toLowerCase()];
+      const label = codexExtraLabel((extra[1] ?? '').toLowerCase());
       if (label !== undefined) out.extras.push({ label, value: codexValue((extra[2] ?? '').trim()) });
       out.consumed[index] = true;
       continue;

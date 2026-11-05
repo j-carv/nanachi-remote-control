@@ -1,5 +1,6 @@
 import { ApiError, type ApiErrorKind } from './api.js';
 import { describeError } from './errorMessages.js';
+import { t } from './i18n/index.js';
 
 /**
  * Caminho digitado no navegador de pastas, pronto para `/api/fs`: sem espaços nas pontas, sem um par
@@ -15,17 +16,15 @@ export function normalizeTypedPath(input: string): string {
   return path.replaceAll('/', '\\');
 }
 
-/** Textos do campo "Digitar caminho". Os demais erros usam o texto geral da API. */
-const TYPED_PATH_ERROR_TEXT: Partial<Record<ApiErrorKind, string>> = {
-  outside_roots: 'Fora das pastas liberadas no PC',
-  not_found: 'Pasta não encontrada',
-  not_a_directory: 'Isso não é uma pasta',
-};
+/** Error kinds that have their own text in the "Digitar caminho" / "Type a path" field (`workspace:folders.pathError`). */
+const TYPED_PATH_ERROR_KINDS = ['outside_roots', 'not_found', 'not_a_directory'] as const satisfies readonly ApiErrorKind[];
 
+/** Text for a failed typed path. The other errors use the general API text. */
 export function typedPathErrorText(error: unknown): string {
   if (error instanceof ApiError) {
-    const text = TYPED_PATH_ERROR_TEXT[error.kind];
-    if (text !== undefined) return text;
+    const { kind } = error;
+    const known = TYPED_PATH_ERROR_KINDS.find((candidate) => candidate === kind);
+    if (known !== undefined) return t(`workspace:folders.pathError.${known}`);
   }
   return describeError(error);
 }

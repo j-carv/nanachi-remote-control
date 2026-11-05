@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { removeAccountText } from '../agentAccounts.js';
 import { describeAccountError } from '../errorMessages.js';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ interface RemoveAccountSheetProps {
 
 /** Confirmation to remove an extra account: bottom sheet. It does not close while the removal runs. */
 export function RemoveAccountSheet({ agentLabel, accountLabel, busy, error, onCancel, onConfirm }: RemoveAccountSheetProps) {
+  const { t } = useTranslation('accounts');
   return (
     <Drawer
       open
@@ -32,7 +34,7 @@ export function RemoveAccountSheet({ agentLabel, accountLabel, busy, error, onCa
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Remover conta</DrawerTitle>
+          <DrawerTitle>{t('remove.title')}</DrawerTitle>
           <DrawerDescription className="text-base leading-6 text-foreground/80">
             {removeAccountText(agentLabel, accountLabel)}
           </DrawerDescription>
@@ -44,10 +46,10 @@ export function RemoveAccountSheet({ agentLabel, accountLabel, busy, error, onCa
         )}
         <DrawerFooter className="flex-row">
           <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
-            Cancelar
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
           <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Removendo…' : 'Remover'}
+            {busy ? t('remove.removing') : t('remove.confirm')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Bot, ListChecks, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { ListGroup, SectionHeading, listRowClass } from '../components/ListGroup.js';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
-import { BACKGROUND_STATE_TEXT, BackgroundJobRows, BackgroundStatus } from './BackgroundStatus.js';
+import { BackgroundJobRows, BackgroundStatus, backgroundStateText } from './BackgroundStatus.js';
 import { formatElapsed, groupEntries, type BackgroundEntry } from './background.js';
 
-/* UI strings of the drawer, in one place for the i18n pass. */
-const DRAWER_TITLE = 'Segundo plano';
-const EMPTY_TEXT = 'Nada rodando em segundo plano.';
-
 /** Time line of a row: how long it has been running, or how long it took once it stopped. */
-function timingText(entry: BackgroundEntry, now: number): string {
+function timingText(entry: BackgroundEntry, now: number, t: TFunction<'chat'>): string {
   if (entry.state === 'running' || entry.state === 'unknown') {
-    return `Iniciado há ${formatElapsed(now - entry.startedAt)}`;
+    return t('background.startedAgo', { time: formatElapsed(now - entry.startedAt) });
   }
-  return `Durou ${formatElapsed(entry.updatedAt - entry.startedAt)}`;
+  return t('background.lasted', { time: formatElapsed(entry.updatedAt - entry.startedAt) });
 }
 
 interface EntryRowProps {
@@ -25,7 +23,8 @@ interface EntryRowProps {
 }
 
 function EntryRow({ entry, now, onPick }: EntryRowProps) {
-  const parts = [entry.agentType, BACKGROUND_STATE_TEXT[entry.state], timingText(entry, now)];
+  const { t } = useTranslation('chat');
+  const parts = [entry.agentType, backgroundStateText(entry.state), timingText(entry, now, t)];
   const meta = parts.filter((part): part is string => part !== undefined).join(' · ');
   return (
     <li>
@@ -89,22 +88,23 @@ export interface BackgroundPanelProps {
 
 /** The drawer's content: every background item grouped as Subagentes, Comandos and Jobs. No Drawer, so tests can render it. */
 export function BackgroundPanel({ entries, now, onPick }: BackgroundPanelProps) {
+  const { t } = useTranslation('chat');
   if (entries.length === 0) {
-    return <p className="py-8 text-center text-[15px] text-muted-foreground">{EMPTY_TEXT}</p>;
+    return <p className="py-8 text-center text-[15px] text-muted-foreground">{t('background.empty')}</p>;
   }
   const groups = groupEntries(entries);
   return (
     <div className="flex flex-col gap-5">
-      <Group id="background-subagents" icon={Bot} title="Subagentes" entries={groups.subagents} now={now} onPick={onPick} />
+      <Group id="background-subagents" icon={Bot} title={t('background.subagents')} entries={groups.subagents} now={now} onPick={onPick} />
       <Group
         id="background-commands"
         icon={SquareTerminal}
-        title="Comandos"
+        title={t('background.commands')}
         entries={groups.commands}
         now={now}
         onPick={onPick}
       />
-      <Group id="background-jobs" icon={ListChecks} title="Jobs" entries={groups.jobs} now={now} onPick={onPick} />
+      <Group id="background-jobs" icon={ListChecks} title={t('background.jobs')} entries={groups.jobs} now={now} onPick={onPick} />
     </div>
   );
 }
@@ -130,12 +130,13 @@ export interface BackgroundDrawerProps {
 
 /** "Segundo plano" drawer, opened by the header chip. Rises from the bottom like every other overlay. */
 export function BackgroundDrawer({ open, onOpenChange, entries, onPick }: BackgroundDrawerProps) {
+  const { t } = useTranslation('chat');
   const now = useNow(open);
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>{DRAWER_TITLE}</DrawerTitle>
+          <DrawerTitle>{t('background.title')}</DrawerTitle>
         </DrawerHeader>
         <div className="min-h-0 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
           <BackgroundPanel entries={entries} now={now} onPick={onPick} />

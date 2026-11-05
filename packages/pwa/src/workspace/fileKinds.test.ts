@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { LANGUAGE_KEYS, fileIconKindFor, languageKeyFor, languageLabelFor } from './fileKinds.js';
 
 describe('languageKeyFor', () => {
@@ -107,5 +108,14 @@ describe('fileIconKindFor', () => {
     expect(fileIconKindFor('Cargo.lock')).toBe('lock');
     expect(fileIconKindFor('blob.bin')).toBe('generic');
     expect(fileIconKindFor('LICENSE')).toBe('generic');
+  });
+});
+
+describe('languageLabelFor in English', () => {
+  it('translates only plain text: language names are proper names', () => {
+    setLanguage('en');
+    expect(languageLabelFor('plain')).toBe('Plain text');
+    expect(languageLabelFor('typescript')).toBe('TypeScript');
+    expect(languageLabelFor('powershell')).toBe('PowerShell');
   });
 });

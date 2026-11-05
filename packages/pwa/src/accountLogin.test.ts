@@ -1,5 +1,6 @@
 import type { AccountLoginState } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import { ApiError } from './api.js';
 import {
   canSendLoginCode,
@@ -672,5 +673,30 @@ describe('startLoginFlow: enviar o código', () => {
     flow.abandon();
     await settle();
     expect(calls.filter((call) => call.startsWith('delete'))).toHaveLength(0);
+  });
+});
+
+describe('loginStatusText in English', () => {
+  const text = (step: LoginStep) => loginStatusText(step);
+
+  it('says what each step is doing', () => {
+    setLanguage('en');
+    expect(text({ kind: 'starting' })).toBe('Getting ready…');
+    expect(text({ kind: 'link', url: 'https://x.test', userCode: null, needsCode: true, codeSent: false })).toBe(
+      'Waiting for you to sign in…',
+    );
+    expect(text({ kind: 'link', url: 'https://x.test', userCode: null, needsCode: true, codeSent: true })).toBe(
+      'Code sent. Waiting for the login to finish…',
+    );
+    expect(text({ kind: 'verifying' })).toBe('Verifying…');
+    expect(text({ kind: 'success', account: null })).toBe('Account connected');
+    expect(text({ kind: 'success', account: 'user@example.com' })).toBe('Account connected: user@example.com');
+    expect(text({ kind: 'cancelled' })).toBe('Login canceled.');
+  });
+
+  it('a failure without a reason from the daemon gets the generic text; the daemon text is shown as it comes', () => {
+    setLanguage('en');
+    expect(text(loginStepOf(state({ state: 'failed', error: null })))).toBe('The login failed');
+    expect(text(loginStepOf(state({ state: 'failed', error: 'o login falhou (código 1)' })))).toBe('O login falhou (código 1)');
   });
 });

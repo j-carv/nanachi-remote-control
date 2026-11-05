@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import type { ApiClient } from '../api.js';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +41,7 @@ function cardState(item: ToolItem, view: BackgroundView): BackgroundState {
   }
 }
 
-/** Title of a child in the parent's "última" line: its background label, or its summary title. */
+/** Title of a child in the parent's "latest" line: its background label, or its summary title. */
 function titleOf(node: ChatNode): string {
   if (node.item.kind !== 'tool_call') return '';
   return node.item.background?.label ?? summarizeTool(node.item).title;
@@ -65,6 +66,7 @@ export interface ToolCardProps {
  * tem; começa recolhido e abre para listar os filhos.
  */
 export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = false, view }: ToolCardProps) {
+  const { t } = useTranslation('chat');
   const background = item.background;
   const state = cardState(item, view);
   const backgroundStyle = background !== undefined || nested.length > 0;
@@ -77,7 +79,7 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
   const tone = item.status === null ? 'text-muted-foreground' : STATUS_TONE[item.status];
   const last = nested.at(-1);
   const lastTitle = last === undefined ? '' : titleOf(last);
-  const innerCount = nested.length === 1 ? '1 ação interna' : `${nested.length} ações internas`;
+  const innerCount = t('tool.innerActions', { count: nested.length });
 
   return (
     <details
@@ -106,7 +108,7 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
           </span>
           {last !== undefined && (
             <span data-slot="tool-inner-count" className="truncate pl-6 text-[13px] text-muted-foreground">
-              {lastTitle === '' ? innerCount : `${innerCount} · última: ${lastTitle}`}
+              {lastTitle === '' ? innerCount : t('tool.innerWithLast', { summary: innerCount, title: lastTitle })}
             </span>
           )}
         </summary>
@@ -128,7 +130,7 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
             <span
               role="img"
               className="flex shrink-0 gap-1.5 font-mono text-[13px] tabular-nums"
-              aria-label={`${summary.added} linhas acrescentadas, ${summary.removed} removidas`}
+              aria-label={`${t('tool.linesAdded', { count: summary.added })}, ${t('tool.linesRemoved', { count: summary.removed })}`}
             >
               <span className="text-success">+{summary.added}</span>
               <span className="text-destructive">−{summary.removed}</span>

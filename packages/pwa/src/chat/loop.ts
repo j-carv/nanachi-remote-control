@@ -1,8 +1,10 @@
 import type { Loop } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 
 /**
  * Display helpers for Loop mode (no React): the header chip, the sheet and the duration text. Times come in as
- * parameters (`now`), so tests do not depend on the clock. UI strings stay in Portuguese.
+ * parameters (`now`), so tests do not depend on the clock. UI texts come from the `chat` namespace; durations (`30 s`,
+ * `5 min`, `1 h`) read the same in both languages.
  */
 
 /** Countdown text: seconds under a minute, minutes under an hour, then hours. Rounds up. */
@@ -63,31 +65,47 @@ export interface LoopChipView {
 export function loopChipView(loop: Loop | null, now: number): LoopChipView | undefined {
   if (loop === null || loop.state === 'stopped') return undefined;
   if (loop.state === 'paused') {
-    if (loop.lastError !== null) return { phase: 'error', label: 'Loop · erro', short: 'Loop · erro' };
-    return { phase: 'paused', label: 'Loop pausado', short: 'Loop pausado' };
+    if (loop.lastError !== null) {
+      const text = t('chat:loop.chip.error');
+      return { phase: 'error', label: text, short: text };
+    }
+    const text = t('chat:loop.chip.paused');
+    return { phase: 'paused', label: text, short: text };
   }
   // Active with no next run: a loop round is in flight (the daemon clears nextRunAt while it runs).
-  if (loop.nextRunAt === null) return { phase: 'running', label: 'Loop · rodando', short: 'Loop · rodando' };
+  if (loop.nextRunAt === null) {
+    const text = t('chat:loop.chip.running');
+    return { phase: 'running', label: text, short: text };
+  }
   const remaining = loop.nextRunAt - now;
   // Past due but not started yet: the agent is busy, so the round waits.
-  if (remaining <= 0) return { phase: 'queued', label: 'Loop · na fila', short: 'Loop · na fila' };
-  const countdown = formatCountdown(remaining);
-  return { phase: 'countdown', label: `Loop · próxima em ${countdown}`, short: `Loop · ${countdown}` };
+  if (remaining <= 0) {
+    const text = t('chat:loop.chip.queued');
+    return { phase: 'queued', label: text, short: text };
+  }
+  const time = formatCountdown(remaining);
+  return {
+    phase: 'countdown',
+    label: t('chat:loop.chip.countdown', { time }),
+    short: t('chat:loop.chip.countdownShort', { time }),
+  };
 }
 
 /** Loop state in words, at the top of the sheet. */
 export function loopStatusText(loop: Loop, now: number): string {
-  if (loop.state === 'stopped') return 'Encerrado';
-  if (loop.state === 'paused') return loop.lastError === null ? 'Pausado' : 'Pausado após um erro';
-  if (loop.nextRunAt === null) return 'Rodando agora';
+  if (loop.state === 'stopped') return t('chat:loop.status.stopped');
+  if (loop.state === 'paused') {
+    return loop.lastError === null ? t('chat:loop.status.paused') : t('chat:loop.status.pausedError');
+  }
+  if (loop.nextRunAt === null) return t('chat:loop.status.running');
   const remaining = loop.nextRunAt - now;
-  if (remaining <= 0) return 'Na fila: aguarda o agente ficar livre';
-  return `Próxima rodada em ${formatCountdown(remaining)}`;
+  if (remaining <= 0) return t('chat:loop.status.queued');
+  return t('chat:loop.status.next', { time: formatCountdown(remaining) });
 }
 
-/** Round count for the sheet: `Rodadas: 2 de 5`. */
+/** Round count for the sheet: `Rodadas: 2 de 5` / `Rounds: 2 of 5`. */
 export function loopRoundsText(loop: Loop): string {
-  if (loop.iterations === 0) return 'Nenhuma rodada ainda';
-  const limit = loop.maxIterations === null ? '' : ` de ${loop.maxIterations}`;
-  return `Rodadas: ${loop.iterations}${limit}`;
+  if (loop.iterations === 0) return t('chat:loop.rounds.none');
+  if (loop.maxIterations === null) return t('chat:loop.rounds.count', { count: loop.iterations });
+  return t('chat:loop.rounds.countOf', { count: loop.iterations, limit: loop.maxIterations });
 }

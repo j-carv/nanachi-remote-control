@@ -1,22 +1,21 @@
 import type { Session, SessionStatus } from '@nanachi/shared';
+import { t } from './i18n/index.js';
 
 /**
  * Texto da confirmação de "Remover do app". O histórico continua no agente: só some da tela do app.
  * `agentLabel` é o nome do agente (ex.: "Oh My Pi"), não o id.
  */
 export function removalConfirmText(agentLabel: string): string {
-  return `Remover esta sessão do app? O histórico continua no ${agentLabel} e você pode trazê-la de volta em Retomar do PC.`;
+  return t('accounts:removeSession.text', { agent: agentLabel });
 }
 
 /** Aviso antes de remover: só quando a sessão está trabalhando, esperando permissão ou subindo. Senão, null. */
 export function removalInterruptNotice(status: SessionStatus): string | null {
   switch (status) {
     case 'running':
-      return 'A sessão está trabalhando. Remover agora interrompe o trabalho.';
     case 'awaiting_permission':
-      return 'A sessão está esperando sua permissão. Remover agora interrompe o trabalho.';
     case 'starting':
-      return 'A sessão está iniciando. Remover agora interrompe o início.';
+      return t(`accounts:removeSession.${status}`);
     case 'idle':
     case 'stopped':
     case 'error':

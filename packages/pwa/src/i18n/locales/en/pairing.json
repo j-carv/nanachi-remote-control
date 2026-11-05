@@ -1,0 +1,26 @@
+{
+  "title": "Pair machine",
+  "intro": "Generate a 6-digit code on the PC and enter it here. It is valid for 5 minutes.",
+  "introTailscale": "Sign in without a code using your Tailscale account, or use a 6-digit code generated on the PC.",
+  "fields": {
+    "address": "PC address",
+    "deviceName": "This device's name",
+    "code": "Code"
+  },
+  "tailscale": {
+    "signIn": "Sign in with Tailscale",
+    "signingIn": "Signing in…",
+    "connectedAs": "Connected as {{login}}",
+    "or": "or use a pairing code"
+  },
+  "submit": "Pair",
+  "submitting": "Pairing…",
+  "errors": {
+    "invalidInput": "Check the address, the code (6 digits) and the device name.",
+    "addressScheme": "The address must start with http:// or https://.",
+    "https": "Use https:// in the PC address (e.g. https://pc-office.your-tailnet.ts.net). http:// is only allowed for localhost, 127.0.0.1 or this app's own origin.",
+    "codeLength": "The code has 6 digits.",
+    "tailscaleUnavailable": "Signing in with Tailscale is not enabled for this account on this PC. Use a pairing code.",
+    "unexpected": "Unexpected error while pairing."
+  }
+}

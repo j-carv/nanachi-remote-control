@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bot, CircleCheck, CircleDashed, Ellipsis, Plus, RefreshCw, TriangleExclamationPoint, type LucideIcon } from 'lucide-react';
 import type { AgentAccount, AgentProfile } from '@nanachi/shared';
 import { loadAgentAccounts } from '../agentAccountsCache.js';
@@ -44,6 +45,7 @@ type Flow =
 
 /** Ajustes → "Contas dos agentes": quem está logado em cada harness da máquina escolhida, e as contas extras dos que as têm. */
 export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps) {
+  const { t } = useTranslation('accounts');
   const api: ApiClient = useMemo(
     () => createApiClient({ baseUrl: machine.baseUrl, token: machine.token }),
     [machine.baseUrl, machine.token],
@@ -127,13 +129,13 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
 
   function actionItems(agent: AgentAccount, profile: AgentProfile): ActionSheetItem[] {
     const labels: Record<ProfileAction, () => ActionSheetItem> = {
-      use: () => ({ label: 'Usar em novas sessões', onSelect: () => void useForNewSessions(agent, profile) }),
+      use: () => ({ label: t('actions.use'), onSelect: () => void useForNewSessions(agent, profile) }),
       login: () => ({
-        label: 'Entrar',
+        label: t('actions.login'),
         onSelect: () => openFlow({ kind: 'login', agent, accountId: profile.id, accountLabel: profile.label }),
       }),
-      rename: () => ({ label: 'Renomear', onSelect: () => openFlow({ kind: 'rename', agent, profile }) }),
-      remove: () => ({ label: 'Remover', tone: 'danger', onSelect: () => openFlow({ kind: 'remove', agent, profile }) }),
+      rename: () => ({ label: t('actions.rename'), onSelect: () => openFlow({ kind: 'rename', agent, profile }) }),
+      remove: () => ({ label: t('actions.remove'), tone: 'danger', onSelect: () => openFlow({ kind: 'remove', agent, profile }) }),
     };
     return profileActions(profile).map((action) => labels[action]());
   }
@@ -147,7 +149,7 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
           <Button
             variant="ghost"
             size="icon"
-            aria-label={busy ? 'Atualizando contas' : 'Atualizar contas'}
+            aria-label={busy ? t('section.refreshing') : t('section.refresh')}
             disabled={busy || list.loading}
             onClick={() => void refresh()}
           >
@@ -155,15 +157,15 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
           </Button>
         }
       >
-        Contas dos agentes
+        {t('section.title')}
       </SectionHeading>
 
-      <p className="pl-1 text-sm text-muted-foreground">Login de cada agente em {machine.name}.</p>
+      <p className="pl-1 text-sm text-muted-foreground">{t('section.description', { machine: machine.name })}</p>
 
       <ErrorNotice error={error} onRepair={() => nav.push({ kind: 'pair', baseUrl: machine.baseUrl })} />
       {actionError !== null && <ErrorNotice message={describeAccountError(actionError)} />}
 
-      {accounts === null && error === null && <p className="pl-1 text-sm text-muted-foreground">Verificando…</p>}
+      {accounts === null && error === null && <p className="pl-1 text-sm text-muted-foreground">{t('section.checking')}</p>}
 
       {withAccounts.map((agent) => (
         <AgentAccountGroup
@@ -185,7 +187,7 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
 
       {flow?.kind === 'actions' && (
         <ActionSheet
-          label="Ações da conta"
+          label={t('actions.label')}
           title={`${flow.agent.label} · ${flow.profile.label}`}
           items={actionItems(flow.agent, flow.profile)}
           onClose={closeFlow}
@@ -194,9 +196,9 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
 
       {flow?.kind === 'add' && (
         <NameSheet
-          title="Adicionar conta"
-          description={`Dê um nome para a nova conta de ${flow.agent.label}. Depois você entra com ela.`}
-          submitLabel="Criar"
+          title={t('add.title')}
+          description={t('add.description', { agent: flow.agent.label })}
+          submitLabel={t('add.submit')}
           initialName=""
           busy={working}
           error={flowError}
@@ -217,9 +219,9 @@ export function AgentAccountsSection({ machine, nav }: AgentAccountsSectionProps
 
       {flow?.kind === 'rename' && (
         <NameSheet
-          title="Renomear conta"
-          description={`Novo nome para ${flow.profile.label} em ${flow.agent.label}.`}
-          submitLabel="Salvar"
+          title={t('rename.title')}
+          description={t('rename.description', { account: flow.profile.label, agent: flow.agent.label })}
+          submitLabel={t('rename.submit')}
           initialName={flow.profile.label}
           busy={working}
           error={flowError}
@@ -290,6 +292,7 @@ interface AgentAccountGroupProps {
 
 /** An agent that has accounts: its name and when it was checked, one row per account, and "Adicionar conta". */
 export function AgentAccountGroup({ agent, now, onOpen, onAdd }: AgentAccountGroupProps) {
+  const { t } = useTranslation('accounts');
   return (
     <div role="group" aria-label={agent.label} data-slot="agent-accounts" className="flex flex-col gap-1.5 pt-1">
       <div className="flex items-baseline justify-between gap-3 pl-1">
@@ -308,7 +311,7 @@ export function AgentAccountGroup({ agent, now, onOpen, onAdd }: AgentAccountGro
             onClick={onAdd}
           >
             <Plus className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="text-base">Adicionar conta</span>
+            <span className="text-base">{t('add.title')}</span>
           </button>
         </li>
       </ListGroup>
@@ -318,6 +321,7 @@ export function AgentAccountGroup({ agent, now, onOpen, onAdd }: AgentAccountGro
 
 /** One account of an agent that has several: status dot, name, e-mail, and the "Em uso" badge on the one new sessions use. */
 function ProfileRow({ agent, profile, onOpen }: { agent: AgentAccount; profile: AgentProfile; onOpen(): void }) {
+  const { t } = useTranslation('accounts');
   const view = profileView(profile);
   return (
     <li>
@@ -337,7 +341,7 @@ function ProfileRow({ agent, profile, onOpen }: { agent: AgentAccount; profile: 
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-base font-medium">{profile.label}</span>
-            {profile.active && <Badge>Em uso</Badge>}
+            {profile.active && <Badge>{t('badge.inUse')}</Badge>}
           </span>
           <span className="truncate text-sm text-muted-foreground">{view.subtitle}</span>
           <span className="sr-only">{view.statusLabel}</span>

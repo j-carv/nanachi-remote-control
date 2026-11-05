@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, GitBranch, Plus, Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { GitBranchesRepo, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { useAsync } from '../useAsync.js';
@@ -32,6 +33,7 @@ interface BranchSwitcherProps {
  * (`isRepo: false`, ou se a consulta falhar) o chip some em silêncio, como a barra de informações.
  */
 export function BranchSwitcher({ api, workspace, onSwitched }: BranchSwitcherProps) {
+  const { t } = useTranslation('workspace');
   const git = useAsync(() => api.gitBranches(workspace.id), [api, workspace.id]);
   const [open, setOpen] = useState(false);
   const head = git.data;
@@ -43,7 +45,7 @@ export function BranchSwitcher({ api, workspace, onSwitched }: BranchSwitcherPro
       <button
         type="button"
         aria-haspopup="dialog"
-        aria-label={`Branch ${title}. Trocar de branch`}
+        aria-label={t('branches.chip', { title })}
         onClick={() => setOpen(true)}
         className="-ml-1 flex min-h-11 max-w-full items-center self-start rounded-md px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
@@ -79,6 +81,7 @@ interface BranchSheetProps {
 
 /** Folha de branches: busca, lista por último commit, "Nova branch" e os erros da troca, todos aqui dentro. */
 function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetProps) {
+  const { t } = useTranslation('workspace');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -112,8 +115,8 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Trocar de branch</DrawerTitle>
-          <DrawerDescription className="sr-only">Branches locais de {workspace.name}</DrawerDescription>
+          <DrawerTitle>{t('branches.switchTitle')}</DrawerTitle>
+          <DrawerDescription className="sr-only">{t('branches.switchHint', { name: workspace.name })}</DrawerDescription>
         </DrawerHeader>
 
         <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-5 pt-3 pb-4">
@@ -124,8 +127,8 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
             />
             <Input
               type="search"
-              aria-label="Buscar branch"
-              placeholder="Buscar branch"
+              aria-label={t('branches.search')}
+              placeholder={t('branches.search')}
               value={query}
               autoCapitalize="none"
               autoCorrect="off"
@@ -137,23 +140,23 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
 
           <ErrorNotice error={error} />
           {dirty.length > 0 && (
-            <ul aria-label="Arquivos com alterações" className="flex flex-col gap-0.5 pl-1 font-mono text-sm text-muted-foreground">
+            <ul aria-label={t('branches.dirtyFiles')} className="flex flex-col gap-0.5 pl-1 font-mono text-sm text-muted-foreground">
               {preview.shown.map((path) => (
                 <li key={path} className="truncate">
                   {path}
                 </li>
               ))}
-              {preview.hidden > 0 && <li>e mais {preview.hidden}</li>}
+              {preview.hidden > 0 && <li>{t('branches.andMore', { count: preview.hidden })}</li>}
             </ul>
           )}
 
           <SectionHeading icon={GitBranch} id="branches-heading">
-            Branches locais
+            {t('branches.local')}
           </SectionHeading>
           {branches.length === 0 && query.trim() !== '' && (
-            <p className="pl-1 text-sm text-muted-foreground">Nenhuma branch com esse nome.</p>
+            <p className="pl-1 text-sm text-muted-foreground">{t('branches.noMatch')}</p>
           )}
-          <ListGroup label="Branches locais">
+          <ListGroup label={t('branches.local')}>
             {branches.map((branch) => (
               <li key={branch.name}>
                 <button
@@ -185,8 +188,8 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                 >
                   <Input
                     autoFocus
-                    aria-label="Nome da nova branch"
-                    placeholder="nome/da-branch"
+                    aria-label={t('branches.newNameLabel')}
+                    placeholder={t('branches.newNamePlaceholder')}
                     value={newName}
                     autoCapitalize="none"
                     autoCorrect="off"
@@ -195,7 +198,7 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                     onChange={(event) => setNewName(event.target.value)}
                   />
                   <Button type="submit" variant="secondary" disabled={busy || newName.trim() === ''}>
-                    {busy ? 'Criando…' : 'Criar'}
+                    {busy ? t('branches.creating') : t('branches.create')}
                   </Button>
                 </form>
               ) : (
@@ -206,7 +209,7 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                   className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:opacity-50`}
                 >
                   <Plus className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="text-base">Nova branch</span>
+                  <span className="text-base">{t('branches.new')}</span>
                 </button>
               )}
             </li>

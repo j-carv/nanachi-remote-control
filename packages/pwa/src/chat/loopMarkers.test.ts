@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { splitLoopMarkers } from './loopMarkers.js';
 
 const NEXT_45S = '[[nanachi-loop-next: 45s]]';
@@ -93,5 +94,13 @@ describe('splitLoopMarkers: marcador parcial no fim (streaming)', () => {
     const full = `Passo feito.\n${NEXT_45S}`;
     expect(splitLoopMarkers(full.slice(0, -1)).note).toBeNull();
     expect(splitLoopMarkers(full)).toEqual({ text: 'Passo feito.', note: 'Próxima rodada em 45 s' });
+  });
+});
+
+describe('splitLoopMarkers in English', () => {
+  it('writes the round note in English and still hides the marker', () => {
+    setLanguage('en');
+    expect(splitLoopMarkers(`Step done. ${NEXT_45S}`)).toEqual({ text: 'Step done.', note: 'Next round in 45 s' });
+    expect(splitLoopMarkers(`All done. ${STOP}`)).toEqual({ text: 'All done.', note: 'Loop ended by the agent' });
   });
 });

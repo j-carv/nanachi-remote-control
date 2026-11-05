@@ -1,5 +1,6 @@
 import type { Loop } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import {
   LOOP_PRESETS_MS,
   firstRoundHelpText,
@@ -175,5 +176,42 @@ describe('firstRoundHelpText', () => {
 
   it('no automático, começa em 10 min', () => {
     expect(firstRoundHelpText('dynamic')).toBe('Se desligado, começa em 10 min.');
+  });
+});
+
+describe('loop form in English', () => {
+  it('words the validation messages', () => {
+    setLanguage('en');
+    expect(parseIntervalText('')).toEqual({ ok: false, message: 'Enter an interval, like 5m or 1h30m.' });
+    expect(parseIntervalText('soon')).toEqual({ ok: false, message: 'Use a format like 90s, 10m or 1h30m.' });
+    expect(parseIntervalText('10s')).toEqual({ ok: false, message: 'The interval must be between 30 s and 24 h.' });
+    expect(loopRequestFrom({ ...FORM, prompt: '  ' })).toEqual({
+      ok: false,
+      message: 'Write the prompt the loop will repeat.',
+    });
+    expect(loopRequestFrom({ ...FORM, rounds: '0' })).toEqual({
+      ok: false,
+      message: 'Round limit: use a whole number, 1 or more.',
+    });
+  });
+
+  it('writes the live summary of each mode', () => {
+    setLanguage('en');
+    expect(loopSummaryText(FORM)).toBe('Will send “revise os testes” now, then every 5 min, with no round limit.');
+    expect(loopSummaryText({ ...FORM, runNow: false, rounds: '10' })).toBe(
+      'Will send “revise os testes” in 5 min, then every 5 min, up to 10 rounds.',
+    );
+    expect(loopSummaryText({ ...FORM, mode: 'dynamic' })).toBe(
+      'Will send “revise os testes” now; then the agent decides when to repeat, until it says it\'s done.',
+    );
+    expect(loopSummaryText({ ...FORM, mode: 'dynamic', rounds: '1' })).toBe(
+      'Will send “revise os testes” now; then the agent decides when to repeat, until it says it\'s done or reaches 1 round.',
+    );
+  });
+
+  it('explains when the first round runs', () => {
+    setLanguage('en');
+    expect(firstRoundHelpText('interval')).toBe('If off, the first round waits for the interval.');
+    expect(firstRoundHelpText('dynamic')).toBe('If off, it starts in 10 min.');
   });
 });

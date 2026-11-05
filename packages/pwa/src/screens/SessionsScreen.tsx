@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BellOff, Bell, CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
@@ -45,6 +46,7 @@ export function SessionsScreen({
   nav,
   onRepair,
 }: SessionsScreenProps) {
+  const { t } = useTranslation('workspace');
   const list = useAsync(() => api.listSessions(workspace.id), [api, workspace.id]);
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const info = useAsync(() => api.workspaceInfo(workspace.id), [api, workspace.id]);
@@ -97,7 +99,7 @@ export function SessionsScreen({
   async function stop(session: Session) {
     // Worktree próprio da sessão: pergunta se ele vai junto. Sujo, o daemon mantém e avisa.
     const removeWorktree =
-      session.worktree !== null && window.confirm('Remover o worktree também?');
+      session.worktree !== null && window.confirm(t('sessions.confirmRemoveWorktree'));
     try {
       await api.deleteSession(session.id, { removeWorktree });
       setActionError(null);
@@ -133,8 +135,8 @@ export function SessionsScreen({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Terminal"
-              title="Terminal"
+              aria-label={t('sessions.terminal')}
+              title={t('sessions.terminal')}
               onClick={() => setShellOpen(true)}
             >
               <SquareTerminal aria-hidden="true" />
@@ -142,8 +144,8 @@ export function SessionsScreen({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Arquivos"
-              title="Arquivos"
+              aria-label={t('sessions.files')}
+              title={t('sessions.files')}
               onClick={() => nav.push({ kind: 'files', workspace, path: '' })}
             >
               <FolderTree aria-hidden="true" />
@@ -157,11 +159,11 @@ export function SessionsScreen({
       <div className="flex gap-2">
         <Button className="flex-1" onClick={() => setSheetOpen(true)}>
           <Plus aria-hidden="true" />
-          Nova sessão
+          {t('sessions.new')}
         </Button>
         <Button variant="secondary" className="flex-1" onClick={() => setResumeOpen(true)}>
           <RotateCcwClock aria-hidden="true" />
-          Retomar do PC
+          {t('sessions.resume')}
         </Button>
       </div>
 
@@ -173,8 +175,8 @@ export function SessionsScreen({
             <Bell className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
           )}
           <label htmlFor="workspace-mute" className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-base">Silenciar notificações</span>
-            <span className="text-sm text-muted-foreground">Não avisa no celular sobre as sessões deste workspace.</span>
+            <span className="text-base">{t('sessions.muteTitle')}</span>
+            <span className="text-sm text-muted-foreground">{t('sessions.muteHint')}</span>
           </label>
           <Switch id="workspace-mute" checked={muted} onCheckedChange={(next) => void toggleMuted(next)} />
         </li>
@@ -182,18 +184,18 @@ export function SessionsScreen({
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
+      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
       {list.data !== null && sessions.length === 0 && (
-        <p className="pl-1 text-muted-foreground">Nenhuma sessão neste workspace ainda.</p>
+        <p className="pl-1 text-muted-foreground">{t('sessions.empty')}</p>
       )}
 
       {sessions.length > 0 && (
-        <ListGroup label="Sessões">
+        <ListGroup label={t('sessions.listLabel')}>
           {sessions.map((session) => {
             const label = sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
             return (
               <li key={session.id}>
-                <SwipeRow actionLabel="Remover do app" onAction={() => setPendingRemoval(session)}>
+                <SwipeRow actionLabel={t('sessions.removeFromApp')} onAction={() => setPendingRemoval(session)}>
                   <div className={listRowClass}>
                     <button type="button" className={`${listMainClass} py-1.5`} onClick={() => nav.push({ kind: 'chat', workspace, session })}>
                       <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -203,7 +205,7 @@ export function SessionsScreen({
                           {session.kind === 'pty' && (
                             <Badge variant="outline">
                               <Terminal aria-hidden="true" />
-                              terminal
+                              {t('terminalBadge')}
                             </Badge>
                           )}
                           {session.worktree !== null && (
@@ -214,7 +216,7 @@ export function SessionsScreen({
                           )}
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
-                          {session.agent === 'shell' ? 'Terminal' : (agentLabels.get(session.agent) ?? session.agent)} ·{' '}
+                          {session.agent === 'shell' ? t('sessions.terminal') : (agentLabels.get(session.agent) ?? session.agent)} ·{' '}
                           {formatRelativeTime(session.updatedAt, now)}
                         </span>
                       </span>
@@ -223,20 +225,20 @@ export function SessionsScreen({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Encerrar ${label}`}
+                        aria-label={t('sessions.stopNamed', { title: label })}
                         onClick={() => void stop(session)}
                       >
                         <CircleStop aria-hidden="true" />
                       </Button>
                     )}
                     <ActionSheetButton
-                      label={`Mais ações de ${label}`}
+                      label={t('sessions.moreActions', { title: label })}
                       title={label}
                       items={[
                         ...(session.status === 'stopped'
                           ? []
-                          : [{ label: 'Encerrar', tone: 'danger' as const, onSelect: () => void stop(session) }]),
-                        { label: 'Remover do app', tone: 'danger', onSelect: () => setPendingRemoval(session) },
+                          : [{ label: t('sessions.stop'), tone: 'danger' as const, onSelect: () => void stop(session) }]),
+                        { label: t('sessions.removeFromApp'), tone: 'danger', onSelect: () => setPendingRemoval(session) },
                       ]}
                     />
                   </div>

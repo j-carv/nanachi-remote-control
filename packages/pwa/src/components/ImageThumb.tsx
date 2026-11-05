@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { FileInfo } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
@@ -16,6 +17,7 @@ interface ImageThumbProps {
  * o visualizador ganha "Anexar ao chat" para o recorte; fora dele, a ação some.
  */
 export function ImageThumb({ api, file }: ImageThumbProps) {
+  const { t } = useTranslation('files');
   const [open, setOpen] = useState(false);
   const loaded = useFileBlob(api, file, true);
   const attachToChat = useChatAttach();
@@ -27,7 +29,7 @@ export function ImageThumb({ api, file }: ImageThumbProps) {
     return (
       <div
         role="img"
-        aria-label="Carregando imagem"
+        aria-label={t('thumb.loading')}
         className="aspect-[4/3] w-[min(240px,100%)] animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
       />
     );
@@ -38,7 +40,7 @@ export function ImageThumb({ api, file }: ImageThumbProps) {
       <button
         type="button"
         data-slot="file-thumb"
-        aria-label={`Abrir ${file.name}`}
+        aria-label={t('thumb.open', { name: file.name })}
         onClick={() => setOpen(true)}
         className="block aspect-[4/3] w-[min(240px,100%)] cursor-zoom-in overflow-hidden rounded-lg bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >

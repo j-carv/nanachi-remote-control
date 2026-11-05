@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import {
   Drawer,
@@ -23,6 +24,7 @@ interface DeleteEntrySheetProps {
  * mensagem aparece aqui, sem fechar a folha. Não fecha durante a exclusão.
  */
 export function DeleteEntrySheet({ name, isDir, busy, error, onCancel, onConfirm }: DeleteEntrySheetProps) {
+  const { t } = useTranslation('workspace');
   return (
     <Drawer
       open
@@ -33,11 +35,9 @@ export function DeleteEntrySheet({ name, isDir, busy, error, onCancel, onConfirm
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Excluir {name}?</DrawerTitle>
+          <DrawerTitle>{t('deleteEntry.title', { name })}</DrawerTitle>
           <DrawerDescription className="text-base leading-6 text-foreground/80">
-            {isDir
-              ? 'A pasta só é apagada se estiver vazia. Esta ação não pode ser desfeita.'
-              : 'O arquivo é apagado do PC. Esta ação não pode ser desfeita.'}
+            {isDir ? t('deleteEntry.dir') : t('deleteEntry.file')}
           </DrawerDescription>
         </DrawerHeader>
         <div className="px-5 pt-3">
@@ -45,10 +45,10 @@ export function DeleteEntrySheet({ name, isDir, busy, error, onCancel, onConfirm
         </div>
         <DrawerFooter className="flex-row">
           <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
-            Cancelar
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
           <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Excluindo…' : 'Excluir'}
+            {busy ? t('deleteEntry.deleting') : t('deleteEntry.confirm')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

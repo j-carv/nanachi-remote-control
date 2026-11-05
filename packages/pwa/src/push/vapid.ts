@@ -5,7 +5,7 @@ const BASE64URL = /^[A-Za-z0-9_-]*=*$/;
  * Aceita com ou sem padding; caractere fora do alfabeto lança `TypeError`.
  */
 export function urlBase64ToUint8Array(base64url: string): Uint8Array<ArrayBuffer> {
-  if (!BASE64URL.test(base64url)) throw new TypeError('chave VAPID inválida');
+  if (!BASE64URL.test(base64url)) throw new TypeError('invalid VAPID key');
   const unpadded = base64url.replace(/=+$/, '');
   const padded = unpadded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (unpadded.length % 4)) % 4);
   const binary = atob(padded);

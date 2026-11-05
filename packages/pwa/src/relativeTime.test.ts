@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import { formatRelativeTime } from './relativeTime.js';
 
 // Datas no fuso local: o teste não depende do fuso da máquina que roda.
@@ -37,5 +38,21 @@ describe('formatRelativeTime', () => {
   it('dia e mês de um dígito saem com zero à esquerda', () => {
     const early = new Date(2026, 0, 5, 9, 0, 0).getTime();
     expect(formatRelativeTime(early, NOW)).toBe('05/01/2026');
+  });
+});
+
+describe('formatRelativeTime in English', () => {
+  it('uses the English phrases', () => {
+    setLanguage('en');
+    expect(formatRelativeTime(NOW - 30_000, NOW)).toBe('now');
+    expect(formatRelativeTime(NOW - 5 * MIN, NOW)).toBe('5 min ago');
+    expect(formatRelativeTime(NOW - 2 * HOUR, NOW)).toBe('2 h ago');
+    expect(formatRelativeTime(new Date(2026, 10, 2, 23, 30, 0).getTime(), NOW)).toBe('yesterday');
+  });
+
+  it('writes older dates with the month abbreviated', () => {
+    setLanguage('en');
+    expect(formatRelativeTime(new Date(2026, 9, 28, 9, 0, 0).getTime(), NOW)).toBe('Oct 28, 2026');
+    expect(formatRelativeTime(new Date(2026, 0, 5, 9, 0, 0).getTime(), NOW)).toBe('Jan 5, 2026');
   });
 });

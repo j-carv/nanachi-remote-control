@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, ChevronRight, CornerLeftUp, Folder, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
 import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
@@ -41,6 +42,7 @@ async function loadListing(api: ApiClient, path: string | null): Promise<Listing
 
 /** Navegador de pastas do PC, limitado às raízes permitidas. Começa nas raízes. */
 export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenProps) {
+  const { t } = useTranslation('workspace');
   const [current, setCurrent] = useState<string | null>(null);
   const listing = useAsync(() => loadListing(api, current), [api, current]);
   const [createError, setCreateError] = useState<unknown>(null);
@@ -92,13 +94,13 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
   return (
     <Screen className="pb-0">
       <ScreenHeader
-        title="Escolher pasta"
-        subtitle={data?.path ?? 'Pastas permitidas no PC'}
+        title={t('folders.title')}
+        subtitle={data?.path ?? t('folders.allowed')}
         onBack={() => nav.back()}
       />
 
       <form className="flex flex-col gap-2" onSubmit={(event) => void goToTyped(event)}>
-        <Label htmlFor="folder-typed-path">Digitar caminho</Label>
+        <Label htmlFor="folder-typed-path">{t('folders.typePath')}</Label>
         <div className="flex gap-2">
           <Input
             id="folder-typed-path"
@@ -117,7 +119,7 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
             type="submit"
             variant="secondary"
             size="icon"
-            aria-label={checking ? 'Verificando caminho' : 'Ir para o caminho digitado'}
+            aria-label={checking ? t('folders.checkingPath') : t('folders.goToPath')}
             disabled={checking || normalizeTypedPath(typed) === ''}
           >
             <ArrowRight aria-hidden="true" />
@@ -141,15 +143,15 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
           onClick={() => setCurrent(data.parent)}
         >
           <CornerLeftUp aria-hidden="true" />
-          {data.parent === null ? 'Raízes' : 'Pasta acima'}
+          {data.parent === null ? t('folders.roots') : t('folders.parent')}
         </Button>
       )}
 
-      {data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
-      {data !== null && data.dirs.length === 0 && <p className="pl-1 text-muted-foreground">Nenhuma subpasta aqui.</p>}
+      {data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {data !== null && data.dirs.length === 0 && <p className="pl-1 text-muted-foreground">{t('folders.empty')}</p>}
 
       {data !== null && data.dirs.length > 0 && (
-        <ListGroup label="Pastas">
+        <ListGroup label={t('folders.listLabel')}>
           {data.dirs.map((dir) => (
             <li key={dir.path}>
               <button
@@ -177,7 +179,7 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
             }}
           >
             <Check aria-hidden="true" />
-            {creating ? 'Adicionando…' : 'Usar esta pasta'}
+            {creating ? t('folders.adding') : t('folders.use')}
           </Button>
         </div>
       )}

@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowDown,
   ChevronDown,
@@ -75,7 +76,7 @@ import { SlashMenu } from '../chat/SlashMenu.js';
 import { acceptsPrompt, isInputEnabled, isResumable } from '../chat/controls.js';
 import { useAttachmentDrafts, type DraftAttachment } from '../chat/useAttachmentDrafts.js';
 import { useChat } from '../chat/useChat.js';
-import { sessionStatusText, sessionTitle } from '../sessionText.js';
+import { displaySessionTitle, sessionStatusText, sessionTitle } from '../sessionText.js';
 import { useAsync } from '../useAsync.js';
 import { PermissionCard } from '../chat/PermissionCard.js';
 import {
@@ -104,15 +105,6 @@ interface ChatScreenProps {
   onRepair(): void;
 }
 
-/** Texto do indicador acima do input, por status. `idle` não mostra indicador. */
-const WORKING_TEXT: Partial<Record<SessionStatus, string>> = {
-  starting: 'Iniciando o agente…',
-  running: 'Trabalhando…',
-  awaiting_permission: 'Aguardando a sua permissão',
-  stopped: 'Sessão encerrada',
-  error: 'A sessão deu erro',
-};
-
 /** Cor do ponto de status no cabeçalho: as mesmas do SessionStatusPill da lista. */
 const STATUS_TONE: Record<SessionStatus, StatusTone> = {
   starting: 'muted',
@@ -121,16 +113,6 @@ const STATUS_TONE: Record<SessionStatus, StatusTone> = {
   awaiting_permission: 'attention',
   stopped: 'muted',
   error: 'danger',
-};
-
-const PLACEHOLDER: Record<SessionStatus, string> = {
-  starting: 'Aguardando o agente',
-  idle: 'Mensagem',
-  running: 'Aguarde o agente',
-  awaiting_permission: 'Veja a permissão',
-  // Stopped and error sessions take a message: sending it resumes the session.
-  stopped: 'Retomar e enviar',
-  error: 'Retomar e enviar',
 };
 
 /** Posição da conversa por sessão, guardada enquanto o app roda: voltar ao chat retoma de onde o usuário saiu. */
@@ -154,6 +136,7 @@ export function ChatScreen({
   nav,
   onRepair,
 }: ChatScreenProps) {
+  const { t } = useTranslation('chat');
   const controller = useChat({ api, connection, storage, session });
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const { chat } = controller;
@@ -507,7 +490,7 @@ export function ChatScreen({
     try {
       await controller.saveLoop(request);
       clearDraft();
-      setLoopNotice('Loop iniciado');
+      setLoopNotice(t('loop.started'));
       stick.current = true;
     } catch (caught) {
       setLoopNotice(describeLoopError(caught));
@@ -571,12 +554,12 @@ export function ChatScreen({
       );
       return [
         ...choices,
-        { label: `Enviar /${name} ao agente`, tone: 'muted', onSelect: () => sendCommandText(`/${name}`) },
+        { label: t('commandSheet.sendToAgent', { name }), tone: 'muted', onSelect: () => sendCommandText(`/${name}`) },
       ];
     }
     const { name, hint } = sheet;
     const items: ActionSheetItem[] = [];
-    if (hint.optional) items.push({ label: 'Sem argumento', onSelect: () => sendCommandText(`/${name}`) });
+    if (hint.optional) items.push({ label: t('commandSheet.noArgument'), onSelect: () => sendCommandText(`/${name}`) });
     for (const choice of hint.choices) {
       items.push({
         label: choice.value,
@@ -587,7 +570,7 @@ export function ChatScreen({
         },
       });
     }
-    items.push({ label: 'Digitar argumentos…', tone: 'muted', onSelect: () => insertCommandText(name) });
+    items.push({ label: t('commandSheet.typeArguments'), tone: 'muted', onSelect: () => insertCommandText(name) });
     return items;
   }
 
@@ -626,15 +609,13 @@ export function ChatScreen({
     event.target.value = '';
     if (picked.length === 0) return;
     const rejected = attachments.add(picked);
-    setAttachNotice(
-      rejected > 0 ? `Limite de ${ATTACHMENT_LIMIT} anexos por mensagem.` : null,
-    );
+    setAttachNotice(rejected > 0 ? t('composer.attachmentLimit', { limit: ATTACHMENT_LIMIT }) : null);
   }
 
   /** Recorte aberto no visualizador de imagens: entra como anexo da prévia, igual a um arquivo escolhido. */
   function attachFromViewer(file: File) {
     const rejected = attachments.add([file]);
-    setAttachNotice(rejected > 0 ? `Limite de ${ATTACHMENT_LIMIT} anexos por mensagem.` : null);
+    setAttachNotice(rejected > 0 ? t('composer.attachmentLimit', { limit: ATTACHMENT_LIMIT }) : null);
   }
 
   /** Abre o recorte de uma imagem da prévia. Só imagens (com prévia) podem ser recortadas. */
@@ -644,8 +625,14 @@ export function ChatScreen({
   }
 
   const resumable = isResumable(chat.status);
-  const working = controller.resuming ? 'Retomando…' : WORKING_TEXT[chat.status];
-  const placeholder = controller.resuming ? 'Retomando…' : PLACEHOLDER[chat.status];
+  // The line above the composer. `idle` has none.
+  const working = controller.resuming
+    ? t('working.resuming')
+    : chat.status === 'idle'
+      ? undefined
+      : t(`working.${chat.status}`);
+  // Stopped and error sessions take a message: sending it resumes the session.
+  const placeholder = controller.resuming ? t('placeholder.resuming') : t(`placeholder.${chat.status}`);
   const inputEnabled = isInputEnabled(chat.status);
   // Stopped and error sessions keep the composer open: a message resumes the session (see acceptsPrompt).
   const composerOpen = inputEnabled || resumable;
@@ -709,7 +696,7 @@ export function ChatScreen({
         <div className="flex h-full min-h-0 w-full max-w-[560px] flex-col gap-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pr-[calc(env(safe-area-inset-right,0px)+12px)] pl-[calc(env(safe-area-inset-left,0px)+12px)]">
           <div className="flex shrink-0 flex-col">
           <header className="flex min-h-11 items-center gap-1">
-            <Button variant="ghost" size="icon" className="-ml-2" aria-label="Voltar" onClick={() => nav.back()}>
+            <Button variant="ghost" size="icon" className="-ml-2" aria-label={t('actions.back', { ns: 'common' })} onClick={() => nav.back()}>
               <ChevronLeft className="size-6" aria-hidden="true" />
             </Button>
             <div className="flex min-w-0 flex-1 flex-col px-1">
@@ -722,11 +709,11 @@ export function ChatScreen({
                 >
                   <StatusDot tone={STATUS_TONE[chat.status]} pulse={chat.status === 'starting'} />
                 </span>
-                <h1 className="min-w-0 truncate text-base leading-6 font-semibold tracking-tight">{current.title}</h1>
+                <h1 className="min-w-0 truncate text-base leading-6 font-semibold tracking-tight">{displaySessionTitle(current.title)}</h1>
               </div>
             </div>
             {current.kind === 'acp' && !compactHeader && (
-              <Button variant="ghost" size="icon" aria-label="Uso do agente" onClick={() => setUsageOpen(true)}>
+              <Button variant="ghost" size="icon" aria-label={t('header.usage')} onClick={() => setUsageOpen(true)}>
                 <Gauge aria-hidden="true" />
               </Button>
             )}
@@ -734,7 +721,7 @@ export function ChatScreen({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Modo Loop"
+                aria-label={t('header.loop')}
                 aria-haspopup="dialog"
                 aria-expanded={loopOpen}
                 onClick={openLoop}
@@ -746,7 +733,7 @@ export function ChatScreen({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Alterações"
+                aria-label={t('header.changes')}
                 onClick={() => nav.push({ kind: 'changes', workspace, session: current })}
               >
                 <GitCompare aria-hidden="true" />
@@ -755,7 +742,7 @@ export function ChatScreen({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Configurar sessão"
+              aria-label={t('header.configure')}
               aria-haspopup="dialog"
               aria-expanded={configOpen}
               onClick={() => setConfigOpen(true)}
@@ -763,16 +750,16 @@ export function ChatScreen({
               <SlidersHorizontal aria-hidden="true" />
             </Button>
             <ActionSheetButton
-              label="Mais ações da sessão"
+              label={t('header.moreActions')}
               title={sessionTitle(current, agentLabel)}
               items={[
                 ...(compactHeader && current.kind === 'acp'
-                  ? [{ label: 'Uso do agente', onSelect: () => setUsageOpen(true) }]
+                  ? [{ label: t('header.usage'), onSelect: () => setUsageOpen(true) }]
                   : []),
                 ...(compactHeader
-                  ? [{ label: 'Alterações', onSelect: () => nav.push({ kind: 'changes', workspace, session: current }) }]
+                  ? [{ label: t('header.changes'), onSelect: () => nav.push({ kind: 'changes', workspace, session: current }) }]
                   : []),
-                { label: 'Remover do app', tone: 'danger', onSelect: () => setRemoving(true) },
+                { label: t('header.removeFromApp'), tone: 'danger', onSelect: () => setRemoving(true) },
               ]}
             />
           </header>
@@ -785,7 +772,7 @@ export function ChatScreen({
                 <button
                   type="button"
                   data-slot="background-chip"
-                  aria-label={`Trabalho em segundo plano: ${chipCount}`}
+                  aria-label={t('header.backgroundWork', { count: chipCount })}
                   aria-haspopup="dialog"
                   aria-expanded={backgroundOpen}
                   onClick={() => setBackgroundOpen(true)}
@@ -843,12 +830,12 @@ export function ChatScreen({
           <Drawer open={configOpen} onOpenChange={setConfigOpen}>
             <DrawerContent>
               <DrawerHeader>
-                <DrawerTitle>Configurar sessão</DrawerTitle>
+                <DrawerTitle>{t('configSheet.title')}</DrawerTitle>
               </DrawerHeader>
               <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
                 {accountSelector !== null && (
                   <section className="flex flex-col gap-2">
-                    <ListGroup label="Conta da sessão">
+                    <ListGroup label={t('configSheet.account')}>
                       <AccountSelect
                         profiles={accountSelector.profiles}
                         value={sessionAccount(accountSelector, current.accountId)}
@@ -869,7 +856,7 @@ export function ChatScreen({
                   </section>
                 )}
                 {primary.length > 0 && (
-                  <ListGroup label="Opções da sessão">
+                  <ListGroup label={t('configSheet.options')}>
                     {primary.map((control) => (
                       <li key={control.option.id}>
                         <ConfigSelect
@@ -884,7 +871,7 @@ export function ChatScreen({
                 {extra.length > 0 && (
                   <section aria-labelledby="config-extra-title" className="flex flex-col gap-2">
                     <SectionHeading icon={Settings2} id="config-extra-title">
-                      Mais opções
+                      {t('configSheet.more')}
                     </SectionHeading>
                     <ConfigControls options={extra} onChange={(id, value) => controller.setConfig(id, value)} />
                   </section>
@@ -896,7 +883,7 @@ export function ChatScreen({
           <ErrorNotice error={controller.loadError} onRepair={onRepair} />
           <ErrorNotice
             error={controller.resumeError}
-            action={notResumable ? { label: '+ Nova sessão', onClick: () => setSheetOpen(true) } : undefined}
+            action={notResumable ? { label: t('composer.newSession'), onClick: () => setSheetOpen(true) } : undefined}
           />
           <ErrorNotice error={sendError} onRepair={onRepair} />
 
@@ -934,11 +921,11 @@ export function ChatScreen({
               className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain px-0.5 py-2 *:shrink-0"
             >
               {!controller.loaded && controller.loadError === null && (
-                <p className="text-sm text-muted-foreground">Carregando conversa…</p>
+                <p className="text-sm text-muted-foreground">{t('timeline.loading')}</p>
               )}
               {start > 0 && (
                 <Button variant="secondary" className="self-center" onClick={loadEarlier}>
-                  Carregar anteriores
+                  {t('timeline.loadEarlier')}
                 </Button>
               )}
               <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3">
@@ -965,7 +952,7 @@ export function ChatScreen({
                 onClick={jumpToEnd}
               >
                 <ArrowDown aria-hidden="true" />
-                Ir para o fim
+                {t('timeline.jumpToEnd')}
                 {unseen > 0 && (
                   <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground">
                     {unseen}
@@ -986,11 +973,11 @@ export function ChatScreen({
                 <span className="min-w-0 flex-1 truncate">{working}</span>
                 {chat.status === 'running' && (
                   <Button variant="destructive-ghost" onClick={() => controller.cancel()}>
-                    Parar
+                    {t('composer.stop')}
                   </Button>
                 )}
                 {resumable && !controller.resuming && (
-                  <Button onClick={() => void controller.resume()}>Retomar</Button>
+                  <Button onClick={() => void controller.resume()}>{t('composer.resume')}</Button>
                 )}
               </div>
             )}
@@ -1010,7 +997,7 @@ export function ChatScreen({
               <div role="status" className="flex shrink-0 items-center gap-2.5">
                 <div
                   role="progressbar"
-                  aria-label="Progresso do envio"
+                  aria-label={t('composer.uploadProgress')}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={Math.round(progress * 100)}
@@ -1018,7 +1005,7 @@ export function ChatScreen({
                 >
                   <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
                 </div>
-                <span className="text-sm text-muted-foreground tabular-nums">Enviando… {Math.round(progress * 100)}%</span>
+                <span className="text-sm text-muted-foreground tabular-nums">{t('composer.uploading', { percent: Math.round(progress * 100) })}</span>
               </div>
             )}
 
@@ -1041,7 +1028,7 @@ export function ChatScreen({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Mensagem anterior"
+                  aria-label={t('composer.previous')}
                   className="text-muted-foreground"
                   disabled={historyCursor.index === 0}
                   onMouseDown={(event) => event.preventDefault()}
@@ -1053,7 +1040,7 @@ export function ChatScreen({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Próxima mensagem"
+                  aria-label={t('composer.next')}
                   className="text-muted-foreground"
                   disabled={historyCursor.index === null}
                   onMouseDown={(event) => event.preventDefault()}
@@ -1082,7 +1069,7 @@ export function ChatScreen({
                 variant="ghost"
                 size="icon"
                 data-slot="attach-button"
-                aria-label="Anexar arquivo"
+                aria-label={t('composer.attach')}
                 className="text-muted-foreground"
                 disabled={!composerOpen || sending}
                 onClick={() => fileInput.current?.click()}
@@ -1094,7 +1081,7 @@ export function ChatScreen({
                 variant="ghost"
                 size="icon"
                 data-slot="command-button"
-                aria-label="Comandos do agente"
+                aria-label={t('composer.commands')}
                 aria-expanded={commandsOpen}
                 className={cn('text-muted-foreground', commandsOpen && 'bg-accent text-foreground')}
                 disabled={!inputEnabled || sending}
@@ -1129,7 +1116,7 @@ export function ChatScreen({
               {/* Below 360px the text would take the room the field needs: an icon, with the text kept for screen readers. */}
               <Button type="submit" className="px-3.5 max-[359px]:size-11 max-[359px]:px-0" disabled={!canSend}>
                 <SendHorizontal className="hidden max-[359px]:block" aria-hidden="true" />
-                <span className="max-[359px]:sr-only">{sending ? 'Enviando…' : 'Enviar'}</span>
+                <span className="max-[359px]:sr-only">{sending ? t('composer.sending') : t('composer.send')}</span>
               </Button>
             </form>
           </div>
@@ -1152,8 +1139,8 @@ export function ChatScreen({
             <ActionSheet
               label={
                 commandSheet.kind === 'config'
-                  ? `Opções de /${commandSheet.name}`
-                  : `Subcomandos de /${commandSheet.name}`
+                  ? t('commandSheet.configLabel', { name: commandSheet.name })
+                  : t('commandSheet.choicesLabel', { name: commandSheet.name })
               }
               title={`/${commandSheet.name}`}
               items={commandSheetItems(commandSheet)}
@@ -1166,7 +1153,7 @@ export function ChatScreen({
               src={cropping.previewUrl}
               name={cropping.file.name}
               mime={cropping.file.type}
-              confirmLabel="Usar recorte"
+              confirmLabel={t('composer.useCrop')}
               onCancel={() => setCropping(null)}
               onConfirm={(file) => {
                 attachments.replace(cropping.id, file);

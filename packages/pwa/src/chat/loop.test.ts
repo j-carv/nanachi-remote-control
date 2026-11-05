@@ -1,5 +1,6 @@
 import type { Loop } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import {
   durationInputOf,
   durationLabel,
@@ -150,5 +151,32 @@ describe('pickLoop (ordem entre o WS e as respostas HTTP)', () => {
     expect(pickLoop(null, next)).toBe(next);
     expect(pickLoop(next, null)).toBeNull();
     expect(pickLoop(null, null)).toBeNull();
+  });
+});
+
+describe('loop texts in English', () => {
+  it('writes the header chip in English, with the same durations', () => {
+    setLanguage('en');
+    expect(loopChipView(loopWith({ nextRunAt: NOW + 180_000 }), NOW)).toEqual({
+      phase: 'countdown',
+      label: 'Loop · next in 3 min',
+      short: 'Loop · 3 min',
+    });
+    expect(loopChipView(loopWith({ nextRunAt: null }), NOW)?.label).toBe('Loop · running');
+    expect(loopChipView(loopWith({ nextRunAt: NOW - 1 }), NOW)?.label).toBe('Loop · queued');
+    expect(loopChipView(loopWith({ state: 'paused' }), NOW)?.label).toBe('Loop paused');
+    expect(loopChipView(loopWith({ state: 'paused', lastError: 'falhou' }), NOW)?.label).toBe('Loop · error');
+  });
+
+  it('writes the state and the round count of the sheet', () => {
+    setLanguage('en');
+    expect(loopStatusText(loopWith({ nextRunAt: NOW + 45_000 }), NOW)).toBe('Next round in 45 s');
+    expect(loopStatusText(loopWith({ nextRunAt: null }), NOW)).toBe('Running now');
+    expect(loopStatusText(loopWith({ nextRunAt: NOW - 1 }), NOW)).toBe('Queued: waiting for the agent to be free');
+    expect(loopStatusText(loopWith({ state: 'paused', lastError: 'x' }), NOW)).toBe('Paused after an error');
+    expect(loopStatusText(loopWith({ state: 'stopped' }), NOW)).toBe('Ended');
+    expect(loopRoundsText(loopWith({ iterations: 0 }))).toBe('No rounds yet');
+    expect(loopRoundsText(loopWith({ iterations: 2, maxIterations: 5 }))).toBe('Rounds: 2 of 5');
+    expect(loopRoundsText(loopWith({ iterations: 3, maxIterations: null }))).toBe('Rounds: 3');
   });
 });

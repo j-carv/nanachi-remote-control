@@ -1,4 +1,5 @@
 import type { FileInfo } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 
 /** Extensão do nome de cada raster que o daemon grava (mesma tabela de `agent-images.ts`). */
 const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
@@ -10,9 +11,10 @@ const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
 
 /**
  * Imagem de tool call vem só com fileId e mime (`ToolContent` image). Para mostrar e salvar pelo visualizador,
- * monta o FileInfo com um nome genérico; o tamanho não é conhecido e não é mostrado.
+ * monta o FileInfo com um nome genérico ("imagem" / "image"); o tamanho não é conhecido e não é mostrado.
  */
 export function toolImageInfo(fileId: string, mime: string): FileInfo {
   const extension = EXTENSION_BY_MIME[mime];
-  return { fileId, name: extension === undefined ? 'imagem' : `imagem.${extension}`, mime, size: 0 };
+  const base = t('files:toolImage.name');
+  return { fileId, name: extension === undefined ? base : `${base}.${extension}`, mime, size: 0 };
 }

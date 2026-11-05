@@ -18,13 +18,13 @@ export function requestPrecacheRefill(worker: ActiveWorkerLike): Promise<void> {
     const channel = new MessageChannel();
     const timer = setTimeout(() => {
       channel.port1.close();
-      reject(new Error('sem resposta do service worker'));
+      reject(new Error('no answer from the service worker'));
     }, REFILL_TIMEOUT_MS);
     channel.port1.onmessage = (event: MessageEvent<unknown>) => {
       clearTimeout(timer);
       channel.port1.close();
       if (event.data === true) resolve();
-      else reject(new Error('refill recusado'));
+      else reject(new Error('refill refused'));
     };
     worker.postMessage({ type: REFILL_PRECACHE_MESSAGE }, [channel.port2]);
   });

@@ -1,0 +1,11 @@
+{
+  "title": "This machine's devices",
+  "list": "Devices",
+  "current": "this device",
+  "meta": "Created {{created}} · last seen {{lastSeen}}",
+  "metaNeverSeen": "Created {{created}} · never seen",
+  "revoke": "Revoke",
+  "revokeLabel": "Revoke {{name}}",
+  "confirmCurrent": "Revoke \"{{name}}\"? This is this device: it loses access and must pair again.",
+  "confirmOther": "Revoke \"{{name}}\"? It loses access to this machine immediately."
+}

@@ -11,6 +11,8 @@ import {
   GitBranch,
   type LucideIcon,
 } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
@@ -40,17 +42,12 @@ interface TerminalScreenProps {
   onRepair(): void;
 }
 
-const COPY_TEXT: Record<CopyResult, string> = {
-  copied: 'Copiado.',
-  empty: 'Selecione um trecho do terminal para copiar.',
-  failed: 'Não consegui copiar. Tente de novo.',
-};
+/** Result of the last copy or paste, kept as a kind and written in the current language when shown. */
+type Note = { action: 'copy'; result: CopyResult } | { action: 'paste'; result: PasteResult };
 
-const PASTE_TEXT: Record<PasteResult, string> = {
-  pasted: 'Colado.',
-  empty: 'A área de transferência está vazia.',
-  failed: 'Não consegui colar. Toque e segure no campo de texto para colar.',
-};
+function noteText(note: Note, t: TFunction<'terminal'>): string {
+  return note.action === 'copy' ? t(`copy.${note.result}`) : t(`paste.${note.result}`);
+}
 
 /** Setas da barra: ícone no lugar do caractere (o `label` de keys.ts fica para as teclas com texto). */
 const KEY_ICON: Partial<Record<string, LucideIcon>> = {
@@ -61,12 +58,10 @@ const KEY_ICON: Partial<Record<string, LucideIcon>> = {
 };
 
 /** Texto do aviso de encerramento. `reload` vem do daemon quando ele recarrega; sem ele, o processo saiu sozinho. */
-function closedText(exit: { exitCode: number | null; reason: 'reload' | null } | null): string {
-  if (exit === null) return 'Terminal encerrado';
-  if (exit.reason === 'reload') return 'Terminal encerrado pelo recarregamento do Nanachi';
-  return exit.exitCode === null
-    ? 'Terminal encerrado (sem código)'
-    : `Terminal encerrado (código ${exit.exitCode})`;
+function closedText(exit: { exitCode: number | null; reason: 'reload' | null } | null, t: TFunction<'terminal'>): string {
+  if (exit === null) return t('closed.plain');
+  if (exit.reason === 'reload') return t('closed.reload');
+  return exit.exitCode === null ? t('closed.noCode') : t('closed.code', { code: exit.exitCode });
 }
 
 /**
@@ -83,6 +78,7 @@ export function TerminalScreen({
   nav,
   onRepair,
 }: TerminalScreenProps) {
+  const { t } = useTranslation('terminal');
   const terminal = useTerminal({ api, connection, session });
   const current = terminal.session;
   const isShell = current.agent === 'shell';
@@ -103,7 +99,7 @@ export function TerminalScreen({
     scrollToEnd,
   } = terminal;
   const [line, setLine] = useState('');
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<Note | null>(null);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState<unknown>(null);
 
@@ -119,11 +115,11 @@ export function TerminalScreen({
   }
 
   async function copy() {
-    setNote(COPY_TEXT[await copySelection()]);
+    setNote({ action: 'copy', result: await copySelection() });
   }
 
   async function pasteClipboard() {
-    setNote(PASTE_TEXT[await paste()]);
+    setNote({ action: 'paste', result: await paste() });
   }
 
   function pressKey(key: TerminalKey) {
@@ -179,7 +175,7 @@ export function TerminalScreen({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Alterações"
+                aria-label={t('changes')}
                 onClick={() => nav.push({ kind: 'changes', workspace, session: current })}
               >
                 <FileDiff aria-hidden="true" />
@@ -195,7 +191,7 @@ export function TerminalScreen({
           <div role="status" data-slot="terminal-notice" className="flex items-center gap-3 rounded-lg bg-muted p-3 text-sm">
             <p className="min-w-0 flex-1 leading-5">{terminal.notice}</p>
             <Button variant="ghost" onClick={terminal.dismissNotice}>
-              OK
+              {t('dismiss')}
             </Button>
           </div>
         )}
@@ -204,18 +200,18 @@ export function TerminalScreen({
           <div role="status" data-slot="terminal-closed" className="flex flex-col gap-3 rounded-lg bg-muted p-4 text-sm">
             <p className="flex items-center gap-2 leading-5">
               <CircleSlash className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              {closedText(terminal.exit)}
+              {closedText(terminal.exit, t)}
             </p>
             {isShell && (
               <Button size="wide" onClick={() => void openNewTerminal()} disabled={opening}>
-                {opening ? 'Abrindo…' : 'Abrir novo terminal'}
+                {opening ? t('opening') : t('openNew')}
               </Button>
             )}
           </div>
         )}
 
         {!terminal.loaded && terminal.loadError === null && (
-          <p className="text-sm text-muted-foreground">Carregando terminal…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         )}
 
         {/* Fundo escuro fixo nos dois temas, como o palco do xterm (THEME em terminal/options.ts). O botão fica fora
@@ -234,7 +230,7 @@ export function TerminalScreen({
               onClick={scrollToEnd}
             >
               <ArrowDown aria-hidden="true" />
-              Ir para o fim
+              {t('scrollToEnd')}
             </Button>
           )}
         </div>
@@ -243,7 +239,7 @@ export function TerminalScreen({
           <Button
             variant="secondary"
             className="min-w-11 px-3"
-            aria-label="Diminuir fonte do terminal"
+            aria-label={t('fontSmaller')}
             disabled={fontSize <= MIN_FONT_SIZE}
             onClick={() => changeFontSize(fontSize - 1)}
           >
@@ -252,7 +248,7 @@ export function TerminalScreen({
           <Button
             variant="secondary"
             className="min-w-11 px-3"
-            aria-label="Aumentar fonte do terminal"
+            aria-label={t('fontLarger')}
             disabled={fontSize >= MAX_FONT_SIZE}
             onClick={() => changeFontSize(fontSize + 1)}
           >
@@ -261,19 +257,19 @@ export function TerminalScreen({
           <span className="flex-1" />
           <Button variant="ghost" className="min-h-11 px-3" onClick={() => void copy()}>
             <Copy aria-hidden="true" />
-            Copiar seleção
+            {t('copySelection')}
           </Button>
         </div>
 
         {note !== null && (
           <p className="text-sm text-muted-foreground" role="status">
-            {note}
+            {noteText(note, t)}
           </p>
         )}
 
         <div
           role="toolbar"
-          aria-label="Teclas especiais"
+          aria-label={t('keysLabel')}
           className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {TERMINAL_KEYS.map((key) => {
@@ -309,7 +305,7 @@ export function TerminalScreen({
             data-slot="terminal-line"
             className="flex-1"
             value={line}
-            placeholder={inputOpen ? 'Texto para o terminal' : 'Terminal encerrado'}
+            placeholder={inputOpen ? t('linePlaceholder') : t('closed.plain')}
             disabled={!inputOpen}
             autoCapitalize="off"
             autoCorrect="off"
@@ -319,7 +315,7 @@ export function TerminalScreen({
             onChange={(event) => setLine(event.target.value)}
           />
           <Button type="submit" disabled={!inputOpen}>
-            Enviar
+            {t('send')}
           </Button>
         </form>
       </div>

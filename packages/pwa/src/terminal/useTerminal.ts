@@ -6,7 +6,7 @@ import type { Session, SessionEvent } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { getBrowserStorage } from '../browserStorage.js';
 import { loadHistory } from '../chat/history.js';
-import { OFFLINE_NOTICE } from '../chat/useChat.js';
+import { offlineNotice } from '../chat/useChat.js';
 import type { Connection } from '../connection.js';
 import { attachTouchScroll, cellHeightOf } from './attachTouchScroll.js';
 import { clampFontSize, readFontSize, writeFontSize } from './fontSize.js';
@@ -98,7 +98,7 @@ export function useTerminal({ api, connection, session: initial }: TerminalOptio
         setSticky(NO_STICKY_KEYS);
       }
       const sent = sendTerminalInput((message) => connection?.send(message) ?? false, sessionId, payload);
-      if (!sent) setNotice(OFFLINE_NOTICE);
+      if (!sent) setNotice(offlineNotice());
       return sent;
     },
     [connection, sessionId],

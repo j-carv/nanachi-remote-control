@@ -1,0 +1,82 @@
+{
+  "generic": "Unexpected error.",
+  "api": {
+    "invalid_input": "Check the fields you filled in and try again.",
+    "invalid_code": "Invalid, expired or already used code. Generate another one on the PC with `npm run pair -w @nanachi/daemon`.",
+    "unauthorized": "This phone no longer has access to this machine. Pair again with a new code.",
+    "forbidden": "The daemon refused access (Tailscale check). Check allowedTailscaleLogins.",
+    "outside_roots": "This folder is outside the folders allowed in the daemon (allowedRoots).",
+    "not_found": "Could not find that on the PC. It may have been removed.",
+    "not_a_directory": "That is not a folder.",
+    "not_resumable": "This agent cannot resume sessions; open a new session.",
+    "already_running": "This session is already running.",
+    "already_linked": "This session is already in the app, stopped. Open it and resume.",
+    "busy": "A listing is already in progress for this agent. Wait a few seconds and try again.",
+    "agent_timeout": "The agent did not respond on the PC in time. Try again.",
+    "agent_failed": "The agent did not start on the PC. Check that it is installed and logged in.",
+    "too_many_sessions": "Limit of 8 active sessions; stop one.",
+    "too_large": "File larger than 50 MB.",
+    "rate_limited": "Too many wrong attempts. Wait a minute and try again.",
+    "network": "Could not reach the PC. Check the address and that Tailscale is connected.",
+    "not_git": "This folder is not a git repository.",
+    "no_commits": "The repository has no commits yet.",
+    "worktree_dirty": "The worktree has uncommitted changes; it was kept.",
+    "unexpected": "The server answered in an unexpected way. Is the daemon up to date?"
+  },
+  "workspace": {
+    "not_a_git_repo": "This folder is not a git repository.",
+    "sessions_running": "Sessions are running in this workspace. Wait for them to finish or stop them.",
+    "dirty_worktree": "There are uncommitted changes. Stash or commit them before switching branches.",
+    "branch_in_use": "This branch is open in another worktree.",
+    "invalid_branch": "Invalid branch name.",
+    "branch_exists": "A branch with that name already exists.",
+    "branch_not_found": "That branch no longer exists on the PC.",
+    "invalid_path": "Invalid name or path.",
+    "outside_workspace": "This path leaves the workspace.",
+    "not_a_file": "That is not a file.",
+    "file_exists": "A file with that name already exists.",
+    "already_exists": "An item with that name already exists.",
+    "file_changed": "The file changed on the PC since you opened it.",
+    "dir_not_empty": "The folder is not empty. Delete its contents first.",
+    "binary_file": "Binary file: it cannot be edited here.",
+    "file_too_large": "File too large for the editor (max 2 MB).",
+    "too_many_writes": "Too many changes in a row. Wait a minute and try again."
+  },
+  "usage": {
+    "session_not_active": "Resume the session to see usage.",
+    "session_busy": "The agent is busy; try again when it finishes.",
+    "usage_unsupported": "This agent does not report usage.",
+    "timeout": "The agent took too long to respond. Try again."
+  },
+  "resets": {
+    "unsupported": "This agent has no saved resets"
+  },
+  "redeem": {
+    "unconfirmed": "Could not confirm whether the reset was used. Check usage before trying again.",
+    "reset_in_progress": "A reset is already in progress.",
+    "invalid_request": "That reset is no longer in the list. Refresh usage and try again."
+  },
+  "loop": {
+    "loop_not_found": "This session has no loop. Create a new one.",
+    "loop_finished": "This loop has already finished. Create a new one to run again.",
+    "loop_busy": "A loop round is in progress. Wait for it to finish and try again.",
+    "not_acp": "The loop only runs in agent sessions, not in a terminal."
+  },
+  "account": {
+    "accounts_unsupported": "This agent has no extra accounts.",
+    "account_in_use": "A session is working on this account. Wait for it to finish and try again.",
+    "too_many_accounts": "Limit of 10 extra accounts per agent. Remove one before adding another.",
+    "login_in_progress": "A login is already in progress for this agent. Finish or cancel that one first.",
+    "invalid_state": "The login is not waiting for a code right now.",
+    "session_busy": "The agent is working. Switch the account when it finishes.",
+    "not_resumable": "This agent does not resume sessions: open a new session on the account you want to use.",
+    "not_found": "Could not find this account on the PC. Refresh the list."
+  },
+  "sessionAccount": {
+    "not_found": "Could not find this session on the PC. It may have been removed."
+  },
+  "loginPoll": {
+    "not_found": "The PC no longer remembers this login. Close and try again.",
+    "network": "No response from the PC. Trying again…"
+  }
+}

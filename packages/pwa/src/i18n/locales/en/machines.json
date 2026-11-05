@@ -1,0 +1,52 @@
+{
+  "status": {
+    "online": {
+      "label": "Online",
+      "hint": "Connected to this machine's daemon."
+    },
+    "connecting": {
+      "label": "Connecting…",
+      "hint": "Opening the connection to the PC."
+    },
+    "offline": {
+      "label": "Offline",
+      "hint": "No connection to the PC. Retrying automatically."
+    },
+    "unauthorized": {
+      "label": "Not authorized",
+      "hint": "This phone no longer has access to this machine. Pair again with a new code."
+    }
+  },
+  "main": {
+    "settings": "Settings",
+    "addMachine": "Add machine",
+    "machineStatus": "Machine status",
+    "summary": "Machines summary",
+    "machines": "Machines",
+    "noneRunning": "No sessions running",
+    "workspaces": "Workspaces",
+    "removeMachine": "Remove machine"
+  },
+  "summary": {
+    "running": "{{count}} running",
+    "awaiting": "{{count}} waiting for you"
+  },
+  "card": {
+    "checking": "Checking…",
+    "online": "Online · {{latencyMs}} ms",
+    "loading": "Loading",
+    "noWorkspaces": "No workspaces yet. Add a folder in Workspaces.",
+    "workspaces_one": "{{count}} workspace",
+    "workspaces_other": "{{count}} workspaces",
+    "idle_one": "{{count}} ready",
+    "idle_other": "{{count}} ready",
+    "noSessions": "No sessions yet",
+    "lastActivity": "Last activity {{time}}",
+    "agents": "Logged-in agents",
+    "sessions": "Sessions",
+    "awaitingPermission": "Awaiting permission",
+    "unauthorized": "This phone no longer has access to this PC. Pair again.",
+    "noResponse": "No response from the PC.",
+    "loadFailed": "Could not load the sessions."
+  }
+}

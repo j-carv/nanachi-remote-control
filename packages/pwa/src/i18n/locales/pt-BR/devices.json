@@ -1,0 +1,11 @@
+{
+  "title": "Dispositivos desta máquina",
+  "list": "Dispositivos",
+  "current": "este aparelho",
+  "meta": "Criado {{created}} · visto por último {{lastSeen}}",
+  "metaNeverSeen": "Criado {{created}} · visto por último nunca",
+  "revoke": "Revogar",
+  "revokeLabel": "Revogar {{name}}",
+  "confirmCurrent": "Revogar \"{{name}}\"? Este é este aparelho: ele perde o acesso e precisa parear de novo.",
+  "confirmOther": "Revogar \"{{name}}\"? Ele perde o acesso a esta máquina na hora."
+}

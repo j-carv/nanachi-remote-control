@@ -1,0 +1,27 @@
+{
+  "title": "Settings",
+  "devices": {
+    "heading": "Devices",
+    "row": "This machine's devices",
+    "rowHint": "Phones and browsers paired with {{name}}."
+  },
+  "notifications": {
+    "heading": "Notifications",
+    "unsupported": "Notifications are not available in this browser. On iPhone, open the app from its Home Screen icon (iOS 16.4+).",
+    "toggle": "Alerts on this phone",
+    "enabling": "Turning on…",
+    "disabling": "Turning off…",
+    "enabled": "On for this phone: alerts when the agent finishes, asks for approval, fails or sends a file.",
+    "disabled": "Off for this phone.",
+    "blocked": "Notifications are blocked. Allow them in the iPhone settings for this app.",
+    "browserFailed": "Could not turn on notifications in this browser. Try again.",
+    "noSubscription": "The browser did not return the subscription. Try again.",
+    "machineActive": "{{name}}: on.",
+    "machineRejected": "{{name}}: did not accept the subscription. Try turning it on again.",
+    "machineOtherKey": "{{name}}: uses a different notification key, so it does not send alerts to this phone. Copy vapid.json from the main PC (see the README) and turn it on again.",
+    "machineUnreachable": "{{name}}: did not respond just now. Turn it on again when it is online."
+  },
+  "language": {
+    "label": "Language"
+  }
+}

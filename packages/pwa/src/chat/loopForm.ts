@@ -8,6 +8,7 @@ import {
   type LoopMode,
   type LoopRequest,
 } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 import { durationInputOf, durationLabel } from './loop.js';
 
 /** Interval presets: 1 min, 5 min, 15 min, 30 min, 1 h. */
@@ -28,11 +29,11 @@ export type IntervalParse = { ok: true; intervalMs: number } | { ok: false; mess
 
 export function parseIntervalText(text: string): IntervalParse {
   const trimmed = text.trim();
-  if (trimmed === '') return { ok: false, message: 'Digite um intervalo, como 5m ou 1h30m.' };
+  if (trimmed === '') return { ok: false, message: t('chat:loop.form.intervalEmpty') };
   const ms = parseLoopDuration(trimmed);
-  if (ms === undefined) return { ok: false, message: 'Use um formato como 90s, 10m ou 1h30m.' };
+  if (ms === undefined) return { ok: false, message: t('chat:loop.form.intervalFormat') };
   if (ms < LOOP_INTERVAL_MIN_MS || ms > LOOP_INTERVAL_MAX_MS) {
-    return { ok: false, message: 'O intervalo vai de 30 s a 24 h.' };
+    return { ok: false, message: t('chat:loop.form.intervalRange') };
   }
   return { ok: true, intervalMs: ms };
 }
@@ -42,9 +43,9 @@ export type LoopFormResult = { ok: true; request: LoopRequest } | { ok: false; m
 /** The API request for the sheet's values, or the message of the first invalid field. */
 export function loopRequestFrom(values: LoopFormValues): LoopFormResult {
   const prompt = values.prompt.trim();
-  if (prompt === '') return { ok: false, message: 'Escreva o prompt que o loop vai repetir.' };
+  if (prompt === '') return { ok: false, message: t('chat:loop.form.promptEmpty') };
   if (prompt.length > LOOP_PROMPT_MAX) {
-    return { ok: false, message: `O prompt passa de ${LOOP_PROMPT_MAX} caracteres.` };
+    return { ok: false, message: t('chat:loop.form.promptTooLong', { max: LOOP_PROMPT_MAX }) };
   }
 
   const rounds = values.rounds.trim();
@@ -52,7 +53,7 @@ export function loopRequestFrom(values: LoopFormValues): LoopFormResult {
   if (rounds !== '') {
     const count = Number(rounds);
     if (!/^\d+$/.test(rounds) || !Number.isSafeInteger(count) || count < 1) {
-      return { ok: false, message: 'Limite de rodadas: use um número inteiro, a partir de 1.' };
+      return { ok: false, message: t('chat:loop.form.roundsInvalid') };
     }
     maxIterations = count;
   }
@@ -120,11 +121,6 @@ function quotedPromptOf(prompt: string): string {
   return `“${short}”`;
 }
 
-/** `10 rodadas`, `1 rodada`. */
-function roundsOf(count: number): string {
-  return `${count} ${count === 1 ? 'rodada' : 'rodadas'}`;
-}
-
 /**
  * The live sentence under the form: what the loop will do with the current values. Built from the validated request,
  * so it only exists while the form is valid (undefined otherwise).
@@ -138,18 +134,26 @@ export function loopSummaryText(values: LoopFormValues): string | undefined {
 
   if (request.mode === 'interval' && request.intervalMs !== undefined) {
     const every = durationLabel(request.intervalMs);
-    const first = request.runNow === false ? `pela primeira vez em ${every}` : 'agora';
-    const limitText = limit === undefined ? 'sem limite de rodadas' : `até ${roundsOf(limit)}`;
-    return `Vai mandar ${prompt} ${first} e depois a cada ${every}, ${limitText}.`;
+    const first =
+      request.runNow === false ? t('chat:loop.summary.intervalLater', { time: every }) : t('chat:loop.summary.intervalNow');
+    const limitText =
+      limit === undefined ? t('chat:loop.summary.noLimit') : t('chat:loop.summary.upTo', { count: limit });
+    return t('chat:loop.summary.interval', { prompt, first, every, limit: limitText });
   }
 
-  const first = request.runNow === false ? `em ${durationLabel(LOOP_DYNAMIC_DEFAULT_MS)}` : 'agora';
-  const stop = limit === undefined ? 'até ele dizer que terminou' : `até ele dizer que terminou ou chegar a ${roundsOf(limit)}`;
-  return `Vai mandar ${prompt} ${first}; depois o agente decide quando repetir, ${stop}.`;
+  const first =
+    request.runNow === false
+      ? t('chat:loop.summary.dynamicLater', { time: durationLabel(LOOP_DYNAMIC_DEFAULT_MS) })
+      : t('chat:loop.summary.dynamicNow');
+  const stop =
+    limit === undefined
+      ? t('chat:loop.summary.untilDone')
+      : t('chat:loop.summary.untilDoneOrUpTo', { count: limit });
+  return t('chat:loop.summary.dynamic', { prompt, first, stop });
 }
 
 /** Helper text under "Primeira rodada agora": when the first round runs if the switch is off. */
 export function firstRoundHelpText(mode: LoopMode): string {
-  if (mode === 'dynamic') return `Se desligado, começa em ${durationLabel(LOOP_DYNAMIC_DEFAULT_MS)}.`;
-  return 'Se desligado, a primeira rodada espera o intervalo.';
+  if (mode === 'dynamic') return t('chat:loop.form.firstRoundDynamic', { time: durationLabel(LOOP_DYNAMIC_DEFAULT_MS) });
+  return t('chat:loop.form.firstRoundInterval');
 }

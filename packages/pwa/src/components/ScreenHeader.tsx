@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 
 interface ScreenHeaderProps {
@@ -16,10 +17,11 @@ interface ScreenHeaderProps {
  * Rola com a tela, não é fixo.
  */
 export function ScreenHeader({ title, subtitle, meta, onBack, actions }: ScreenHeaderProps) {
+  const { t } = useTranslation();
   return (
     <header className="flex min-h-11 items-center gap-1">
       {onBack !== undefined && (
-        <Button variant="ghost" size="icon" className="-ml-2" onClick={onBack} aria-label="Voltar">
+        <Button variant="ghost" size="icon" className="-ml-2" onClick={onBack} aria-label={t('actions.back')}>
           <ChevronLeft className="size-6" aria-hidden="true" />
         </Button>
       )}

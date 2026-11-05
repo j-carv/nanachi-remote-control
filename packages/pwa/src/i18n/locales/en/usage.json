@@ -1,0 +1,84 @@
+{
+  "drawer": {
+    "title": "{{agent}} usage",
+    "description": "Limits and usage reported by the agent.",
+    "account": "Account:",
+    "refresh": "Refresh usage",
+    "empty": "The agent returned nothing.",
+    "updated": "Updated {{time}}",
+    "updatedCached": "Updated {{time}} · from cache",
+    "refreshFailed": "Could not refresh the usage. {{reason}}",
+    "resume": "Resume",
+    "accountCount": "{{count}} accounts",
+    "details": "Details"
+  },
+  "loading": {
+    "usage": "Loading usage",
+    "resets": "Loading resets"
+  },
+  "windows": {
+    "limits": "Limits",
+    "inUse": "in use",
+    "usageOf": "Usage: {{label}}",
+    "resetsAt": "Resets {{when}}",
+    "resetsIn": "in {{time}}",
+    "fiveHours": "5 hours",
+    "weekly": "Weekly",
+    "weeklyScope": "Weekly · {{scope}}",
+    "monthly": "{{name}} · Monthly",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days"
+  },
+  "session": {
+    "title": "Session",
+    "cost": "Cost",
+    "tokens": "Tokens",
+    "activeTime": "Active time"
+  },
+  "info": {
+    "model": "Model",
+    "input": "Input",
+    "output": "Output",
+    "cacheRead": "Cache (read)",
+    "cacheWrite": "Cache (write)",
+    "apiTime": "API time",
+    "contextWindow": "Context window",
+    "credits": "Credits",
+    "unavailable": "unavailable"
+  },
+  "resets": {
+    "title": "Saved resets",
+    "empty": "No saved resets.",
+    "use": "Use reset",
+    "useFor": "Use reset for {{account}}",
+    "dismiss": "Dismiss message",
+    "saved_zero": "{{count}} saved",
+    "saved_one": "{{count}} saved",
+    "saved_other": "{{count}} saved",
+    "usable_zero": "{{count}} available now",
+    "usable_one": "{{count}} available now",
+    "usable_other": "{{count}} available now"
+  },
+  "expiry": {
+    "raw": "expires {{when}}",
+    "expired": "expired",
+    "inMinutes": "expires in {{count}} min",
+    "inHours": "expires in {{count}} h",
+    "inDays_one": "expires in {{count}} day",
+    "inDays_other": "expires in {{count}} days",
+    "onDate": "expires on {{date}}"
+  },
+  "confirm": {
+    "title": "Use 1 reset?",
+    "body": "{{who}}. Spends one saved reset and lifts the limit now. This can't be undone."
+  },
+  "outcome": {
+    "reset": "Reset applied.",
+    "nothing_to_reset": "Nothing to reset right now; no reset was spent.",
+    "no_credit": "There are no saved resets to spend.",
+    "already_redeemed": "That reset was already used.",
+    "failed": "The agent did not confirm the reset."
+  }
+}

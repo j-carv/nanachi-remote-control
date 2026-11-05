@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import {
   choiceLabel,
   isModelOption,
@@ -191,5 +192,17 @@ describe('choiceLabel and sourceLabel', () => {
       'OpenRouter · Anthropic',
     );
     expect(sourceLabel({ providerId: 'cursor', providerLabel: 'Cursor', vendorLabel: null })).toBe('Cursor');
+  });
+});
+
+describe('providerGroups in English', () => {
+  it('names the group of options without a provider "Other"', () => {
+    setLanguage('en');
+    const groups = providerGroups([
+      { value: 'cursor/a', name: 'A' },
+      { value: 'openrouter/b', name: 'B' },
+      { value: 'default', name: 'Default' },
+    ]);
+    expect(groups?.map((group) => group.providerLabel)).toEqual(['Cursor', 'OpenRouter', 'Other']);
   });
 });

@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import type { SessionConfigOption } from '@nanachi/shared';
 import { ConfigControls, ConfigSelect } from './ConfigControls.js';
 
@@ -305,5 +306,20 @@ describe('ConfigControls', () => {
 
     expect(html).not.toContain('optgroup');
     expect(html).not.toContain('aria-describedby');
+  });
+});
+
+describe('ConfigSelect in English', () => {
+  it('names the group of options without a provider "Other"', () => {
+    setLanguage('en');
+    const mixed = modelOption(
+      [
+        { value: 'cursor/a', name: 'A' },
+        { value: 'claude-cli/b', name: 'B' },
+        { value: 'default', name: 'Default' },
+      ],
+      'default',
+    );
+    expect(renderSelect(mixed)).toContain('<optgroup label="Other">');
   });
 });
