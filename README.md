@@ -362,7 +362,6 @@ packages/
   daemon/   Fastify API, WebSocket, SQLite, agents, and CLI
   pwa/      React, Vite, service worker, and mobile interface
 e2e/        End-to-end scenarios with Playwright and Edge
-docs/       Technical contracts and project notes
 ```
 
 ```powershell
@@ -393,8 +392,6 @@ The basic `npm run e2e` is different: it requires a configured daemon on port 77
 Browser scenarios with an iPhone viewport help check the interface, but **do not replace testing installation, keyboard behavior, and push on a real Android phone or iPhone**.
 
 </details>
-
-More details: [contracts and architecture (Portuguese)](docs/PLAN.md) · [manual configuration (Portuguese)](docs/PENDENTES-USUARIO.md).
 
 ## Contributing
 

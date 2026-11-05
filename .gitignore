@@ -19,3 +19,6 @@ coverage/
 # Capturas geradas pelos testes (podem conter dados da área de trabalho)
 e2e/screenshots/
 /packages/daemon/so-no-worktree.txt
+
+# Notas e contratos internos (locais, fora do git)
+/docs/
