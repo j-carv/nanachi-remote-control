@@ -4,7 +4,15 @@ import type { UsageResponse } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api.js';
 import { parseUsage } from '../usage/parseUsage.js';
-import { startUsageRequest, type UsageState, UsageContent, updatedLabel } from './UsageDrawer.js';
+import type { SessionAccountInfo } from '../agentAccounts.js';
+import {
+  startUsageRequest,
+  type ResetsPanel,
+  type UsageState,
+  UsageAccountLine,
+  UsageContent,
+  updatedLabel,
+} from './UsageDrawer.js';
 
 const NOW = new Date(2026, 10, 4, 12, 0).getTime();
 const MINUTE_MS = 60_000;
@@ -241,5 +249,159 @@ describe('UsageContent', () => {
 
     expect(html).toContain('O agente está ocupado; tente quando ele terminar.');
     expect(html).not.toContain('Retomar');
+  });
+});
+
+describe('UsageContent: saved resets', () => {
+  const RESET_ENTRY = {
+    target: 'anthropic/1',
+    accountLabel: 'fake@example.com',
+    providerLabel: 'Anthropic',
+    available: 2,
+    usable: 1,
+    expiresAt: null,
+    note: null,
+    active: true,
+  };
+
+  function renderWith(state: UsageState, resets?: ResetsPanel, refreshFailed?: { error: unknown } | null): string {
+    return renderToStaticMarkup(
+      createElement(UsageContent, { state, now: NOW, onRefresh: noop, onResume: noop, resets, refreshFailed }),
+    );
+  }
+
+  const panel = (redeem: ResetsPanel['redeem'] = { status: 'idle' }): ResetsPanel => ({
+    list: { status: 'ready', entries: [RESET_ENTRY], message: null },
+    redeem,
+    onRedeem: noop,
+    onDismissRedeem: noop,
+  });
+
+  it('without a resets panel there is no section (agents without resets)', () => {
+    const html = renderWith(ready('claude', CLAUDE_TEXT));
+    expect(html).not.toContain('Resets salvos');
+  });
+
+  it('the section comes after the limit cards', () => {
+    const html = renderWith(ready('omp', OMP_TEXT), panel());
+    expect(html).toContain('Resets salvos');
+    expect(html.indexOf('Resets salvos')).toBeGreaterThan(html.indexOf('>90%<'));
+  });
+
+  it('while the usage loads the section is not shown', () => {
+    expect(renderWith({ status: 'loading' }, panel())).not.toContain('Resets salvos');
+  });
+
+  it('a usage error does not show the section either', () => {
+    const html = renderWith({ status: 'error', error: new ApiError('network') }, panel());
+    expect(html).not.toContain('Resets salvos');
+  });
+
+  it('an empty usage reply still shows the section', () => {
+    const html = renderWith(ready('omp', '  '), panel());
+    expect(html).toContain('O agente não devolveu nada.');
+    expect(html).toContain('Resets salvos');
+  });
+
+  it('the refresh button is disabled while a redeem runs, and enabled otherwise', () => {
+    const running = renderWith(ready('omp', OMP_TEXT), panel({ status: 'running', target: 'anthropic/1' }));
+    expect(running).toMatch(/<button[^>]*aria-label="Atualizar uso"[^>]*disabled=""/);
+    const idle = renderWith(ready('omp', OMP_TEXT), panel());
+    expect(idle).not.toMatch(/<button[^>]*aria-label="Atualizar uso"[^>]*disabled=""/);
+  });
+});
+
+describe('UsageContent: the reply of a redeem does not depend on the usage state', () => {
+  const REPLY = { tone: 'success', message: 'Reset applied for fake@example.com (Anthropic).' } as const;
+  const done = { status: 'done', result: REPLY } as const;
+  const withReply = (): ResetsPanel => ({
+    list: { status: 'loading' },
+    redeem: done,
+    onRedeem: noop,
+    onDismissRedeem: noop,
+  });
+  const renderWith = (state: UsageState, resets: ResetsPanel | undefined, refreshFailed?: { error: unknown }): string =>
+    renderToStaticMarkup(
+      createElement(UsageContent, { state, now: NOW, onRefresh: noop, onResume: noop, resets, refreshFailed }),
+    );
+
+  it('usage error on a new open: the reply is still shown, once, with its close button', () => {
+    const html = renderWith({ status: 'error', error: new ApiError('network') }, withReply());
+    expect(html).toContain('Reset applied for fake@example.com (Anthropic).');
+    expect(html.match(/data-slot="reset-result"/g)).toHaveLength(1);
+    expect(html).toContain('data-slot="reset-result-dismiss"');
+    expect(html).not.toContain('Resets salvos');
+    expect(html).toContain('role="alert"');
+  });
+
+  it('usage loading: the reply is shown above the skeleton', () => {
+    const html = renderWith({ status: 'loading' }, withReply());
+    expect(html).toContain('data-slot="reset-result"');
+    expect(html.indexOf('data-slot="reset-result"')).toBeLessThan(html.indexOf('aria-label="Carregando uso"'));
+  });
+
+  it('usage ready: the reply sits in the section, once', () => {
+    const html = renderWith(ready('omp', OMP_TEXT), withReply());
+    expect(html.match(/data-slot="reset-result"/g)).toHaveLength(1);
+    expect(html.indexOf('Resets salvos')).toBeLessThan(html.indexOf('data-slot="reset-result"'));
+  });
+
+  it('no reply while idle or running, and none without a resets panel', () => {
+    const idle: ResetsPanel = { ...withReply(), redeem: { status: 'idle' } };
+    const running: ResetsPanel = { ...withReply(), redeem: { status: 'running', target: 'anthropic/1' } };
+    expect(renderWith({ status: 'loading' }, idle)).not.toContain('data-slot="reset-result"');
+    expect(renderWith({ status: 'loading' }, running)).not.toContain('data-slot="reset-result"');
+    expect(renderWith({ status: 'loading' }, undefined)).not.toContain('data-slot="reset-result"');
+  });
+});
+
+describe('UsageContent: a refresh that failed keeps the last usage', () => {
+  const state = ready('omp', OMP_TEXT);
+
+  it('shows the last good numbers and a small inline error saying they are old', () => {
+    const html = renderToStaticMarkup(
+      createElement(UsageContent, {
+        state,
+        now: NOW,
+        onRefresh: noop,
+        onResume: noop,
+        refreshFailed: { error: new ApiError('agent_timeout', 504, null, 'agent_timeout') },
+      }),
+    );
+    expect(html).toContain('>90%<');
+    expect(html).toContain('data-slot="usage-refresh-error"');
+    expect(html).toContain('Não deu para atualizar o uso. O agente demorou para responder. Tente de novo.');
+    expect(html).toContain('Atualizado agora');
+    expect(html).not.toContain('Retomar');
+  });
+
+  it('without a failed refresh there is no inline error', () => {
+    const html = renderToStaticMarkup(
+      createElement(UsageContent, { state, now: NOW, onRefresh: noop, onResume: noop, refreshFailed: null }),
+    );
+    expect(html).not.toContain('data-slot="usage-refresh-error"');
+  });
+});
+
+describe('UsageAccountLine', () => {
+  const render = (account: SessionAccountInfo): string => renderToStaticMarkup(createElement(UsageAccountLine, { account }));
+
+  it('"Conta: <nome>" com o e-mail ao lado quando se sabe', () => {
+    const html = render({ label: 'Trabalho', email: 'trabalho@exemplo.com' });
+    expect(html).toContain('data-slot="usage-account"');
+    expect(html).toContain('Conta: ');
+    expect(html).toContain('Trabalho');
+    expect(html).toContain('trabalho@exemplo.com');
+  });
+
+  it('sem e-mail conhecido mostra só o nome', () => {
+    const html = render({ label: 'Casa', email: null });
+    expect(html).toContain('Casa');
+    expect(html).not.toContain(' · ');
+  });
+
+  it('o nome vai como texto, nunca como HTML', () => {
+    const html = render({ label: '<i>x</i>', email: null });
+    expect(html).not.toContain('<i>x</i>');
   });
 });

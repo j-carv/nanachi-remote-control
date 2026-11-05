@@ -29,7 +29,11 @@ import * as acp from '@agentclientprotocol/sdk';
  * Variáveis de ambiente:
  *  - FAKE_AGENT_STYLE=modes: anuncia `modes` em vez de `configOptions` (exercita a opção sintetizada)
  *  - FAKE_AGENT_PID_DIR: por sessão (<AGENT_SESSION_ID>), grava o pid (.pid), o env que recebeu
- *    (.env.json: cwd, AGENT_SESSION_ID, NANACHI_URL, NANACHI_AGENT_TOKEN, PATH) e cada prompt recebido (.prompts.jsonl)
+ *    (.env.json: cwd, AGENT_SESSION_ID, NANACHI_URL, NANACHI_AGENT_TOKEN, PATH, CLAUDE_CONFIG_DIR, CODEX_HOME: as duas
+ *    últimas são as pastas de conta dos harnesses, ausentes quando o processo não as recebeu) e cada prompt recebido
+ *    (.prompts.jsonl)
+ *  - Prompt "/env <NOME>" responde "<NOME>=<valor da variável de ambiente do processo>" (ou "<NOME>=<ausente>"): é como os
+ *    testes de contas leem a pasta de conta (CLAUDE_CONFIG_DIR, CODEX_HOME) que o agente recebeu.
  *  - FAKE_AGENT_PROMPT_IMAGE=1: anuncia promptCapabilities.image no initialize
  *  - FAKE_AGENT_RESUME: como o agente retoma sessão. `load` (padrão, loadSession: true; reenvia 2 updates
  *    antigos durante o session/load), `resume` (sessionCapabilities.resume, sem histórico) ou `none` (nada: 409).
@@ -49,6 +53,9 @@ import * as acp from '@agentclientprotocol/sdk';
  *    /model is the native picker (the model option of configOptions); "/usage ..." replies in a code block.
  *  - Prompts "/usage..." e "/status..." (comandos de uso, POST /api/sessions/:id/usage) respondem com o texto
  *    de USAGE_REPLY; FAKE_AGENT_USAGE=hang não responde até session/cancel.
+ *    "/usage reset" responde a listagem de resets (RESETS_LISTING); "/usage reset anthropic/1" (e /2, /3, /4) responde
+ *    uma linha de resgate (RESET_REPLIES). FAKE_AGENT_RESET_DELAY_MS=<ms> segura o resgate antes de responder.
+ *    FAKE_AGENT_USAGE_DELAY_MS=<ms> segura a leitura de uso e a listagem de resets (nao o resgate) antes de responder.
  *  - FAKE_AGENT_LOAD_DELAY_MS=<ms>: session/load espera esse tempo antes de responder (retomada em curso nos testes).
  *  - FAKE_AGENT_LOAD_FAIL=1: session/load responde erro (falha da retomada).
  */
@@ -100,6 +107,8 @@ if (pidDir !== undefined) {
       NANACHI_URL: process.env.NANACHI_URL,
       NANACHI_AGENT_TOKEN: process.env.NANACHI_AGENT_TOKEN,
       PATH: process.env.PATH,
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      CODEX_HOME: process.env.CODEX_HOME,
     }),
   );
 }
@@ -295,6 +304,28 @@ const USAGE_REPLY = [
   '```',
   '',
 ].join('\n');
+
+/**
+ * Reply of `/usage reset` (no argument): omp's listing shape (docs/PLAN.md, rate-limit resets). The first line has an
+ * SGR escape, which the daemon must strip. Accounts are synthetic.
+ */
+const RESETS_LISTING = [
+  '\u001b[1mSaved rate-limit resets:\u001b[22m',
+  '- fake@example.com · Org [Anthropic · anthropic/1]: 2 saved, 1 usable now, expires in 3 days (active)',
+  '- other@example.com [OpenAI Codex · openai-codex/2]: 1 saved, 0 usable now (not constrained)',
+  '',
+  'Spend one with `/usage reset <provider>/<credential id>` or `/usage reset <provider>/active`.',
+  '',
+].join('\n');
+
+/** One-line replies of `/usage reset <provider>/<id>`, by target (the outcomes of the contract). */
+const RESET_REPLIES: Readonly<Record<string, string>> = {
+  'anthropic/1': '\u001b[32mReset applied for fake@example.com (Anthropic) — 5h session limit refreshed.\u001b[39m',
+  'anthropic/2': 'fake@example.com (Anthropic): that reset was already redeemed.',
+  'anthropic/3': 'fake@example.com (Anthropic): no saved resets available to spend.',
+  'anthropic/4':
+    "fake@example.com (Anthropic): nothing to reset right now — your covered limits aren't constrained, so no credit was spent.",
+};
 
 async function announce(notify: (update: acp.SessionUpdate) => Promise<void>): Promise<void> {
   if (!announceCommands) return;
@@ -565,6 +596,11 @@ acp.agent()
       await notify(chunk(text.slice('/eco '.length)));
       return { stopReason: 'end_turn' };
     }
+    if (text.startsWith('/env ')) {
+      const name = text.slice('/env '.length).trim();
+      await notify(chunk(`${name}=${process.env[name] ?? '<ausente>'}`));
+      return { stopReason: 'end_turn' };
+    }
     // Loop (modo dynamic): palavras em maiúsculas no prompt do usuário. A instrução do loop não as contém, então
     // o eco não dispara nada. LOOP-NEXT=<duração> responde com esse marcador; LOOP-STOP com o de parada;
     // LOOP-FAIL rejeita o prompt, como um agente que quebra no turno.
@@ -588,6 +624,23 @@ acp.agent()
         while (!cancelRequested && Date.now() < deadline) await sleep(20);
         return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
       }
+      // /usage reset: listing; /usage reset <provider>/<id>: one redeem. FAKE_AGENT_RESET_DELAY_MS holds the redeem
+      // (the concurrency tests need a redeem still in flight). The fake never spends anything.
+      const readDelay = Number(process.env.FAKE_AGENT_USAGE_DELAY_MS ?? 0);
+      if (text === '/usage reset') {
+        if (readDelay > 0) await sleep(readDelay);
+        await notify(chunk(RESETS_LISTING));
+        return { stopReason: 'end_turn' };
+      }
+      const redeem = /^\/usage reset (\S+)$/.exec(text);
+      if (redeem !== null) {
+        const delay = Number(process.env.FAKE_AGENT_RESET_DELAY_MS ?? 0);
+        if (delay > 0) await sleep(delay);
+        const target = redeem[1] ?? '';
+        await notify(chunk(RESET_REPLIES[target] ?? `Could not find the stored account ${target}`));
+        return { stopReason: 'end_turn' };
+      }
+      if (readDelay > 0) await sleep(readDelay);
       await notify(chunk(USAGE_REPLY));
       return { stopReason: 'end_turn' };
     }

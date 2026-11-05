@@ -308,6 +308,106 @@ describe('agentes sem verificação completa', () => {
   });
 });
 
+describe('conta principal com pasta configurada (principalOf)', () => {
+  let home: string;
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'nanachi-accounts-'));
+  });
+  afterEach(async () => {
+    await removeTempDir(home);
+  });
+
+  async function writeAuth(codexHome: string, email: string): Promise<void> {
+    await mkdir(codexHome, { recursive: true });
+    await writeFile(
+      join(codexHome, 'auth.json'),
+      JSON.stringify({ tokens: { id_token: fakeJwt({ email, 'https://api.openai.com/auth': { chatgpt_plan_type: 'plus' } }) } }),
+    );
+  }
+
+  /** Records the env of each command to see which folder the status check ran against. */
+  function recordingRun(envs: Array<NodeJS.ProcessEnv>): RunCommand {
+    return (_file, args, options) => {
+      envs.push(options.env);
+      return Promise.resolve(args[0] === 'auth' ? OK('{"loggedIn": false}') : OK('', 'Logged in using ChatGPT'));
+    };
+  }
+
+  it('Codex: o e-mail vem do auth.json da pasta configurada, não de ~/.codex', async () => {
+    const configured = join(home, 'codex-configurada');
+    await writeAuth(join(home, '.codex'), 'padrao@exemplo.com');
+    await writeAuth(configured, 'configurada@exemplo.com');
+    const envs: Array<NodeJS.ProcessEnv> = [];
+    const accounts = createAgentAccounts({
+      agents: { codex: { label: 'Codex' } },
+      home,
+      env: {},
+      resolve: (command) => `/fake/bin/${command}`,
+      run: recordingRun(envs),
+      principalOf: () => ({ home: configured, homeEnv: 'CODEX_HOME', configured: true }),
+    });
+
+    const [entry] = await accounts.list();
+
+    expect(entry).toMatchObject({ agentId: 'codex', status: 'logged_in', account: 'configurada@exemplo.com' });
+    // The status command runs against the same folder the agent uses.
+    expect(envs.map((env) => env.CODEX_HOME)).toEqual([configured]);
+  });
+
+  it('pasta padrão (não configurada): lê ~/.codex e não força CODEX_HOME; uma variável herdada some do env', async () => {
+    await writeAuth(join(home, '.codex'), 'padrao@exemplo.com');
+    const envs: Array<NodeJS.ProcessEnv> = [];
+    const accounts = createAgentAccounts({
+      agents: { codex: { label: 'Codex' } },
+      home,
+      // The daemon env carries a leftover variable that the launcher decided to ignore.
+      env: { CODEX_HOME: join(home, 'sujeira') },
+      resolve: (command) => `/fake/bin/${command}`,
+      run: recordingRun(envs),
+      principalOf: () => ({ home: join(home, '.codex'), homeEnv: 'CODEX_HOME', configured: false }),
+    });
+
+    const [entry] = await accounts.list();
+
+    expect(entry).toMatchObject({ account: 'padrao@exemplo.com' });
+    expect(envs).toHaveLength(1);
+    expect(Object.keys(envs[0] ?? {})).not.toContain('CODEX_HOME');
+  });
+
+  it('Claude: a pasta configurada vai em CLAUDE_CONFIG_DIR do comando de status', async () => {
+    const configured = join(home, 'claude-configurada');
+    const envs: Array<NodeJS.ProcessEnv> = [];
+    const accounts = createAgentAccounts({
+      agents: { claude: { label: 'Claude Code' } },
+      home,
+      env: {},
+      resolve: (command) => `/fake/bin/${command}`,
+      run: recordingRun(envs),
+      principalOf: () => ({ home: configured, homeEnv: 'CLAUDE_CONFIG_DIR', configured: true }),
+    });
+
+    await accounts.list();
+
+    expect(envs.map((env) => env.CLAUDE_CONFIG_DIR)).toEqual([configured]);
+  });
+
+  it('principalOf sem resposta (agente sem contas extras): o env fica como veio', async () => {
+    const envs: Array<NodeJS.ProcessEnv> = [];
+    const accounts = createAgentAccounts({
+      agents: { claude: { label: 'Claude Code' } },
+      home,
+      env: { CLAUDE_CONFIG_DIR: join(home, 'do-daemon') },
+      resolve: (command) => `/fake/bin/${command}`,
+      run: recordingRun(envs),
+      principalOf: () => undefined,
+    });
+
+    await accounts.list();
+
+    expect(envs.map((env) => env.CLAUDE_CONFIG_DIR)).toEqual([join(home, 'do-daemon')]);
+  });
+});
+
 describe('createAgentAccounts (lista, cache e tempo)', () => {
   let home: string;
   beforeEach(async () => {

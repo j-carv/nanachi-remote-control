@@ -27,7 +27,10 @@ import {
 } from 'lucide-react';
 import type { AvailableCommand, LoopRequest, Session, SessionStatus, Workspace } from '@nanachi/shared';
 import { splitOptions } from '../agentConfig.js';
+import { accountChangeLocked, accountSelectorFor, sessionAccount, sessionAccountInfo } from '../agentAccounts.js';
+import { loadAccountsForSession } from '../agentAccountsCache.js';
 import { ApiError, type ApiClient } from '../api.js';
+import { AccountSelect } from '../components/AccountSelect.js';
 import { ConfigControls, ConfigSelect } from '../components/ConfigControls.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
 import { ImageCropDialog } from '../components/ImageCropDialog.js';
@@ -49,7 +52,7 @@ import { LoopChip } from '../chat/LoopChip.js';
 import { LoopSheet } from '../chat/LoopSheet.js';
 import { loopCommandFor } from '../chat/loopCommand.js';
 import { useMediaQuery } from '../chat/useMediaQuery.js';
-import { describeLoopError } from '../errorMessages.js';
+import { describeLoopError, describeSessionAccountError } from '../errorMessages.js';
 import { ITEM_FRAME_CLASS } from '../chat/itemFrame.js';
 import {
   backgroundChipCount,
@@ -62,6 +65,7 @@ import { IDLE_PROMPT_CURSOR, promptHistoryOf, recallNewer, recallOlder, type Pro
 import {
   bareCommandName,
   commandSheetFor,
+  configSheetChoices,
   insertCommand,
   nativePickerFor,
   slashQuery,
@@ -160,6 +164,27 @@ export function ChatScreen({
 
   const [configOpen, setConfigOpen] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
+  /**
+   * The accounts are read the first time a sheet that needs them opens (the daemon checks each login: not on every
+   * chat). The list is shared per machine (agentAccountsCache.ts), and a terminal or an agent that is known to have no
+   * accounts never asks.
+   */
+  const [accountsWanted, setAccountsWanted] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState<unknown>(null);
+  useEffect(() => {
+    if (configOpen || usageOpen) setAccountsWanted(true);
+  }, [configOpen, usageOpen]);
+  // A failed switch must not outlive the sheet: reopening it starts clean.
+  useEffect(() => {
+    if (configOpen) setAccountError(null);
+  }, [configOpen]);
+  const accounts = useAsync(
+    async () =>
+      accountsWanted ? await loadAccountsForSession(api, { kind: current.kind, agent: current.agent, accountId: current.accountId }) : null,
+    [api, accountsWanted, current.kind, current.agent, current.accountId],
+  );
+  const accountSelector = current.kind === 'acp' ? accountSelectorFor(accounts.data, current.agent) : null;
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [loopOpen, setLoopOpen] = useState(false);
   /** Short Loop mode notice ("Loop iniciado", or why a malformed `/loop` was refused). */
@@ -532,15 +557,20 @@ export function ChatScreen({
   function commandSheetItems(sheet: CommandSheet): ActionSheetItem[] {
     if (sheet.kind === 'config') {
       const { name, option } = sheet;
-      return [
-        ...option.options.map((choice) => ({
-          label: choice.name,
-          detail: choice.description ?? undefined,
-          checked: choice.value === option.currentValue,
+      // A model picker that spans providers gets one section per provider; other lists stay flat.
+      const choices = configSheetChoices(option).map(
+        (choice): ActionSheetItem => ({
+          label: choice.label,
+          detail: choice.detail,
+          checked: choice.checked,
+          section: choice.section,
           onSelect: () => {
             controller.setConfig(option.id, choice.value);
           },
-        })),
+        }),
+      );
+      return [
+        ...choices,
         { label: `Enviar /${name} ao agente`, tone: 'muted', onSelect: () => sendCommandText(`/${name}`) },
       ];
     }
@@ -775,7 +805,9 @@ export function ChatScreen({
             onOpenChange={setUsageOpen}
             client={api}
             sessionId={current.id}
+            agentId={current.agent}
             agentName={agentLabel}
+            account={sessionAccountInfo(accounts.data, current.agent, current.accountId)}
             onResume={() => void controller.resume()}
           />
 
@@ -814,6 +846,28 @@ export function ChatScreen({
                 <DrawerTitle>Configurar sessão</DrawerTitle>
               </DrawerHeader>
               <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
+                {accountSelector !== null && (
+                  <section className="flex flex-col gap-2">
+                    <ListGroup label="Conta da sessão">
+                      <AccountSelect
+                        profiles={accountSelector.profiles}
+                        value={sessionAccount(accountSelector, current.accountId)}
+                        disabled={accountBusy || accountChangeLocked(chat.status)}
+                        busy={accountBusy}
+                        showHint={accountChangeLocked(chat.status) && !accountBusy}
+                        onChange={(accountId) => {
+                          setAccountBusy(true);
+                          setAccountError(null);
+                          controller
+                            .setAccount(accountId)
+                            .catch((caught: unknown) => setAccountError(caught))
+                            .finally(() => setAccountBusy(false));
+                        }}
+                      />
+                    </ListGroup>
+                    {accountError !== null && <ErrorNotice message={describeSessionAccountError(accountError)} />}
+                  </section>
+                )}
                 {primary.length > 0 && (
                   <ListGroup label="Opções da sessão">
                     {primary.map((control) => (

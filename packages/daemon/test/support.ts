@@ -12,6 +12,7 @@ import { ensureMachine, type Machine } from '../src/repository.js';
 import type { NotifyHandler } from '../src/notify.js';
 import { buildServer, type DevicePairedHandler, type WorkspaceDeletedHandler } from '../src/server.js';
 import type { AgentAccountsService } from '../src/agent-accounts.js';
+import type { AccountRuntime } from '../src/accounts/service.js';
 import { loadOrCreateVapid } from '../src/vapid.js';
 import { removeTempDir } from './temp.js';
 
@@ -47,6 +48,8 @@ export interface StartOptions {
   usageIdleMs?: number | undefined;
   /** Contas dos agentes. Padrão: serviço que não verifica nada (testes não rodam claude/codex de verdade). */
   agentAccounts?: AgentAccountsService;
+  /** Ajustes das contas extras (pasta do usuário, `run` falso, relógio). Padrão: os reais. */
+  accountRuntime?: AccountRuntime | undefined;
   /** Aviso de pareamento por Tailscale (o main liga o Web Push aqui). */
   onDevicePaired?: DevicePairedHandler | undefined;
 }
@@ -86,6 +89,7 @@ export async function startDaemon(home: string, options: StartOptions = {}): Pro
     usageIdleMs: options.usageIdleMs,
     resumeAfterReload: options.resumeAfterReload,
     agentAccounts: options.agentAccounts ?? { list: () => Promise.resolve([]) },
+    accountRuntime: options.accountRuntime,
     onDevicePaired: options.onDevicePaired,
   });
   return { app, db, config, machine, home, connections };

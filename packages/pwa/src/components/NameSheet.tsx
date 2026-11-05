@@ -21,6 +21,12 @@ interface NameSheetProps {
   initialName: string;
   busy: boolean;
   error: unknown;
+  /** Own text for the error (it wins over `error`), for failures the generic texts do not know (e.g. account codes). */
+  errorText?: string | undefined;
+  /** Rules for the name. Default: the file and folder name rules (`validateEntryName`). */
+  validate?: ((name: string) => string | null) | undefined;
+  /** Mixed case on the first letter (a label such as an account name). Default: off, as for file names. */
+  capitalize?: boolean | undefined;
   onCancel(): void;
   onSubmit(name: string): void;
 }
@@ -36,11 +42,14 @@ export function NameSheet({
   initialName,
   busy,
   error,
+  errorText,
+  validate = validateEntryName,
+  capitalize = false,
   onCancel,
   onSubmit,
 }: NameSheetProps) {
   const [name, setName] = useState(initialName);
-  const problem = validateEntryName(name);
+  const problem = validate(name);
   const trimmed = name.trim();
   const unchanged = trimmed === initialName;
 
@@ -72,7 +81,7 @@ export function NameSheet({
               id="entry-name"
               autoFocus
               value={name}
-              autoCapitalize="none"
+              autoCapitalize={capitalize ? 'sentences' : 'none'}
               autoCorrect="off"
               spellCheck={false}
               enterKeyHint="done"
@@ -86,7 +95,7 @@ export function NameSheet({
               </p>
             )}
             <div className="pt-1">
-              <ErrorNotice error={error} />
+              <ErrorNotice error={error} message={errorText} />
             </div>
           </div>
           <DrawerFooter className="flex-row">

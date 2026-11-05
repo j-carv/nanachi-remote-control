@@ -522,3 +522,43 @@ describe('nesting and background work on tool items', () => {
 function textOf(item: ChatItem): string | undefined {
   return 'text' in item ? item.text : undefined;
 }
+
+describe('account_changed', () => {
+  it('vira uma linha da conversa com o nome da conta nova', () => {
+    const state = run([
+      ev(1, { kind: 'agent_message_chunk', text: 'oi' }),
+      ev(2, { kind: 'account_changed', accountId: 'a-1', label: 'Trabalho' }),
+    ]);
+    expect(state.items).toEqual([
+      { id: 'agent_message-1', kind: 'agent_message', text: 'oi' },
+      { id: 'account-2', kind: 'account_changed', label: 'Trabalho' },
+    ]);
+  });
+
+  it('voltar para a principal também vira linha (accountId null)', () => {
+    const state = run([ev(1, { kind: 'account_changed', accountId: null, label: 'Principal' })]);
+    expect(state.items).toEqual([{ id: 'account-1', kind: 'account_changed', label: 'Principal' }]);
+  });
+
+  it('o texto que vem depois do evento abre uma mensagem nova, sem grudar na anterior', () => {
+    const state = run([
+      ev(1, { kind: 'agent_message_chunk', text: 'antes' }),
+      ev(2, { kind: 'account_changed', accountId: 'a-1', label: 'Trabalho' }),
+      ev(3, { kind: 'agent_message_chunk', text: 'depois' }),
+    ]);
+    expect(state.items.map((item) => item.kind)).toEqual(['agent_message', 'account_changed', 'agent_message']);
+  });
+
+  it('é idempotente: o mesmo seq de novo não repete a linha', () => {
+    const event = ev(2, { kind: 'account_changed', accountId: 'a-1', label: 'Trabalho' });
+    const once = run([event]);
+    expect(applyEvents(once, [event])).toBe(once);
+    expect(once.items).toHaveLength(1);
+  });
+
+  it('não muda o status nem os pedidos de permissão', () => {
+    const state = run([ev(1, { kind: 'account_changed', accountId: 'a-1', label: 'Trabalho' })]);
+    expect(state.status).toBe('idle');
+    expect(state.permissions).toEqual([]);
+  });
+});

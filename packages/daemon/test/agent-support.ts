@@ -188,7 +188,13 @@ export async function authHeader(daemon: TestDaemon): Promise<{ authorization: s
 /** Cria sessão via HTTP e devolve o Session. Espera a resposta (o agente já subiu). */
 export async function createSession(
   daemon: TestDaemon,
-  body: { workspaceId: string; agent: string; config?: Record<string, string | boolean>; worktree?: boolean },
+  body: {
+    workspaceId: string;
+    agent: string;
+    config?: Record<string, string | boolean>;
+    worktree?: boolean;
+    accountId?: string;
+  },
   expectedStatus = 201,
 ): Promise<Session> {
   const res = await daemon.app.inject({

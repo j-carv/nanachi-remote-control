@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Bot, ChevronDown, Gauge, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -45,7 +46,7 @@ export function UsageSkeleton() {
   );
 }
 
-function SkeletonBlock({ className }: { className: string }) {
+export function SkeletonBlock({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-md bg-muted motion-reduce:animate-none', className)} />;
 }
 
@@ -157,8 +158,11 @@ function Details({ text, open }: { text: string; open: boolean }) {
   );
 }
 
-/** The loaded panel: limit cards per account, the session tiles, the model and extras, then the raw details. */
-export function UsageBody({ usage }: { usage: ParsedUsage }) {
+/**
+ * The loaded panel: limit cards per account, the saved resets (`resets`, when the agent has them), the session tiles,
+ * the model and extras, then the raw details.
+ */
+export function UsageBody({ usage, resets }: { usage: ParsedUsage; resets?: ReactNode }) {
   const groups = windowGroups(usage);
   const several = usage.accounts.length > 1;
   const rows = infoRows(usage);
@@ -183,6 +187,8 @@ export function UsageBody({ usage }: { usage: ParsedUsage }) {
           </section>
         );
       })}
+
+      {resets}
 
       {usage.session !== undefined && (
         <section aria-labelledby="usage-session" className="flex flex-col gap-2">

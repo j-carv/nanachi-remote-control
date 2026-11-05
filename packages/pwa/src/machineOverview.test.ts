@@ -22,6 +22,7 @@ function session(overrides: Partial<Session> & Pick<Session, 'id' | 'status' | '
     agent: 'omp',
     kind: 'acp',
     title: `Sessão ${overrides.id}`,
+    accountId: null,
     worktree: null,
     createdAt: 1,
     ...overrides,
@@ -29,7 +30,7 @@ function session(overrides: Partial<Session> & Pick<Session, 'id' | 'status' | '
 }
 
 function account(label: string, status: AgentAccount['status']): AgentAccount {
-  return { agentId: label.toLowerCase(), label, status, account: null, detail: null, checkedAt: 1 };
+  return { agentId: label.toLowerCase(), label, status, account: null, detail: null, checkedAt: 1, supportsAccounts: false, profiles: [] };
 }
 
 const workspace = (id: string): Workspace => ({ id, name: id, path: `C:\\Projects\\${id}`, createdAt: 1, muted: false });

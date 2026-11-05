@@ -1,10 +1,11 @@
 import { AgentAccountsResponseSchema, type AgentAccount } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
-import type { AgentAccountsService } from '../src/agent-accounts.js';
+import type { AgentAccountsService, PrincipalAccount } from '../src/agent-accounts.js';
 import { authHeader } from './agent-support.js';
 import { setupDaemonTests } from './support.js';
 
-const ACCOUNTS: AgentAccount[] = [
+/** Principal, como o verificador a devolve (sem os campos de perfis, que o serviço acrescenta). */
+const ACCOUNTS: PrincipalAccount[] = [
   {
     agentId: 'claude',
     label: 'Claude Code',
@@ -30,6 +31,41 @@ function recordingService(): { service: AgentAccountsService; calls: Array<{ ref
   };
 }
 
+/** Resposta esperada: a principal mais `supportsAccounts` e `profiles` (só a principal, sem contas extras). */
+const EXPECTED: AgentAccount[] = [
+  {
+    agentId: 'claude',
+    label: 'Claude Code',
+    status: 'logged_in',
+    account: 'pessoa@exemplo.com',
+    detail: 'Equipe · team',
+    checkedAt: 1_700_000_000_000,
+    supportsAccounts: true,
+    profiles: [
+      {
+        id: 'default',
+        label: 'Principal',
+        isDefault: true,
+        active: true,
+        status: 'logged_in',
+        account: 'pessoa@exemplo.com',
+        detail: 'Equipe · team',
+        checkedAt: 1_700_000_000_000,
+      },
+    ],
+  },
+  {
+    agentId: 'agy',
+    label: 'Antigravity',
+    status: 'unknown',
+    account: null,
+    detail: 'Sem verificação',
+    checkedAt: 1,
+    supportsAccounts: false,
+    profiles: [],
+  },
+];
+
 describe('GET /api/agents/accounts', () => {
   const env = setupDaemonTests();
 
@@ -49,7 +85,7 @@ describe('GET /api/agents/accounts', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(AgentAccountsResponseSchema.parse(res.json<unknown>())).toEqual({ accounts: ACCOUNTS });
+    expect(AgentAccountsResponseSchema.parse(res.json<unknown>())).toEqual({ accounts: EXPECTED });
     expect(recorder.calls).toEqual([{ refresh: false }]);
   });
 

@@ -43,6 +43,8 @@ const SelectOptionSchema = z.object({
   value: z.string().min(1),
   name: z.string().min(1),
   description: z.string().nullable().optional(),
+  /** Name of the ACP option group this option came from. Absent when the agent sent a flat list. */
+  group: z.string().min(1).nullable().optional(),
 });
 
 const SessionConfigOptionBaseSchema = z.object({
@@ -88,6 +90,8 @@ export const SessionSchema = z.object({
   kind: AgentKindSchema,
   title: z.string().min(1),
   status: SessionStatusSchema,
+  /** Conta do agente que a sessão usa (`null` = conta principal). Ver PLAN.md, várias contas por agente. */
+  accountId: z.string().min(1).nullable().default(null),
   /** Worktree git separado da sessão (`null` = roda no cwd do workspace). */
   worktree: z
     .object({
@@ -280,6 +284,13 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     ...EventMetaShape,
     kind: z.literal('terminal_output'),
     data: z.string(),
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('account_changed'),
+    /** Conta nova da sessão (`null` = principal). `label` é o nome que o PWA mostra. */
+    accountId: z.string().min(1).nullable(),
+    label: z.string().min(1),
   }),
   z.object({
     ...EventMetaShape,

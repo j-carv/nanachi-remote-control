@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import type { AgentAccount } from '@nanachi/shared';
 import { findExecutable } from './agent-command.js';
+import { withEnvValue, withoutEnv } from './agent-env.js';
 
 /**
  * Conta logada em cada agente. Cada verificador lê só o que precisa para responder (status, e-mail, plano,
@@ -14,6 +15,9 @@ import { findExecutable } from './agent-command.js';
  */
 
 type AccountStatus = AgentAccount['status'];
+
+/** Conta principal de um agente (o que `GET /api/agents/accounts` devolve por agente, sem os perfis). */
+export type PrincipalAccount = Omit<AgentAccount, 'supportsAccounts' | 'profiles'>;
 
 export interface AccountCheck {
   status: AccountStatus;
@@ -38,6 +42,8 @@ export type RunCommand = (file: string, args: readonly string[], options: RunOpt
 export interface ProbeContext {
   /** Pasta do usuário (`~`): onde ficam `.codex` e `.omp`. */
   home: string;
+  /** Pasta de configuração da conta quando não é a principal (`CODEX_HOME` de um perfil). Padrão: `<home>\.codex`. */
+  accountHome?: string | undefined;
   /** Env com o PATH dos agentes (agent-path.ts). */
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
@@ -112,10 +118,10 @@ async function verifyClaude(context: ProbeContext): Promise<AccountCheck> {
 }
 
 /** `auth.json` do Codex: só e-mail e plano do id_token. Arquivo ausente ou ilegível → undefined, sem detalhes. */
-async function readCodexIdentity(home: string): Promise<{ email: string | null; plan: string | null } | undefined> {
+async function readCodexIdentity(codexHome: string): Promise<{ email: string | null; plan: string | null } | undefined> {
   let text: string;
   try {
-    text = await readFile(join(home, '.codex', 'auth.json'), 'utf8');
+    text = await readFile(join(codexHome, 'auth.json'), 'utf8');
   } catch {
     return undefined;
   }
@@ -137,7 +143,7 @@ async function verifyCodex(context: ProbeContext): Promise<AccountCheck> {
   const text = `${stdout}\n${stderr}`;
   if (/not logged in/i.test(text)) return LOGGED_OUT;
   if (/logged in using chatgpt/i.test(text)) {
-    const identity = await readCodexIdentity(context.home);
+    const identity = await readCodexIdentity(context.accountHome ?? join(context.home, '.codex'));
     return {
       status: 'logged_in',
       account: identity?.email ?? null,
@@ -221,7 +227,8 @@ export const ACCOUNT_VERIFIERS: Readonly<Record<string, Verifier>> = {
 };
 
 const NO_VERIFIER: AccountCheck = { status: 'unknown', account: null, detail: 'Sem verificação' };
-const TIMED_OUT: AccountCheck = { status: 'unknown', account: null, detail: 'Tempo esgotado' };
+/** Resultado quando a verificação passa do tempo limite (também usado pelas contas extras). */
+export const TIMED_OUT: AccountCheck = { status: 'unknown', account: null, detail: 'Tempo esgotado' };
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_TTL_MS = 5 * 60_000;
@@ -248,12 +255,23 @@ export function execCommand(file: string, args: readonly string[], options: RunO
   });
 }
 
-function withLimit(check: Promise<AccountCheck>, ms: number): Promise<AccountCheck> {
+/** Corta a verificação no tempo limite: devolve `TIMED_OUT` em vez de esperar o comando. */
+export function withLimit(check: Promise<AccountCheck>, ms: number): Promise<AccountCheck> {
   let timer: NodeJS.Timeout | undefined;
   const limit = new Promise<AccountCheck>((resolve) => {
     timer = setTimeout(() => resolve(TIMED_OUT), ms);
   });
   return Promise.race([check, limit]).finally(() => clearTimeout(timer));
+}
+
+/** Where the principal account of an agent lives (the part of `AccountLauncher.principalOf` the verifiers need). */
+export interface PrincipalHome {
+  /** Absolute configuration folder of the principal. */
+  home: string;
+  /** The variable that names that folder for the agent (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`). */
+  homeEnv: string;
+  /** A valid variable names the folder; false: it is the agent's default folder. */
+  configured: boolean;
 }
 
 export interface AgentAccountsOptions {
@@ -273,11 +291,33 @@ export interface AgentAccountsOptions {
   timeoutMs?: number | undefined;
   /** Validade do cache em memória. Padrão: 5 min. */
   ttlMs?: number | undefined;
+  /**
+   * Where the principal of an agent really lives (the launcher resolves the agent env, the daemon env and the default
+   * folder). Without it the check runs with `env` as it is and reads `~\.codex`. undefined = the agent has no extra accounts.
+   */
+  principalOf?: ((agentId: string) => PrincipalHome | undefined) | undefined;
 }
 
 export interface AgentAccountsService {
   /** `refresh` ignora o cache. Chamadas simultâneas compartilham a mesma verificação. */
-  list(options?: { refresh?: boolean }): Promise<AgentAccount[]>;
+  list(options?: { refresh?: boolean }): Promise<PrincipalAccount[]>;
+}
+
+/** Contexto de verificação com o `run`/`resolve` padrão ou os injetados (testes). */
+export function createProbeContext(options: {
+  home: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  resolve?: ((command: string) => string | undefined) | undefined;
+  run?: RunCommand | undefined;
+}): ProbeContext {
+  return {
+    home: options.home,
+    env: options.env,
+    timeoutMs: options.timeoutMs,
+    resolve: options.resolve ?? ((command: string) => resolveVerifierCommand(command, options.env)),
+    run: options.run ?? execCommand,
+  };
 }
 
 /**
@@ -296,25 +336,41 @@ export function createAgentAccounts(options: AgentAccountsOptions): AgentAccount
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
-  const resolve = options.resolve ?? ((command: string) => resolveVerifierCommand(command, options.env));
-  const context: ProbeContext = {
+  const context = createProbeContext({
     home: options.home ?? homedir(),
     env: options.env,
     timeoutMs,
-    resolve,
-    run: options.run ?? execCommand,
-  };
+    resolve: options.resolve,
+    run: options.run,
+  });
 
-  let cache: { at: number; accounts: AgentAccount[] } | undefined;
-  let pending: Promise<AgentAccount[]> | undefined;
+  let cache: { at: number; accounts: PrincipalAccount[] } | undefined;
+  let pending: Promise<PrincipalAccount[]> | undefined;
 
-  async function probe(agentId: string, label: string): Promise<AgentAccount> {
+  /**
+   * The check runs against the folder the agent itself uses: a configured home goes in the agent's variable (and into the
+   * folder the Codex identity is read from); a default home removes the variable, so a value the daemon inherited from
+   * an extra account's environment cannot make the principal look like that account.
+   */
+  function contextOf(agentId: string): ProbeContext {
+    const principal = options.principalOf?.(agentId);
+    if (principal === undefined) return context;
+    return {
+      ...context,
+      accountHome: principal.home,
+      env: principal.configured
+        ? withEnvValue(context.env, principal.homeEnv, principal.home)
+        : withoutEnv(context.env, principal.homeEnv),
+    };
+  }
+
+  async function probe(agentId: string, label: string): Promise<PrincipalAccount> {
     const verifier = Object.hasOwn(ACCOUNT_VERIFIERS, agentId) ? ACCOUNT_VERIFIERS[agentId] : undefined;
-    const check = verifier === undefined ? NO_VERIFIER : await withLimit(verifier(context), timeoutMs);
+    const check = verifier === undefined ? NO_VERIFIER : await withLimit(verifier(contextOf(agentId)), timeoutMs);
     return { agentId, label, ...check, checkedAt: now() };
   }
 
-  async function refreshAll(): Promise<AgentAccount[]> {
+  async function refreshAll(): Promise<PrincipalAccount[]> {
     const accounts = await Promise.all(Object.entries(options.agents).map(([id, agent]) => probe(id, agent.label)));
     cache = { at: now(), accounts };
     return accounts;

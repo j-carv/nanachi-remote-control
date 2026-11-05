@@ -20,6 +20,8 @@
     "e2e:resume": "node e2e/run-resume.mjs",
     "e2e:images": "node e2e/run-images.mjs",
     "e2e:commands": "node e2e/run-commands.mjs",
+    "e2e:resets": "node e2e/run-resets.mjs",
+    "e2e:accounts": "node e2e/run-accounts.mjs",
     "e2e:chatperf": "node e2e/run-chat-perf.mjs",
     "e2e:workspace": "node e2e/run-workspace.mjs",
     "e2e:background": "node e2e/run-background.mjs",

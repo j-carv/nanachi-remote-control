@@ -82,6 +82,39 @@ export function usageNeedsResume(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'session_not_active';
 }
 
+const RESETS_UNSUPPORTED_TEXT = 'Este agente não tem resets salvos';
+
+/** Text for the "Resets salvos" list when `getUsageResets` fails. Other errors fall back to `describeUsageError`. */
+export function describeResetsError(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'resets_unsupported') return RESETS_UNSUPPORTED_TEXT;
+  return describeUsageError(error);
+}
+
+/**
+ * True when a failed `redeemUsageReset` leaves it unknown whether the reset was spent. Only a 400, 404 or 409 is a
+ * refusal before anything ran (invalid target, unknown session, a redeem already running). Everything else may have
+ * reached the agent: a 502 or 500 after it started, a 504, a network error, a 2xx that does not match the schema, an
+ * error that is not from the API. The panel then says so and reads the usage again, and never sends the redeem again by
+ * itself.
+ */
+export function redeemOutcomeUnknown(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  return error.status !== 400 && error.status !== 404 && error.status !== 409;
+}
+
+const REDEEM_UNCONFIRMED_TEXT = 'Não deu para confirmar se o reset foi usado. Confira o uso antes de tentar de novo.';
+
+/** Text for the usage panel when `redeemUsageReset` fails. See `redeemOutcomeUnknown` for the uncertain cases. */
+export function describeRedeemError(error: unknown): string {
+  if (redeemOutcomeUnknown(error)) return REDEEM_UNCONFIRMED_TEXT;
+  if (error instanceof ApiError) {
+    if (error.code === 'resets_unsupported') return RESETS_UNSUPPORTED_TEXT;
+    if (error.code === 'reset_in_progress') return 'Já tem um reset em andamento.';
+    if (error.code === 'invalid_request') return 'Esse reset não está mais na lista. Atualize o uso e tente de novo.';
+  }
+  return describeError(error);
+}
+
 /** Text for the Loop mode error codes (the body's `error`). An unknown code falls back to `describeError`. */
 const LOOP_ERROR_TEXT: Readonly<Record<string, string>> = {
   loop_not_found: 'Esta sessão não tem loop. Crie um novo.',
@@ -97,4 +130,45 @@ export function describeLoopError(error: unknown): string {
     if (text !== undefined) return text;
   }
   return describeError(error);
+}
+
+/** Text for the account error codes (the body's `error`). A code that is not here falls back to `describeError`. */
+const ACCOUNT_ERROR_TEXT: Readonly<Record<string, string>> = {
+  accounts_unsupported: 'Este agente não tem contas extras.',
+  account_in_use: 'Uma sessão está trabalhando nesta conta. Espere terminar e tente de novo.',
+  too_many_accounts: 'Limite de 10 contas extras por agente. Remova alguma antes de adicionar outra.',
+  login_in_progress: 'Já há um login em andamento para este agente. Termine ou cancele esse primeiro.',
+  invalid_state: 'O login não está esperando um código agora.',
+  session_busy: 'O agente está trabalhando. Troque a conta quando ele terminar.',
+  not_resumable: 'Este agente não retoma sessões: abra uma sessão nova na conta que você quer usar.',
+  not_found: 'Não encontrei esta conta no PC. Atualize a lista.',
+};
+
+/** Text for the account API errors (list, login, rename, remove, session account), read from the body code. */
+export function describeAccountError(error: unknown): string {
+  if (error instanceof ApiError && error.code !== null) {
+    const text = ACCOUNT_ERROR_TEXT[error.code];
+    if (text !== undefined) return text;
+  }
+  return describeError(error);
+}
+
+/**
+ * Text for `PUT /api/sessions/:id/account`. The 404 there is a missing session, not a missing account, so it must not
+ * use the account text. The other codes read as in `describeAccountError`.
+ */
+export function describeSessionAccountError(error: unknown): string {
+  if (error instanceof ApiError && (error.code === 'not_found' || error.kind === 'not_found')) {
+    return 'Não encontrei esta sessão no PC. Pode ter sido removida.';
+  }
+  return describeAccountError(error);
+}
+
+/** Text for a failed poll of the login state: the daemon forgot the login, the PC is unreachable, or anything else. */
+export function describeLoginPollError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.kind === 'not_found') return 'O PC não lembra mais deste login. Feche e tente de novo.';
+    if (error.kind === 'network') return 'Sem resposta do PC. Tentando de novo…';
+  }
+  return describeAccountError(error);
 }

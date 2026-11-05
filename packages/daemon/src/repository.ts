@@ -151,6 +151,7 @@ interface SessionDbRow {
   title: string;
   status: string;
   worktree: string | null;
+  account_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -165,6 +166,7 @@ function toSession(row: SessionDbRow): Session {
     kind: row.kind,
     title: row.title,
     status: row.status,
+    accountId: row.account_id,
     worktree,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -303,7 +305,7 @@ export function stopInterruptedSessions(db: Database.Database, at: number): numb
 }
 
 const SESSION_COLUMNS =
-  'id, workspace_id, agent, kind, title, status, worktree, created_at, updated_at';
+  'id, workspace_id, agent, kind, title, status, worktree, account_id, created_at, updated_at';
 
 export interface NewSession {
   id: string;
@@ -316,12 +318,14 @@ export interface NewSession {
   createdAt: number;
   /** Worktree separado (null/ausente = roda no cwd do workspace). Gravado como JSON. */
   worktree?: Worktree | null;
+  /** Conta do agente (null/ausente = principal). */
+  accountId?: string | null;
 }
 
 export function insertSession(db: Database.Database, session: NewSession): void {
-  db.prepare<[string, string, string, string, string, string, string | null, number, number]>(
-    `INSERT INTO sessions (id, workspace_id, agent, kind, title, status, config_options, worktree, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?)`,
+  db.prepare<[string, string, string, string, string, string, string | null, string | null, number, number]>(
+    `INSERT INTO sessions (id, workspace_id, agent, kind, title, status, config_options, worktree, account_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?)`,
   ).run(
     session.id,
     session.workspaceId,
@@ -330,6 +334,7 @@ export function insertSession(db: Database.Database, session: NewSession): void 
     session.title,
     session.status,
     session.worktree ? JSON.stringify(session.worktree) : null,
+    session.accountId ?? null,
     session.createdAt,
     session.createdAt,
   );
@@ -389,12 +394,14 @@ export interface SessionChanges {
   /** Lista inteira mais recente que o agente anunciou (substitui a anterior). */
   commands?: AvailableCommand[];
   acpSessionId?: string;
+  /** Conta do agente (`null` = principal). */
+  accountId?: string | null;
 }
 
 /** Atualiza só os campos informados e `updated_at`. Os nomes de coluna são fixos (nada vem do usuário). */
 export function updateSession(db: Database.Database, id: string, changes: SessionChanges, at: number): void {
   const assignments = ['updated_at = ?'];
-  const values: Array<string | number> = [at];
+  const values: Array<string | number | null> = [at];
   if (changes.status !== undefined) {
     assignments.push('status = ?');
     values.push(changes.status);
@@ -415,7 +422,11 @@ export function updateSession(db: Database.Database, id: string, changes: Sessio
     assignments.push('acp_session_id = ?');
     values.push(changes.acpSessionId);
   }
-  db.prepare<Array<string | number>>(`UPDATE sessions SET ${assignments.join(', ')} WHERE id = ?`).run(
+  if (changes.accountId !== undefined) {
+    assignments.push('account_id = ?');
+    values.push(changes.accountId);
+  }
+  db.prepare<Array<string | number | null>>(`UPDATE sessions SET ${assignments.join(', ')} WHERE id = ?`).run(
     ...values,
     id,
   );
@@ -723,4 +734,126 @@ export function listPushSubscriptions(db: Database.Database): PushSubscriptionRo
       deviceId: row.device_id,
       keys: PushSubscriptionRequestSchema.shape.keys.parse(JSON.parse(row.keys)),
     }));
+}
+
+/** Conta extra de um agente (`agent_accounts`). A principal não tem linha: ela é o diretório normal do agente. */
+export interface AgentProfileRow {
+  id: string;
+  agent: string;
+  label: string;
+  createdAt: number;
+}
+
+interface AgentProfileDbRow {
+  id: string;
+  agent: string;
+  label: string;
+  created_at: number;
+}
+
+const AGENT_PROFILE_COLUMNS = 'id, agent, label, created_at';
+
+function toAgentProfileRow(row: AgentProfileDbRow): AgentProfileRow {
+  return { id: row.id, agent: row.agent, label: row.label, createdAt: row.created_at };
+}
+
+/** Contas extras de um agente, na ordem de criação. */
+export function listAgentProfiles(db: Database.Database, agent: string): AgentProfileRow[] {
+  return db
+    .prepare<[string], AgentProfileDbRow>(
+      `SELECT ${AGENT_PROFILE_COLUMNS} FROM agent_accounts WHERE agent = ? ORDER BY created_at, rowid`,
+    )
+    .all(agent)
+    .map(toAgentProfileRow);
+}
+
+export function countAgentProfiles(db: Database.Database, agent: string): number {
+  return db.prepare<[string], { n: number }>('SELECT COUNT(*) AS n FROM agent_accounts WHERE agent = ?').get(agent)?.n ?? 0;
+}
+
+export function findAgentProfile(db: Database.Database, agent: string, id: string): AgentProfileRow | undefined {
+  const row = db
+    .prepare<[string, string], AgentProfileDbRow>(
+      `SELECT ${AGENT_PROFILE_COLUMNS} FROM agent_accounts WHERE agent = ? AND id = ?`,
+    )
+    .get(agent, id);
+  return row === undefined ? undefined : toAgentProfileRow(row);
+}
+
+export function insertAgentProfile(db: Database.Database, profile: AgentProfileRow): void {
+  db.prepare<[string, string, string, number]>(
+    'INSERT INTO agent_accounts (id, agent, label, created_at) VALUES (?, ?, ?, ?)',
+  ).run(profile.id, profile.agent, profile.label, profile.createdAt);
+}
+
+/**
+ * Inserts the account only if the agent has fewer than `limit` of them. The count and the insert are one transaction, so
+ * concurrent callers cannot both pass the check. Returns false (nothing inserted) when the agent is at the limit.
+ */
+export function insertAgentProfileIfRoom(db: Database.Database, profile: AgentProfileRow, limit: number): boolean {
+  return db.transaction((): boolean => {
+    if (countAgentProfiles(db, profile.agent) >= limit) return false;
+    insertAgentProfile(db, profile);
+    return true;
+  })();
+}
+
+/** Troca o nome da conta. Devolve a conta atualizada, ou undefined se o agente não tem essa conta. */
+export function renameAgentProfile(
+  db: Database.Database,
+  agent: string,
+  id: string,
+  label: string,
+): AgentProfileRow | undefined {
+  db.prepare<[string, string, string]>('UPDATE agent_accounts SET label = ? WHERE agent = ? AND id = ?').run(
+    label,
+    agent,
+    id,
+  );
+  return findAgentProfile(db, agent, id);
+}
+
+/** Conta ativa do agente (a que sessões novas usam), ou undefined = principal. */
+export function getActiveAccountId(db: Database.Database, agent: string): string | undefined {
+  return db
+    .prepare<[string], { account_id: string }>('SELECT account_id FROM agent_active_account WHERE agent = ?')
+    .get(agent)?.account_id;
+}
+
+/** Grava a conta ativa; `null` apaga o ponteiro (volta à principal). */
+export function setActiveAccountId(db: Database.Database, agent: string, accountId: string | null): void {
+  if (accountId === null) {
+    db.prepare<[string]>('DELETE FROM agent_active_account WHERE agent = ?').run(agent);
+    return;
+  }
+  db.prepare<[string, string]>(
+    `INSERT INTO agent_active_account (agent, account_id) VALUES (?, ?)
+     ON CONFLICT (agent) DO UPDATE SET account_id = excluded.account_id`,
+  ).run(agent, accountId);
+}
+
+/**
+ * Sessões de uma conta com processo vivo ou subindo (`starting`, `running`, `awaiting_permission`, `idle`). Bloqueiam
+ * apagar a conta: o processo ainda usa a pasta dela.
+ */
+export function countBusySessionsOnAccount(db: Database.Database, agent: string, accountId: string): number {
+  return (
+    db
+      .prepare<[string, string], { n: number }>(
+        "SELECT COUNT(*) AS n FROM sessions WHERE agent = ? AND account_id = ? AND status IN ('starting', 'running', 'awaiting_permission', 'idle')",
+      )
+      .get(agent, accountId)?.n ?? 0
+  );
+}
+
+/**
+ * Apaga a conta extra (numa transação): a linha, o ponteiro de conta ativa se apontava para ela (volta à principal)
+ * e `account_id` das sessões dela (viram principal). Não mexe na pasta da conta nem confere sessões vivas.
+ */
+export function removeAgentProfile(db: Database.Database, agent: string, id: string): void {
+  db.transaction((): void => {
+    db.prepare<[string, string]>('DELETE FROM agent_accounts WHERE agent = ? AND id = ?').run(agent, id);
+    db.prepare<[string, string]>('DELETE FROM agent_active_account WHERE agent = ? AND account_id = ?').run(agent, id);
+    db.prepare<[string, string]>('UPDATE sessions SET account_id = NULL WHERE agent = ? AND account_id = ?').run(agent, id);
+  })();
 }

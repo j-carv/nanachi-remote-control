@@ -9,12 +9,13 @@ import {
   CreateWorkspaceRequestSchema,
   LoopRequestSchema,
   PairRequestSchema,
+  ResetRedeemRequestSchema,
+  SetSessionAccountRequestSchema,
   TailscalePairRequestSchema,
   parseClientMessage,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
   UpdateWorkspaceRequestSchema,
-  type AgentAccountsResponse,
   type AgentSessionsResponse,
   type CommandsResponse,
   type ConfigOptionsResponse,
@@ -29,6 +30,8 @@ import {
   type PairResponse,
   type PushKeyResponse,
   type RootsResponse,
+  type ResetRedeemResponse,
+  type ResetsResponse,
   type ServerMessage,
   type Session,
   type ShellsResponse,
@@ -45,6 +48,9 @@ import type Database from 'better-sqlite3';
 import { WebSocket, type RawData } from 'ws';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { createAgentAccounts, type AgentAccountsService } from './agent-accounts.js';
+import { createAccountLauncher } from './accounts/launch.js';
+import { registerAccountRoutes } from './accounts/routes.js';
+import { createAccountsService, type AccountRuntime } from './accounts/service.js';
 import { agentBinDirs, withPathPrepended } from './agent-path.js';
 import type { LoadedConfig } from './config.js';
 import { ApiError } from './api-error.js';
@@ -145,6 +151,8 @@ export interface ServerDeps {
   usageIdleMs?: number | undefined;
   /** Contas dos agentes (`GET /api/agents/accounts`). Padrão: verificadores reais sobre o PATH dos agentes. */
   agentAccounts?: AgentAccountsService | undefined;
+  /** Ajustes das contas extras (pasta do usuário, verificadores, relógio). Padrão: os reais. Testes trocam. */
+  accountRuntime?: AccountRuntime | undefined;
   /** Sessões que o reload deixou ociosas (`reload-resume.ts`): retomadas em segundo plano assim que o servidor escuta. */
   resumeAfterReload?: readonly string[] | undefined;
   /** Aviso de pareamento novo por Tailscale (Web Push para os outros devices). Padrão: nada. */
@@ -179,6 +187,9 @@ const SESSION_ERROR_STATUS: Record<SessionErrorCode, number> = {
   worktree_dirty: 409,
   session_not_active: 409,
   usage_unsupported: 400,
+  resets_unsupported: 400,
+  reset_in_progress: 409,
+  accounts_unsupported: 400,
   loop_not_found: 404,
   loop_finished: 409,
   loop_busy: 409,
@@ -312,6 +323,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       if (socket.readyState === WebSocket.OPEN) send(socket, message);
     }
   };
+  const accountLauncher = createAccountLauncher({
+    db,
+    agents: config.agents,
+    nanachiHome: home,
+    userHome: deps.accountRuntime?.userHome,
+    daemonEnv: deps.accountRuntime?.daemonEnv,
+    log: (message) => app.log.warn(message),
+  });
   const sessions = new SessionManager({
     db,
     config,
@@ -326,16 +345,34 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     usageCacheMs: deps.usageCacheMs,
     usageIdleMs: deps.usageIdleMs,
     usageProbeRoot: join(home, 'usage-probe'),
+    appVersion: version,
+    accounts: accountLauncher,
   });
+  const probeEnv = withPathPrepended({ ...process.env }, agentBinDirs());
   const agentAccounts =
     deps.agentAccounts ??
     createAgentAccounts({
       agents: config.agents,
-      env: withPathPrepended({ ...process.env }, agentBinDirs()),
+      env: probeEnv,
+      principalOf: (agentId) => accountLauncher.principalOf(agentId),
     });
+  const accounts = createAccountsService({
+    db,
+    agents: config.agents,
+    nanachiHome: home,
+    principal: agentAccounts,
+    launcher: accountLauncher,
+    isAccountInUse: (agentId, accountId) => sessions.isAccountInUse(agentId, accountId),
+    releaseAccount: (agentId, accountId) => sessions.releaseAccount(agentId, accountId),
+    probeEnv,
+    log: (message) => app.log.warn(message),
+    ...deps.accountRuntime,
+  });
   // Ao fechar o daemon, os agentes morrem junto (antes do banco ser fechado pelo main).
   app.addHook('onClose', async () => {
     await sessions.shutdown();
+    // A running login owns a PTY: without this it would outlive the daemon and keep the account folder busy.
+    await accounts.shutdown();
   });
   // Retomada depois do reload: em segundo plano, sem atrasar a subida; falha de uma sessão só vira aviso.
   const resumeIds = deps.resumeAfterReload ?? [];
@@ -576,12 +613,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       return body;
     });
 
-    api.get<{ Querystring: { refresh?: unknown } }>('/api/agents/accounts', async (request) => {
-      const body: AgentAccountsResponse = {
-        accounts: await agentAccounts.list({ refresh: request.query.refresh === '1' }),
-      };
-      return body;
-    });
+    // Contas: GET /api/agents/accounts e as rotas de criar, renomear, remover e trocar a conta ativa (accounts/routes.ts).
+    registerAccountRoutes(api, accounts);
 
     api.get('/api/workspaces', async () => {
       const body: WorkspacesResponse = { workspaces: listWorkspaces(db) };
@@ -717,6 +750,17 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       return reply.code(200).send(body);
     });
 
+    // Troca a conta do agente da sessão (PLAN.md, várias contas por agente). Com o agente vivo e ocioso, ele é parado e
+    // retomado na conta nova. Os erros (not_found, session_busy, invalid_request, accounts_unsupported) vêm do SessionManager.
+    api.put<{ Params: { id: string } }>('/api/sessions/:id/account', async (request, reply) => {
+      const parsed = SetSessionAccountRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const body: Session = await sessions.setAccount(request.params.id, parsed.data.accountId);
+      return reply.code(200).send(body);
+    });
+
     // Diff no cwd da sessão (worktree, se houver). Não-git → lista vazia.
     api.get<{ Params: { id: string } }>('/api/sessions/:id/diff', async (request) => {
       const cwd = sessions.workingDirectory(request.params.id);
@@ -747,6 +791,22 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // Uso do agente: o comando local (/usage ou /status) roda como turno e a resposta vem no corpo. Nada é gravado.
     api.post<{ Params: { id: string } }>('/api/sessions/:id/usage', async (request) => {
       const body: UsageResponse = await sessions.usage(request.params.id);
+      return body;
+    });
+
+    // Resets salvos (omp e codex, PLAN.md "rate-limit resets"). A listagem é só leitura; o POST gasta um reset.
+    // Os erros (not_found, resets_unsupported, reset_in_progress, agent_failed, agent_timeout) vêm do SessionManager.
+    api.get<{ Params: { id: string } }>('/api/sessions/:id/usage/resets', async (request) => {
+      const body: ResetsResponse = await sessions.resetsOf(request.params.id);
+      return body;
+    });
+
+    api.post<{ Params: { id: string }; Body: unknown }>('/api/sessions/:id/usage/resets', async (request, reply) => {
+      const parsed = ResetRedeemRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const body: ResetRedeemResponse = await sessions.redeemReset(request.params.id, parsed.data.target);
       return body;
     });
 

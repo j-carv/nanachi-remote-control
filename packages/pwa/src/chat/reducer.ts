@@ -50,6 +50,8 @@ export type ChatItem =
       timing?: BackgroundTiming;
     }
   | { id: string; kind: 'plan'; entries: PlanEntry[] }
+  /** The session moved to another account: `label` is the name of the new one. */
+  | { id: string; kind: 'account_changed'; label: string }
   | { id: string; kind: 'error'; message: string };
 
 export interface ChatState {
@@ -247,6 +249,10 @@ function applyOne(draft: Draft, event: SessionEvent) {
     // Saída de terminal (sessão PTY) não entra na conversa; a tela de terminal trata esses eventos.
     case 'terminal_output':
     case 'terminal_exit':
+      return;
+
+    case 'account_changed':
+      draft.items.push({ id: `account-${event.seq}`, kind: 'account_changed', label: event.label });
       return;
 
     case 'status':

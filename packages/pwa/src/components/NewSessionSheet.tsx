@@ -7,6 +7,8 @@ import {
   toCreateConfig,
   writeAgentConfig,
 } from '../agentConfig.js';
+import { accountSelectorFor, newSessionAccount } from '../agentAccounts.js';
+import { loadAgentAccounts } from '../agentAccountsCache.js';
 import type { ApiClient } from '../api.js';
 import type { StorageLike } from '../machines.js';
 import { useAsync } from '../useAsync.js';
@@ -22,6 +24,7 @@ import {
 } from '@/components/ui/drawer';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { AccountSelect } from './AccountSelect.js';
 import { ConfigControls } from './ConfigControls.js';
 import { ErrorNotice } from './ErrorNotice.js';
 import { ListGroup, listRowClass } from './ListGroup.js';
@@ -54,6 +57,10 @@ export function NewSessionSheet({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<unknown>(null);
   const [worktree, setWorktree] = useState(false);
+  // The accounts only decide whether the "Conta" row shows: a failed read leaves the sheet as it was. The list is
+  // shared with the chat and Settings (agentAccountsCache.ts), so opening this sheet does not check every login again.
+  const accounts = useAsync(() => loadAgentAccounts(api), [api]);
+  const [accountChoice, setAccountChoice] = useState<Record<string, string>>({});
   // Worktree só existe em repositório git (branch no /info). Falha do /info: some em silêncio.
   const info = useAsync(() => api.workspaceInfo(workspace.id), [api, workspace.id]);
   const isGit = info.data !== null && info.data.branch !== null;
@@ -69,6 +76,9 @@ export function NewSessionSheet({
   const options =
     agentId === null || isTerminal ? [] : (edits[agentId] ?? readAgentConfig(storage, agentId));
   const error = createError ?? agents.error;
+  const accountSelector = agentId === null || isTerminal ? null : accountSelectorFor(accounts.data, agentId);
+  const accountId =
+    accountSelector === null || agentId === null ? null : newSessionAccount(accountSelector, accountChoice[agentId] ?? null);
 
   function change(configId: string, value: ConfigValue) {
     if (agentId === null) return;
@@ -86,6 +96,7 @@ export function NewSessionSheet({
         agent: agentId,
         ...(options.length > 0 ? { config: toCreateConfig(options) } : {}),
         ...(worktree && isGit ? { worktree: true } : {}),
+        ...(accountId !== null ? { accountId } : {}),
       });
       onCreated(session);
     } catch (caught) {
@@ -140,6 +151,16 @@ export function NewSessionSheet({
               <p className="pl-1 text-sm text-muted-foreground">Nenhum agente configurado no daemon.</p>
             )}
           </fieldset>
+
+          {accountSelector !== null && agentId !== null && accountId !== null && (
+            <ListGroup label="Conta" className="shrink-0">
+              <AccountSelect
+                profiles={accountSelector.profiles}
+                value={accountId}
+                onChange={(next) => setAccountChoice((previous) => ({ ...previous, [agentId]: next }))}
+              />
+            </ListGroup>
+          )}
 
           {isGit && (
             // shrink-0: the sheet body is a scrolling flex column, and ListGroup's overflow-hidden lets it shrink to 2px.

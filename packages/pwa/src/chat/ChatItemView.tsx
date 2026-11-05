@@ -113,6 +113,13 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
     case 'plan':
       return <PlanCard entries={item.entries} />;
 
+    case 'account_changed':
+      return (
+        <p data-slot="account-changed" className="self-center px-4 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          Conta trocada para {item.label}
+        </p>
+      );
+
     case 'error':
       return (
         <p

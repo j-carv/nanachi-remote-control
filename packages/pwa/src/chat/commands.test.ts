@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bareCommandName,
   commandSheetFor,
+  configSheetChoices,
   filterCommands,
   insertCommand,
   nativePickerFor,
@@ -307,5 +308,156 @@ describe('commandSheetFor', () => {
   it('is undefined for a command that keeps the current behavior (insert into the composer)', () => {
     expect(commandSheetFor(loop, OMP_LIKE_OPTIONS)).toBeUndefined();
     expect(commandSheetFor({ name: 'model', hint: null }, [])).toBeUndefined();
+  });
+});
+
+describe('configSheetChoices', () => {
+  const modelOption = (
+    options: Array<{ value: string; name: string; description?: string | null; group?: string }>,
+    currentValue: string,
+    category: string | null = 'model',
+  ): Extract<SessionConfigOption, { type: 'select' }> => ({
+    id: 'model',
+    name: 'Modelo',
+    category,
+    type: 'select',
+    currentValue,
+    options: options.map((option) => ({ ...option, description: option.description ?? null })),
+  });
+
+  it('sections a model list by provider, in first-appearance order, with the vendor in the label', () => {
+    const choices = configSheetChoices(
+      modelOption(
+        [
+          { value: 'cursor/a', name: 'Claude Opus 5.5' },
+          { value: 'openrouter/~anthropic/claude-opus-latest', name: 'Claude Opus latest' },
+          { value: 'cursor/b', name: 'GPT-5' },
+          { value: 'claude-cli/opus', name: 'Claude Opus 5.5' },
+        ],
+        'claude-cli/opus',
+      ),
+    );
+
+    expect(choices.map((choice) => [choice.section, choice.label, choice.value])).toEqual([
+      ['Cursor', 'Claude Opus 5.5', 'cursor/a'],
+      ['Cursor', 'GPT-5', 'cursor/b'],
+      ['OpenRouter', 'Claude Opus latest · Anthropic', 'openrouter/~anthropic/claude-opus-latest'],
+      ['Claude CLI', 'Claude Opus 5.5', 'claude-cli/opus'],
+    ]);
+  });
+
+  it('marks only the current value as checked, even when its name repeats under another provider', () => {
+    const choices = configSheetChoices(
+      modelOption(
+        [
+          { value: 'cursor/opus', name: 'Claude Opus 5.5' },
+          { value: 'claude-cli/opus', name: 'Claude Opus 5.5' },
+        ],
+        'claude-cli/opus',
+      ),
+    );
+
+    expect(choices.filter((choice) => choice.checked).map((choice) => [choice.section, choice.value])).toEqual([
+      ['Claude CLI', 'claude-cli/opus'],
+    ]);
+    expect(choices.filter((choice) => !choice.checked)).toHaveLength(1);
+  });
+
+  it('puts options without a provider last, under "Outros"', () => {
+    const choices = configSheetChoices(
+      modelOption(
+        [
+          { value: 'default', name: 'Padrão' },
+          { value: 'cursor/a', name: 'A' },
+          { value: 'claude-cli/b', name: 'B' },
+        ],
+        'default',
+      ),
+    );
+
+    expect(choices.map((choice) => [choice.section, choice.value])).toEqual([
+      ['Cursor', 'cursor/a'],
+      ['Claude CLI', 'claude-cli/b'],
+      ['Outros', 'default'],
+    ]);
+    expect(choices.at(-1)?.checked).toBe(true);
+  });
+
+  it('uses the ACP group name as the section and keeps the bare name in the label', () => {
+    const choices = configSheetChoices(
+      modelOption(
+        [
+          { value: 'openrouter/~anthropic/x', name: 'X', group: 'Alpha' },
+          { value: 'cursor/y', name: 'Y', group: 'Beta' },
+        ],
+        'cursor/y',
+      ),
+    );
+
+    expect(choices.map((choice) => [choice.section, choice.label])).toEqual([
+      ['Alpha', 'X'],
+      ['Beta', 'Y'],
+    ]);
+  });
+
+  it('passes the description as detail, undefined when there is none', () => {
+    const choices = configSheetChoices(
+      modelOption(
+        [
+          { value: 'cursor/a', name: 'A', description: 'Rápido' },
+          { value: 'claude-cli/b', name: 'B' },
+        ],
+        'cursor/a',
+      ),
+    );
+
+    expect(choices.map((choice) => choice.detail)).toEqual(['Rápido', undefined]);
+  });
+
+  it('keeps a single-provider or provider-less model list flat: no section, the bare name', () => {
+    const single = configSheetChoices(
+      modelOption(
+        [
+          { value: 'cursor/a', name: 'A' },
+          { value: 'cursor/b', name: 'B' },
+        ],
+        'cursor/b',
+      ),
+    );
+    const claude = configSheetChoices(
+      modelOption(
+        [
+          { value: 'default', name: 'Padrão' },
+          { value: 'opus', name: 'Opus' },
+        ],
+        'opus',
+      ),
+    );
+
+    for (const choices of [single, claude]) {
+      expect(choices.every((choice) => choice.section === undefined)).toBe(true);
+    }
+    expect(single.map((choice) => choice.label)).toEqual(['A', 'B']);
+    expect(single.map((choice) => choice.checked)).toEqual([false, true]);
+    expect(claude.map((choice) => choice.label)).toEqual(['Padrão', 'Opus']);
+  });
+
+  it('never sections a select that is not the model picker, whatever its values look like', () => {
+    const mode: Extract<SessionConfigOption, { type: 'select' }> = {
+      id: 'mode',
+      name: 'Acesso',
+      category: 'mode',
+      type: 'select',
+      currentValue: 'cursor/x',
+      options: [
+        { value: 'cursor/x', name: 'Cursor X' },
+        { value: 'claude-cli/y', name: 'Claude Y' },
+      ],
+    };
+
+    const choices = configSheetChoices(mode);
+
+    expect(choices.every((choice) => choice.section === undefined)).toBe(true);
+    expect(choices.map((choice) => choice.label)).toEqual(['Cursor X', 'Claude Y']);
   });
 });

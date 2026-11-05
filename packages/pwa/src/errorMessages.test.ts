@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api.js';
 import {
+  describeAccountError,
   describeError,
+  describeLoginPollError,
   describeLoopError,
+  describeRedeemError,
+  describeResetsError,
+  describeSessionAccountError,
   describeUsageError,
   ERROR_TEXT,
+  redeemOutcomeUnknown,
   usageNeedsResume,
 } from './errorMessages.js';
 
@@ -108,6 +114,95 @@ describe('describeUsageError', () => {
   });
 });
 
+describe('describeResetsError (lista de resets)', () => {
+  it('400 resets_unsupported diz que o agente não tem resets', () => {
+    expect(describeResetsError(new ApiError('invalid_input', 400, null, 'resets_unsupported'))).toBe(
+      'Este agente não tem resets salvos',
+    );
+  });
+
+  it('os outros erros seguem os textos do uso', () => {
+    expect(describeResetsError(new ApiError('agent_timeout', 504, null, 'agent_timeout'))).toBe(
+      'O agente demorou para responder. Tente de novo.',
+    );
+    expect(describeResetsError(new ApiError('agent_failed', 502, null, 'agent_failed'))).toBe(ERROR_TEXT.agent_failed);
+    expect(describeResetsError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeResetsError(new Error('x'))).toBe('Erro inesperado.');
+  });
+});
+
+describe('describeRedeemError (resgate de reset)', () => {
+  const UNCONFIRMED = 'Não deu para confirmar se o reset foi usado. Confira o uso antes de tentar de novo.';
+
+  it('504 não confirma se o reset foi gasto e manda conferir o uso', () => {
+    const error = new ApiError('agent_timeout', 504, null, 'agent_timeout');
+    expect(describeRedeemError(error)).toBe(UNCONFIRMED);
+    expect(redeemOutcomeUnknown(error)).toBe(true);
+  });
+
+  it('qualquer 504 e falha de rede também deixam o resultado incerto', () => {
+    expect(describeRedeemError(new ApiError('unexpected', 504))).toBe(UNCONFIRMED);
+    expect(redeemOutcomeUnknown(new ApiError('unexpected', 504))).toBe(true);
+    expect(describeRedeemError(new ApiError('network'))).toBe(UNCONFIRMED);
+    expect(redeemOutcomeUnknown(new ApiError('network'))).toBe(true);
+  });
+
+  it('resposta 200 que não bate com o schema também deixa o resultado incerto', () => {
+    const error = new ApiError('unexpected', 200);
+    expect(describeRedeemError(error)).toBe(UNCONFIRMED);
+    expect(redeemOutcomeUnknown(error)).toBe(true);
+  });
+
+  it('502 e 500 podem ter vindo depois de o agente receber o resgate: resultado incerto', () => {
+    for (const error of [
+      new ApiError('agent_failed', 502, null, 'agent_failed'),
+      new ApiError('unexpected', 500),
+      new ApiError('unexpected', 503),
+    ]) {
+      expect(describeRedeemError(error)).toBe(UNCONFIRMED);
+      expect(redeemOutcomeUnknown(error)).toBe(true);
+    }
+  });
+
+  it('só 400, 404 e 409 são recusas certas (nada foi gasto)', () => {
+    for (const status of [400, 404, 409]) {
+      expect(redeemOutcomeUnknown(new ApiError('unexpected', status))).toBe(false);
+    }
+    for (const status of [401, 403, 413, 429, 500, 502, 503, 504, 200, 201]) {
+      expect(redeemOutcomeUnknown(new ApiError('unexpected', status))).toBe(true);
+    }
+  });
+
+  it('409 reset_in_progress diz que já há um reset em andamento, com ponto final', () => {
+    const error = new ApiError('unexpected', 409, null, 'reset_in_progress');
+    expect(describeRedeemError(error)).toBe('Já tem um reset em andamento.');
+    expect(redeemOutcomeUnknown(error)).toBe(false);
+  });
+
+  it('400 invalid_request pede para atualizar a lista', () => {
+    const error = new ApiError('invalid_input', 400, null, 'invalid_request');
+    expect(describeRedeemError(error)).toBe('Esse reset não está mais na lista. Atualize o uso e tente de novo.');
+    expect(redeemOutcomeUnknown(error)).toBe(false);
+  });
+
+  it('400 resets_unsupported usa o mesmo texto da lista', () => {
+    expect(describeRedeemError(new ApiError('invalid_input', 400, null, 'resets_unsupported'))).toBe(
+      'Este agente não tem resets salvos',
+    );
+  });
+
+  it('404 diz o texto geral de não encontrado', () => {
+    const error = new ApiError('not_found', 404, null, 'not_found');
+    expect(describeRedeemError(error)).toBe(ERROR_TEXT.not_found);
+    expect(redeemOutcomeUnknown(error)).toBe(false);
+  });
+
+  it('erro que não é da API não diz que nada foi gasto: resultado incerto', () => {
+    expect(describeRedeemError(new Error('x'))).toBe(UNCONFIRMED);
+    expect(redeemOutcomeUnknown(new Error('x'))).toBe(true);
+  });
+});
+
 describe('describeLoopError', () => {
   it('diz o que fazer para cada código de loop', () => {
     expect(describeLoopError(new ApiError('not_found', 404, null, 'loop_not_found'))).toBe(
@@ -127,5 +222,84 @@ describe('describeLoopError', () => {
   it('sem código de loop cai no texto geral do erro', () => {
     expect(describeLoopError(new ApiError('network'))).toBe(ERROR_TEXT.network);
     expect(describeLoopError(new Error('x'))).toBe('Erro inesperado.');
+  });
+});
+
+describe('describeAccountError', () => {
+  it('diz o que fazer para cada código de conta', () => {
+    expect(describeAccountError(new ApiError('invalid_input', 400, null, 'accounts_unsupported'))).toBe(
+      'Este agente não tem contas extras.',
+    );
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'account_in_use'))).toBe(
+      'Uma sessão está trabalhando nesta conta. Espere terminar e tente de novo.',
+    );
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'too_many_accounts'))).toBe(
+      'Limite de 10 contas extras por agente. Remova alguma antes de adicionar outra.',
+    );
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'login_in_progress'))).toBe(
+      'Já há um login em andamento para este agente. Termine ou cancele esse primeiro.',
+    );
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'invalid_state'))).toBe(
+      'O login não está esperando um código agora.',
+    );
+  });
+
+  it('troca de conta numa sessão ocupada pede para esperar o agente', () => {
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'session_busy'))).toBe(
+      'O agente está trabalhando. Troque a conta quando ele terminar.',
+    );
+  });
+
+  it('agente que não retoma explica que a troca não vale para esta sessão', () => {
+    expect(describeAccountError(new ApiError('not_resumable', 409, null, 'not_resumable'))).toBe(
+      'Este agente não retoma sessões: abra uma sessão nova na conta que você quer usar.',
+    );
+  });
+
+  it('conta que sumiu pede para atualizar a lista', () => {
+    expect(describeAccountError(new ApiError('not_found', 404, null, 'not_found'))).toBe(
+      'Não encontrei esta conta no PC. Atualize a lista.',
+    );
+  });
+
+  it('sem código de conta cai no texto geral do erro', () => {
+    expect(describeAccountError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeAccountError(new ApiError('unauthorized', 401))).toBe(ERROR_TEXT.unauthorized);
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'outro_codigo'))).toBe(ERROR_TEXT.unexpected);
+    expect(describeAccountError(new Error('x'))).toBe('Erro inesperado.');
+  });
+});
+
+describe('describeSessionAccountError', () => {
+  it('404 é sessão que sumiu: não fala de conta', () => {
+    const text = describeSessionAccountError(new ApiError('not_found', 404, null, 'not_found'));
+    expect(text).toBe('Não encontrei esta sessão no PC. Pode ter sido removida.');
+    expect(text).not.toMatch(/conta/i);
+    expect(describeSessionAccountError(new ApiError('not_found', 404))).toBe(text);
+  });
+
+  it('os outros códigos seguem os textos de conta', () => {
+    expect(describeSessionAccountError(new ApiError('unexpected', 409, null, 'session_busy'))).toBe(
+      'O agente está trabalhando. Troque a conta quando ele terminar.',
+    );
+    expect(describeSessionAccountError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeSessionAccountError(new Error('x'))).toBe('Erro inesperado.');
+  });
+});
+
+describe('describeLoginPollError', () => {
+  it('o PC não lembra do login: pede para fechar e tentar de novo', () => {
+    expect(describeLoginPollError(new ApiError('not_found', 404, null, 'not_found'))).toBe(
+      'O PC não lembra mais deste login. Feche e tente de novo.',
+    );
+  });
+
+  it('rede: avisa que continua tentando', () => {
+    expect(describeLoginPollError(new ApiError('network'))).toBe('Sem resposta do PC. Tentando de novo…');
+  });
+
+  it('o resto usa os textos de conta', () => {
+    expect(describeLoginPollError(new ApiError('unauthorized', 401))).toBe(ERROR_TEXT.unauthorized);
+    expect(describeLoginPollError(new Error('x'))).toBe('Erro inesperado.');
   });
 });

@@ -13,6 +13,7 @@ const sessionValue = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
+  accountId: null,
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
