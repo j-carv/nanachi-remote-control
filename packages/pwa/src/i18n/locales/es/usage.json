@@ -1,0 +1,89 @@
+{
+  "drawer": {
+    "title": "Uso de {{agent}}",
+    "description": "Límites y consumo informados por el agente.",
+    "account": "Cuenta:",
+    "refresh": "Actualizar uso",
+    "empty": "El agente no devolvió nada.",
+    "updated": "Actualizado {{time}}",
+    "updatedCached": "Actualizado {{time}} · desde la caché",
+    "refreshFailed": "No se pudo actualizar el uso. {{reason}}",
+    "resume": "Reanudar",
+    "accountCount": "{{count}} cuentas",
+    "details": "Detalles"
+  },
+  "loading": {
+    "usage": "Cargando uso",
+    "resets": "Cargando resets"
+  },
+  "windows": {
+    "limits": "Límites",
+    "inUse": "en uso",
+    "usageOf": "Uso: {{label}}",
+    "resetsAt": "Se renueva {{when}}",
+    "resetsIn": "en {{time}}",
+    "fiveHours": "5 horas",
+    "weekly": "Semanal",
+    "weeklyScope": "Semanal · {{scope}}",
+    "monthly": "{{name}} · Mensual",
+    "hours_one": "{{count}} hora",
+    "hours_many": "{{count}} de horas",
+    "hours_other": "{{count}} horas",
+    "days_one": "{{count}} día",
+    "days_many": "{{count}} de días",
+    "days_other": "{{count}} días"
+  },
+  "session": {
+    "title": "Sesión",
+    "cost": "Costo",
+    "tokens": "Tokens",
+    "activeTime": "Tiempo activo"
+  },
+  "info": {
+    "model": "Modelo",
+    "input": "Entrada",
+    "output": "Salida",
+    "cacheRead": "Caché (lectura)",
+    "cacheWrite": "Caché (escritura)",
+    "apiTime": "Tiempo de API",
+    "contextWindow": "Ventana de contexto",
+    "credits": "Créditos",
+    "unavailable": "no disponible"
+  },
+  "resets": {
+    "title": "Resets guardados",
+    "empty": "Ningún reset guardado.",
+    "use": "Usar reset",
+    "useFor": "Usar reset de {{account}}",
+    "dismiss": "Descartar aviso",
+    "saved_zero": "{{count}} guardados",
+    "saved_one": "{{count}} guardado",
+    "saved_many": "{{count}} guardados",
+    "saved_other": "{{count}} guardados",
+    "usable_zero": "{{count}} disponibles ahora",
+    "usable_one": "{{count}} disponible ahora",
+    "usable_many": "{{count}} disponibles ahora",
+    "usable_other": "{{count}} disponibles ahora"
+  },
+  "expiry": {
+    "raw": "vence {{when}}",
+    "expired": "venció",
+    "inMinutes": "vence en {{count}} min",
+    "inHours": "vence en {{count}} h",
+    "inDays_one": "vence en {{count}} día",
+    "inDays_many": "vence en {{count}} de días",
+    "inDays_other": "vence en {{count}} días",
+    "onDate": "vence el {{date}}"
+  },
+  "confirm": {
+    "title": "¿Usar 1 reset?",
+    "body": "{{who}}. Gasta un reset guardado y libera el límite ahora. No se puede deshacer."
+  },
+  "outcome": {
+    "reset": "Reset aplicado.",
+    "nothing_to_reset": "No hay nada que liberar ahora; no se gastó ningún reset.",
+    "no_credit": "No hay resets guardados para gastar.",
+    "already_redeemed": "Ese reset ya se usó.",
+    "failed": "El agente no confirmó el reset."
+  }
+}

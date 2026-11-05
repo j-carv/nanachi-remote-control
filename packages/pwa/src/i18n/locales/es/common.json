@@ -1,0 +1,71 @@
+{
+  "actions": {
+    "back": "Volver",
+    "cancel": "Cancelar",
+    "pairAgain": "Vincular de nuevo",
+    "gotIt": "Entendido"
+  },
+  "states": {
+    "loading": "Cargando…",
+    "wait": "Espera…"
+  },
+  "fields": {
+    "name": "Nombre"
+  },
+  "showAll_one": "Mostrar todo ({{count}} línea)",
+  "showAll_many": "Mostrar todo ({{count}} de líneas)",
+  "showAll_other": "Mostrar todo ({{count}} líneas)",
+  "sessionStatus": {
+    "starting": "Iniciando",
+    "idle": "Lista",
+    "running": "Trabajando",
+    "awaiting_permission": "Esperando permiso",
+    "stopped": "Finalizada",
+    "error": "Error",
+    "runningTerminal": "En ejecución",
+    "stoppedTerminal": "Finalizada"
+  },
+  "sessionTitle": {
+    "default": "Nueva sesión",
+    "terminal": "{{agent}} · terminal"
+  },
+  "relativeTime": {
+    "now": "ahora",
+    "minutes": "hace {{minutes}} min",
+    "hours": "hace {{hours}} h",
+    "yesterday": "ayer"
+  },
+  "access": {
+    "saveFailed": "No se pudo guardar el acceso en este dispositivo",
+    "readFailed": "No se pudieron leer los accesos guardados en este dispositivo. Vincula de nuevo para continuar."
+  },
+  "removeMachineConfirm": "¿Quitar \"{{name}}\" de este teléfono?",
+  "update": {
+    "available": "Nueva versión de Nanachi",
+    "action": "Actualizar"
+  },
+  "forceUpdate": {
+    "button": "Forzar actualización de la app",
+    "title": "Forzar actualización",
+    "description": "Descarga la versión más reciente de Nanachi y recarga la app. Tus dispositivos vinculados se conservan.",
+    "version": "Versión: {{id}}",
+    "unknownBuild": "desconocida",
+    "failed": "No se pudo actualizar: {{reason}}",
+    "unexpected": "error inesperado",
+    "start": "Actualizar ahora",
+    "retry": "Intentar de nuevo",
+    "phase": {
+      "checking": "Buscando una versión nueva…",
+      "downloading": "Descargando la versión nueva…",
+      "clearing": "Limpiando la caché…",
+      "reloading": "Recargando la app…"
+    },
+    "reason": {
+      "registration": "el navegador no respondió al service worker",
+      "update": "no hay conexión para buscar la versión nueva",
+      "caches": "no se pudo borrar la caché",
+      "refill": "no se pudieron volver a cargar los archivos de la app",
+      "unregister": "no se pudo reiniciar el service worker"
+    }
+  }
+}

@@ -11,7 +11,7 @@ import {
   SUPPORTED_LANGUAGES,
   t,
 } from './index.js';
-import { compareLocales, type LocaleFiles } from './localeCheck.js';
+import { compareLocales, flattenLeaves, type LocaleFiles } from './localeCheck.js';
 import { resources } from './resources.js';
 import type { StorageLike } from '../machines.js';
 
@@ -72,11 +72,13 @@ describe('readStoredLanguage', () => {
 
   it('returns the stored language when it is supported', () => {
     expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: 'en' }))).toBe('en');
+    expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: 'es' }))).toBe('es');
     expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: 'pt-BR' }))).toBe('pt-BR');
   });
 
   it('ignores a value that is not a supported language', () => {
     expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: 'fr' }))).toBe('pt-BR');
+    expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: 'es-MX' }))).toBe('pt-BR');
     expect(readStoredLanguage(memoryStorage({ [LANGUAGE_KEY]: '' }))).toBe('pt-BR');
   });
 
@@ -110,10 +112,25 @@ describe('setLanguage', () => {
     expect(t('common:actions.back')).toBe('Voltar');
   });
 
+  it('switches to Spanish at once, and from Spanish to English and back to Portuguese', () => {
+    setLanguage('es', memoryStorage());
+    expect(currentLanguage()).toBe('es');
+    expect(t('common:actions.back')).toBe('Volver');
+    expect(t('common:actions.pairAgain')).toBe('Vincular de nuevo');
+
+    setLanguage('en', memoryStorage());
+    expect(t('common:actions.back')).toBe('Back');
+
+    setLanguage('pt-BR', memoryStorage());
+    expect(t('common:actions.back')).toBe('Voltar');
+  });
+
   it('stores the choice under nanachi.language', () => {
     const storage = memoryStorage();
     setLanguage('en', storage);
     expect(storage.data.get('nanachi.language')).toBe('en');
+    setLanguage('es', storage);
+    expect(storage.data.get('nanachi.language')).toBe('es');
   });
 
   it('still switches when the storage refuses the write', () => {
@@ -133,6 +150,8 @@ describe('setLanguage', () => {
     vi.stubGlobal('document', { documentElement });
     setLanguage('en', memoryStorage());
     expect(documentElement.lang).toBe('en');
+    setLanguage('es', memoryStorage());
+    expect(documentElement.lang).toBe('es');
     setLanguage('pt-BR', memoryStorage());
     expect(documentElement.lang).toBe('pt-BR');
   });
@@ -163,5 +182,35 @@ describe('setLanguage', () => {
     setLanguage('en', memoryStorage());
     expect(t('common:showAll', { count: 1 })).toBe('Show all (1 line)');
     expect(t('common:showAll', { count: 5 })).toBe('Show all (5 lines)');
+  });
+
+  it('uses _one, _many and _other in Spanish, with the words that agree with the count', () => {
+    setLanguage('es', memoryStorage());
+    expect(t('common:showAll', { count: 1 })).toBe('Mostrar todo (1 línea)');
+    expect(t('common:showAll', { count: 5 })).toBe('Mostrar todo (5 líneas)');
+    expect(t('common:showAll', { count: 1_000_000 })).toBe('Mostrar todo (1000000 de líneas)');
+    expect(t('usage:resets.saved', { count: 0 })).toBe('0 guardados');
+    expect(t('usage:resets.saved', { count: 1 })).toBe('1 guardado');
+  });
+
+  it('gives every Spanish plural text a form for every count, so no count shows a bare key', () => {
+    // The rule is the engine's own, the one i18next asks: `many` is one million and its multiples in Spanish.
+    const rules = new Intl.PluralRules('es');
+    const counts = [0, 1, 2, 5, 21, 100, 999_999, 1_000_000, 2_000_000, 1_000_000_000];
+    const missing: string[] = [];
+    let plurals = 0;
+    for (const [namespace, content] of Object.entries(resources.es)) {
+      for (const key of flattenLeaves(content).keys()) {
+        if (!key.endsWith('_other')) continue;
+        const base = key.slice(0, -'_other'.length);
+        plurals += 1;
+        for (const count of counts) {
+          const form = `${base}_${rules.select(count)}`;
+          if (typeof i18n.getResource('es', namespace, form) !== 'string') missing.push(`${namespace}:${form} (count ${count})`);
+        }
+      }
+    }
+    expect(plurals).toBeGreaterThan(10);
+    expect(missing).toEqual([]);
   });
 });

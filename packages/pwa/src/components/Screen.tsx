@@ -15,6 +15,8 @@ export function Screen({ children, className }: ScreenProps) {
     <main
       className={cn(
         'mx-auto flex min-h-dvh w-full max-w-[560px] flex-col gap-5 bg-background text-foreground',
+        // Wide screens: the screen sits in the right pane (it scrolls there), a wider column with desktop margins.
+        'wide:min-h-full wide:max-w-[720px] wide:gap-6 wide:px-8 wide:pt-8 wide:pb-12',
         'pt-[calc(env(safe-area-inset-top,0px)+12px)] pr-[calc(env(safe-area-inset-right,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pl-[calc(env(safe-area-inset-left,0px)+16px)]',
         className,
       )}

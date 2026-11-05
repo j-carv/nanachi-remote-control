@@ -230,7 +230,7 @@ export function UsageDrawer({ open, onOpenChange, client, sessionId, agentId, ag
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      <DrawerContent panel="side">
         <DrawerHeader>
           <DrawerTitle>{t('drawer.title', { agent: agentName })}</DrawerTitle>
           <DrawerDescription>{subtitle ?? t('drawer.description')}</DrawerDescription>

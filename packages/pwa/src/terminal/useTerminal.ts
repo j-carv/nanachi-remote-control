@@ -7,6 +7,7 @@ import type { ApiClient } from '../api.js';
 import { getBrowserStorage } from '../browserStorage.js';
 import { loadHistory } from '../chat/history.js';
 import { offlineNotice } from '../chat/useChat.js';
+import { ENTER_SENDS_QUERY, WIDE_QUERY } from '../wide/layout.js';
 import type { Connection } from '../connection.js';
 import { attachTouchScroll, cellHeightOf } from './attachTouchScroll.js';
 import { clampFontSize, readFontSize, writeFontSize } from './fontSize.js';
@@ -116,6 +117,8 @@ export function useTerminal({ api, connection, session: initial }: TerminalOptio
     // redimensionado, o redesenho do PowerShell (↑, Enter) saía sobreposto e o replay ficava diferente.
     fit.fit();
     termRef.current = term;
+    // A mouse and keyboard type straight into the terminal; on a phone focusing it would open the keyboard unasked.
+    if (window.matchMedia(ENTER_SENDS_QUERY).matches) term.focus();
     // Rolagem por toque (o xterm não rola o histórico com o dedo no iOS) e o estado do botão "Ir para o fim".
     const detachTouch = attachTouchScroll(container, term, () => cellHeightOf(container, term));
     container.style.touchAction = 'none';
@@ -142,6 +145,10 @@ export function useTerminal({ api, connection, session: initial }: TerminalOptio
     const onWindowResize = () => resize.request();
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', onWindowResize);
+    // Wide screens: the pane can change size while the window does not (the third pane opening beside a terminal).
+    const paneObserver =
+      typeof ResizeObserver !== 'undefined' && window.matchMedia(WIDE_QUERY).matches ? new ResizeObserver(onWindowResize) : null;
+    paneObserver?.observe(container);
 
     term.onData((data) => {
       input(data);
@@ -188,6 +195,7 @@ export function useTerminal({ api, connection, session: initial }: TerminalOptio
       connection?.unsubscribe(sessionId);
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('orientationchange', onWindowResize);
+      paneObserver?.disconnect();
       resize.dispose();
       detachTouch();
       scrollListener.dispose();

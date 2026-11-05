@@ -9,7 +9,7 @@ import { ForceUpdateError, runForceUpdate, type ForceUpdatePhase } from './force
 import { browserForceUpdateEnv } from './forceUpdateBrowser.js';
 
 /** "Forçar atualização" button on the machines home, and its confirmation drawer. The drawer does not close while the update runs. */
-export function ForceUpdateAction() {
+export function ForceUpdateAction({ className }: { className?: string | undefined } = {}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<ForceUpdatePhase | null>(null);
@@ -34,7 +34,7 @@ export function ForceUpdateAction() {
 
   return (
     <>
-      <Button variant="ghost" size="icon" aria-label={t('forceUpdate.button')} onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="icon" className={className} aria-label={t('forceUpdate.button')} onClick={() => setOpen(true)}>
         <RefreshCcwDot aria-hidden="true" />
       </Button>
       <Drawer

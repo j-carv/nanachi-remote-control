@@ -1,0 +1,162 @@
+{
+  "agent": "Agente",
+  "terminalBadge": "terminal",
+  "workspaces": {
+    "title": "Workspaces",
+    "add": "Agregar workspace",
+    "empty": "Aún no hay workspaces. Toca + para elegir una carpeta del PC.",
+    "confirmRemove": "¿Quitar \"{{name}}\"? Sus sesiones se detendrán.",
+    "remove": "Quitar {{name}}"
+  },
+  "sessions": {
+    "terminal": "Terminal",
+    "files": "Archivos",
+    "new": "Nueva sesión",
+    "resume": "Reanudar desde el PC",
+    "muteTitle": "Silenciar notificaciones",
+    "muteHint": "No avisa en el teléfono sobre las sesiones de este workspace.",
+    "empty": "Aún no hay sesiones en este workspace.",
+    "listLabel": "Sesiones",
+    "stop": "Finalizar",
+    "stopNamed": "Finalizar {{title}}",
+    "removeFromApp": "Quitar de la app",
+    "moreActions": "Más acciones de {{title}}",
+    "confirmRemoveWorktree": "¿Quitar también el worktree?"
+  },
+  "folders": {
+    "title": "Elegir carpeta",
+    "allowed": "Carpetas permitidas en el PC",
+    "typePath": "Escribir una ruta",
+    "checkingPath": "Comprobando la ruta",
+    "goToPath": "Ir a la ruta escrita",
+    "roots": "Raíces",
+    "parent": "Carpeta superior",
+    "empty": "Aquí no hay subcarpetas.",
+    "listLabel": "Carpetas",
+    "adding": "Agregando…",
+    "use": "Usar esta carpeta",
+    "pathError": {
+      "outside_roots": "Fuera de las carpetas permitidas en el PC",
+      "not_found": "Carpeta no encontrada",
+      "not_a_directory": "Eso no es una carpeta"
+    }
+  },
+  "files": {
+    "title": "Archivos",
+    "refresh": "Actualizar",
+    "newFile": "Archivo nuevo",
+    "newFolder": "Carpeta nueva",
+    "path": "Ruta de la carpeta",
+    "copied": "Ruta copiada: {{path}}",
+    "empty": "Carpeta vacía.",
+    "contents": "Contenido de {{folder}}",
+    "moreActions": "Más acciones de {{name}}",
+    "rename": "Renombrar",
+    "delete": "Eliminar",
+    "copyPath": "Copiar ruta",
+    "create": "Crear",
+    "folder": "Carpeta",
+    "link": "Enlace",
+    "ignored": "{{kind}} · ignorado por git",
+    "newFileHint": "En la carpeta {{folder}}. El archivo se abre en el editor justo después de crearlo.",
+    "newFolderHint": "Dentro de {{folder}}.",
+    "renameHint": "Nombre actual: {{name}}."
+  },
+  "entryName": {
+    "empty": "Escribe un nombre.",
+    "tooLong": "Nombre demasiado largo (máx. 255 caracteres).",
+    "noSlashes": "Usa un nombre sin barras.",
+    "notAllowed": "Este nombre no está permitido."
+  },
+  "deleteEntry": {
+    "title": "¿Eliminar {{name}}?",
+    "dir": "La carpeta solo se elimina si está vacía. Esta acción no se puede deshacer.",
+    "file": "El archivo se elimina del PC. Esta acción no se puede deshacer.",
+    "deleting": "Eliminando…",
+    "confirm": "Eliminar"
+  },
+  "editor": {
+    "undo": "Deshacer",
+    "redo": "Rehacer",
+    "wrap": "Ajuste de línea",
+    "unsaved": "Sin guardar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "label": "Editor de {{name}}",
+    "discardConfirm": "¿Descartar los cambios sin guardar?",
+    "plainText": "Texto",
+    "conflict": {
+      "title": "El archivo cambió en el PC",
+      "description": "Otro programa guardó este archivo después de que lo abriste. Elige qué hacer con tus ediciones.",
+      "reload": "Recargar desde el PC (pierdes tus ediciones)",
+      "overwrite": "Sobrescribir de todos modos",
+      "overwriting": "Sobrescribiendo…"
+    }
+  },
+  "branches": {
+    "detached": "HEAD desacoplado",
+    "chip": "Rama {{title}}. Cambiar de rama",
+    "switchTitle": "Cambiar de rama",
+    "switchHint": "Ramas locales de {{name}}",
+    "search": "Buscar rama",
+    "dirtyFiles": "Archivos con cambios",
+    "andMore": "y {{count}} más",
+    "local": "Ramas locales",
+    "noMatch": "Ninguna rama con ese nombre.",
+    "newNameLabel": "Nombre de la nueva rama",
+    "newNamePlaceholder": "nombre/de-la-rama",
+    "creating": "Creando…",
+    "create": "Crear",
+    "new": "Nueva rama"
+  },
+  "infoBar": {
+    "label": "Estado del workspace",
+    "noChanges": "sin cambios",
+    "changes_one": "{{count}} cambio",
+    "changes_many": "{{count}} de cambios",
+    "changes_other": "{{count}} cambios"
+  },
+  "changesScreen": {
+    "title": "Cambios",
+    "refresh": "Actualizar cambios",
+    "truncated": "La lista se cortó en el límite de 1 MB. Los archivos que faltan no aparecen aquí.",
+    "empty": "Ningún cambio en esta sesión.",
+    "listLabel": "Archivos modificados",
+    "status": {
+      "added": "Nuevo",
+      "modified": "Modificado",
+      "deleted": "Eliminado",
+      "renamed": "Renombrado"
+    }
+  },
+  "diff": {
+    "newFile": "(nuevo)",
+    "noText": "Sin diff de texto (archivo binario o vacío)."
+  },
+  "newSession": {
+    "title": "Nueva sesión",
+    "noAgents": "No hay agentes configurados en el daemon.",
+    "account": "Cuenta",
+    "worktreeTitle": "En un worktree aparte",
+    "worktreeHint": "Crea una rama y una carpeta propias para esta sesión; tu checkout queda intacto.",
+    "options": "Opciones",
+    "noOptions": "Aún no hay opciones recordadas para este agente. Aparecen en el chat después de la primera sesión y se usan aquí a partir de entonces.",
+    "creating": "Creando…",
+    "create": "Crear sesión"
+  },
+  "resume": {
+    "title": "Reanudar desde el PC",
+    "hint": "{{name}} · sesiones creadas en la terminal de esta carpeta",
+    "noAgents": "No hay agentes de chat configurados en el daemon.",
+    "importing": "Importando historial…",
+    "opening": "Abriendo {{agent}} en el PC… puede tardar unos segundos",
+    "unsupported": "Este agente no lista sesiones.",
+    "none": "Ninguna sesión de este agente en esta carpeta.",
+    "listLabel": "Sesiones del PC",
+    "linked": "ya en la app",
+    "loadMore": "Cargar más",
+    "close": "Cerrar",
+    "untitled": "Sesión sin título",
+    "sessionOf": "Sesión del {{date}} a las {{time}}"
+  }
+}

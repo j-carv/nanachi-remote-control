@@ -194,7 +194,7 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
         <div
           ref={hostRef}
           aria-label={t('editor.label', { name })}
-          className="h-[68dvh] min-h-64 overflow-hidden rounded-xl border border-border bg-card"
+          className="h-[68dvh] min-h-64 overflow-hidden rounded-xl border border-border bg-card wide:h-[max(24rem,calc(100dvh-14rem))]"
         />
       )}
 

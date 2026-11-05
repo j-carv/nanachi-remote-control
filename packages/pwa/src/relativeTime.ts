@@ -3,10 +3,14 @@ import { currentLanguage, t, type Language } from './i18n/index.js';
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
-/** Older dates: numeric day/month/year in Portuguese, an abbreviated month in English (the numeric order is ambiguous). */
+/**
+ * Older dates: numeric day/month/year in Portuguese and Spanish, an abbreviated month in English (the numeric order is
+ * ambiguous).
+ */
 const DATE_FORMAT: Record<Language, Intl.DateTimeFormatOptions> = {
   'pt-BR': { day: '2-digit', month: '2-digit', year: 'numeric' },
   en: { day: 'numeric', month: 'short', year: 'numeric' },
+  es: { day: '2-digit', month: '2-digit', year: 'numeric' },
 };
 
 function sameDay(a: Date, b: Date): boolean {
@@ -14,9 +18,9 @@ function sameDay(a: Date, b: Date): boolean {
 }
 
 /**
- * Relative time in the current language: "agora" / "now", "há 5 min" / "5 min ago", "há 2 h" / "2 h ago", "ontem" /
- * "yesterday", or the date (28/10/2026, Oct 28, 2026). Day is the local calendar. A timestamp in the future (the
- * PC's clock ahead) reads as "now".
+ * Relative time in the current language: "agora" / "now" / "ahora", "há 5 min" / "5 min ago" / "hace 5 min", "há 2 h" /
+ * "2 h ago" / "hace 2 h", "ontem" / "yesterday" / "ayer", or the date (28/10/2026, Oct 28, 2026). Day is the local
+ * calendar. A timestamp in the future (the PC's clock ahead) reads as "now".
  */
 export function formatRelativeTime(timestamp: number, now: number): string {
   const diff = now - timestamp;

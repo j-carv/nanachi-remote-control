@@ -21,6 +21,7 @@ import { SessionStatusPill } from '../components/SessionStatusPill.js';
 import { useVisualViewport } from '../components/useVisualViewport.js';
 import type { Connection } from '../connection.js';
 import type { Navigator } from '../navigation.js';
+import { useLayout } from '../wide/layoutContext.js';
 import { sessionTitle } from '../sessionText.js';
 import { shellIdFromTitle } from '../shells.js';
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from '../terminal/fontSize.js';
@@ -148,15 +149,17 @@ export function TerminalScreen({
     }
   }
 
-  const boxStyle = viewport === null ? undefined : { top: viewport.top, height: viewport.height };
+  // Next to the list pane the terminal fills its pane, so the keyboard-sized box of the phone does not apply.
+  const embedded = useLayout() !== 'phone';
+  const boxStyle = viewport === null || embedded ? undefined : { top: viewport.top, height: viewport.height };
   const closed = terminal.loaded && !inputOpen;
 
   return (
     <div
-      className="fixed inset-x-0 top-0 bottom-0 flex justify-center bg-background text-foreground"
+      className="fixed inset-x-0 top-0 bottom-0 flex justify-center bg-background text-foreground wide:absolute wide:inset-0"
       style={boxStyle}
     >
-      <div className="flex h-full w-full max-w-[560px] min-h-0 flex-col gap-3 pt-[calc(env(safe-area-inset-top,0px)+12px)] pr-[calc(env(safe-area-inset-right,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pl-[calc(env(safe-area-inset-left,0px)+16px)]">
+      <div className="flex h-full w-full max-w-[560px] min-h-0 flex-col gap-3 pt-[calc(env(safe-area-inset-top,0px)+12px)] pr-[calc(env(safe-area-inset-right,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pl-[calc(env(safe-area-inset-left,0px)+16px)] wide:max-w-none wide:px-5 wide:pt-4 wide:pb-4">
         <ScreenHeader
           title={sessionTitle(current, isShell ? 'Terminal' : agentLabel)}
           subtitle={`${workspace.name} · ${machineName}`}
@@ -270,7 +273,7 @@ export function TerminalScreen({
         <div
           role="toolbar"
           aria-label={t('keysLabel')}
-          className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] wide:pointer-fine:hidden [&::-webkit-scrollbar]:hidden"
         >
           {TERMINAL_KEYS.map((key) => {
             const Icon = KEY_ICON[key.id];
@@ -299,7 +302,7 @@ export function TerminalScreen({
           })}
         </div>
 
-        <form className="flex items-center gap-2" onSubmit={submitLine}>
+        <form className="flex items-center gap-2 wide:pointer-fine:hidden" onSubmit={submitLine}>
           <Input
             type="text"
             data-slot="terminal-line"

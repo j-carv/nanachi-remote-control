@@ -1,0 +1,26 @@
+{
+  "list": {
+    "label": "Machines, workspaces and sessions",
+    "machines": "Switch machine",
+    "newSessionIn": "New session in {{name}}",
+    "collapse": "Collapse {{name}}",
+    "expand": "Expand {{name}}",
+    "sessionsOf": "Sessions of {{name}}",
+    "noSessions": "No sessions",
+    "noWorkspaces": "No workspaces yet.",
+    "unreachable": "Could not load the workspaces.",
+    "showMore": "Show {{count}} more",
+    "showLess": "Show less"
+  },
+  "empty": {
+    "title": "Pick a session",
+    "hint": "Open a session from the list or start a new one inside a workspace.",
+    "noWorkspaces": "Add a folder on the PC as a workspace to get started.",
+    "unauthorized": "This device no longer has access to this machine."
+  },
+  "side": {
+    "label": "Side panel",
+    "close": "Close"
+  },
+  "composerHint": "Enter sends · Shift+Enter adds a line"
+}

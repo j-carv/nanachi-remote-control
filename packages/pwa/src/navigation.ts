@@ -50,6 +50,38 @@ export function pushNav(nav: NavState, route: Route): { nav: NavState; depth: nu
   };
 }
 
+/**
+ * Wide screens: picking something in the list pane shows that screen right above the first one of the stack, whatever was
+ * open (the list is always on screen, so there is no stack of screens to go back through). The depth is 1.
+ */
+export function selectNav(nav: NavState, route: Route): { nav: NavState; depth: number } {
+  const root = nav.routes[0];
+  if (root === undefined) throw new Error('screen stack is empty');
+  return { nav: { routes: [root, route], index: 1 }, depth: 1 };
+}
+
+/**
+ * What the browser history does for a navigation that drops screens from the stack (a pick or a reset on a wide screen).
+ * `push` and `replace` write one entry; `rewind` goes back `entries` entries first (`history.go(-entries)`), so the
+ * entries of the dropped screens do not stay behind as dead steps that Back would have to go through one by one.
+ */
+export type HistoryStep =
+  | { kind: 'push'; depth: number }
+  | { kind: 'replace'; depth: number }
+  | { kind: 'rewind'; entries: number };
+
+/** The history step of `selectNav`: the entry of the picked screen is the one at depth 1, with the first screen at depth 0. */
+export function selectHistoryStep(nav: NavState): HistoryStep {
+  if (nav.index === 0) return { kind: 'push', depth: 1 };
+  if (nav.index === 1) return { kind: 'replace', depth: 1 };
+  return { kind: 'rewind', entries: nav.index - 1 };
+}
+
+/** The history step of going back to a stack of the first screen alone (depth 0). */
+export function resetHistoryStep(nav: NavState): HistoryStep {
+  return nav.index === 0 ? { kind: 'replace', depth: 0 } : { kind: 'rewind', entries: nav.index };
+}
+
 /** Troca a tela atual (mesma profundidade). */
 export function replaceNav(nav: NavState, route: Route): NavState {
   return { routes: [...nav.routes.slice(0, nav.index), route], index: nav.index };

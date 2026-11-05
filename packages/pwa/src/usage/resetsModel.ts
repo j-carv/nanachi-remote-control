@@ -21,10 +21,11 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
-/** Numeric day/month/year in Portuguese, an abbreviated month in English (the numeric order is ambiguous). */
+/** Numeric day/month/year in Portuguese and Spanish, an abbreviated month in English (the numeric order is ambiguous). */
 const DATE_FORMAT: Record<Language, Intl.DateTimeFormatOptions> = {
   'pt-BR': { day: '2-digit', month: '2-digit', year: 'numeric' },
   en: { day: 'numeric', month: 'short', year: 'numeric' },
+  es: { day: '2-digit', month: '2-digit', year: 'numeric' },
 };
 
 /**

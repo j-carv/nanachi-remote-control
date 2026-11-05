@@ -1,10 +1,15 @@
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from 'vaul';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/chat/useMediaQuery';
+import { WIDE_QUERY } from '@/wide/layout';
 
-// Folha inferior (vaul) no lugar de diálogo centralizado: no celular, toda sobreposição sobe de baixo.
+// Bottom sheet (vaul) instead of a centred dialog: on the phone every overlay rises from the bottom. On a wide screen
+// (the `wide:` classes below) the same sheet is a centred dialog or a side panel; there it is not dragged down, so only
+// the (hidden) handle drags.
 function Drawer({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
+  const wide = useMediaQuery(WIDE_QUERY);
+  return <DrawerPrimitive.Root data-slot="drawer" handleOnly={wide} {...props} />;
 }
 
 function DrawerPortal({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Portal>) {
@@ -21,19 +26,38 @@ function DrawerOverlay({ className, ...props }: React.ComponentProps<typeof Draw
   );
 }
 
-function DrawerContent({ className, children, ...props }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+/**
+ * Where the sheet goes from 900 px. The classes use `!` because vaul's own stylesheet (not in a cascade layer) positions
+ * the sheet with a slide-up animation, and a layered rule only wins over it when it is important. `dialog`: centred, 32 rem.
+ * `side`: a panel on the right edge, full height, for what the user reads while the chat stays visible.
+ */
+const WIDE_PLACEMENT = {
+  dialog:
+    'wide:top-1/2 wide:right-auto wide:bottom-auto wide:left-1/2 wide:w-[min(28rem,calc(100vw-4rem))] wide:max-h-[min(46rem,calc(100dvh-4rem))] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:rounded-xl wide:border wide:data-[state=open]:animate-dialog-in! wide:data-[state=closed]:animate-dialog-out!',
+  side: 'wide:top-0 wide:right-0 wide:bottom-0 wide:left-auto wide:h-dvh wide:w-[min(26rem,100vw)] wide:max-h-none wide:rounded-none wide:border-t-0 wide:border-l wide:data-[state=open]:animate-panel-in! wide:data-[state=closed]:animate-dialog-out!',
+} as const;
+
+function DrawerContent({
+  className,
+  children,
+  panel = 'dialog',
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.Content> & { panel?: keyof typeof WIDE_PLACEMENT }) {
   return (
     <DrawerPortal>
       <DrawerOverlay />
       <DrawerPrimitive.Content
         data-slot="drawer-content"
+        data-panel={panel}
         className={cn(
           'group/drawer-content fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] flex-col rounded-t-2xl border-t border-border bg-popover text-popover-foreground outline-none',
+          WIDE_PLACEMENT[panel],
+          'wide:shadow-lg wide:select-text! wide:after:hidden wide:motion-reduce:animate-none!',
           className,
         )}
         {...props}
       >
-        <div className="mx-auto mt-2.5 hidden h-1.5 w-11 shrink-0 rounded-full bg-muted-foreground/40 group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
+        <div className="mx-auto mt-2.5 hidden h-1.5 w-11 shrink-0 rounded-full bg-muted-foreground/40 group-data-[vaul-drawer-direction=bottom]/drawer-content:block wide:hidden!" />
         {children}
       </DrawerPrimitive.Content>
     </DrawerPortal>

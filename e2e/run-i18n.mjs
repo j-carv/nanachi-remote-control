@@ -1,10 +1,11 @@
 /*
- * E2E for the language switch (pt-BR and English) in Edge headless (iPhone 14 viewport, 390x844).
+ * E2E for the language switch (pt-BR, English and Spanish) in Edge headless (iPhone 14 viewport, 390x844).
  * The app starts in pt-BR (no stored choice). In Settings, the "Idioma / Language" row switches to English: the
  * texts change at once without a reload, <html lang> follows, and the choice is stored under nanachi.language.
  * It checks the main screen, Settings, the devices screen and the pairing screen in English, reloads (the choice
- * persists), and switches back to Portuguese. Screenshots of the main screen and Settings in English go to
- * e2e/screenshots/i18n/.
+ * persists), and switches back to Portuguese. A shorter pass does the same with Español: Settings, the main screen,
+ * the pairing and devices screens, a reload, and the switch back. Screenshots of the main screen and Settings in
+ * English and Spanish go to e2e/screenshots/i18n/.
  *
  * Run from the repository root, after the supervisor (or a build) has published a PWA release:
  *   npm run e2e:i18n
@@ -116,7 +117,7 @@ async function shotBothThemes(name) {
 
 const htmlLang = () => page.evaluate(() => document.documentElement.lang);
 const storedLanguage = () => page.evaluate((key) => localStorage.getItem(key), LANGUAGE_KEY);
-const machineStatus = () => page.getByRole('region', { name: /^(Estado da máquina|Machine status)$/ });
+const machineStatus = () => page.getByRole('region', { name: /^(Estado da máquina|Machine status|Estado de la máquina)$/ });
 
 /** Picks a language in the Settings row. The screen must be open. */
 async function chooseLanguage(code) {
@@ -175,7 +176,7 @@ async function stepSwitchToEnglish() {
   const select = page.locator('select[data-slot="language-select"]');
   assert.equal(await select.inputValue(), 'pt-BR');
   const labels = await select.locator('option').allTextContents();
-  assert.deepEqual(labels, ['Português (Brasil)', 'English'], 'each option is written in its own language');
+  assert.deepEqual(labels, ['Português (Brasil)', 'English', 'Español'], 'each option is written in its own language');
 
   const hadReload = page.evaluate(() => {
     window.__e2eNoReload = true;
@@ -278,6 +279,103 @@ async function stepSwitchBack() {
   await page.getByRole('button', { name: 'Adicionar máquina' }).waitFor();
   await page.getByText('Nenhuma sessão rodando', { exact: true }).waitFor();
   log('switched back to Portuguese');
+}
+
+/**
+ * The same language switch with Español, shorter than the English pass: Settings, the main screen, the pairing and
+ * devices screens, a reload that keeps the choice, and the way back to Portuguese. Starts and ends on the Portuguese
+ * home screen.
+ */
+async function stepSpanish() {
+  await page.getByRole('button', { name: 'Ajustes' }).click();
+  await page.getByRole('heading', { name: 'Ajustes', level: 1 }).waitFor();
+  assert.equal(await page.locator('select[data-slot="language-select"]').inputValue(), 'pt-BR');
+  await page.evaluate(() => {
+    window.__e2eNoReload = true;
+  });
+  await chooseLanguage('es');
+
+  await page.getByRole('heading', { name: 'Configuración', level: 1 }).waitFor({ timeout: 10_000 });
+  assert.equal(await page.evaluate(() => window.__e2eNoReload === true), true, 'the switch did not reload the page');
+  assert.equal(await htmlLang(), 'es', '<html lang> follows the language');
+  assert.equal(await storedLanguage(), 'es', 'the choice is stored on the device');
+  assert.equal(await page.locator('select[data-slot="language-select"]').inputValue(), 'es');
+  await page.getByRole('heading', { name: 'Dispositivos' }).waitFor();
+  await page.getByRole('heading', { name: 'Notificaciones' }).waitFor();
+  await page.getByRole('heading', { name: 'Idioma / Language' }).waitFor();
+  await page.getByText('Dispositivos de esta máquina', { exact: true }).waitFor();
+  await page.getByText('Idioma', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Notificações', { exact: true }).count(), 0, 'no Portuguese left in the headings');
+  assert.equal(await page.getByRole('button', { name: 'Voltar' }).count(), 0, 'the back button is no longer "Voltar"');
+  await page.getByRole('button', { name: 'Volver' }).waitFor();
+  await page.locator('select[data-slot="language-select"]').scrollIntoViewIfNeeded();
+  await shotBothThemes('05-settings-es');
+  log('settings switched to Spanish without a reload');
+
+  // Devices.
+  await page.getByRole('button', { name: /Dispositivos de esta máquina/ }).click();
+  await page.getByRole('heading', { name: 'Dispositivos de esta máquina', level: 1 }).waitFor();
+  const list = page.getByRole('list', { name: 'Dispositivos' });
+  await list.waitFor({ timeout: 15_000 });
+  await list.getByText('este dispositivo', { exact: true }).waitFor();
+  await list.getByText(/^Creado .* · visto por última vez /).waitFor();
+  await list.getByRole('button', { name: /^Revocar / }).waitFor();
+  await page.getByRole('button', { name: 'Volver' }).click();
+  await page.getByRole('heading', { name: 'Configuración', level: 1 }).waitFor();
+
+  // Home.
+  await page.getByRole('button', { name: 'Volver' }).click();
+  await machineStatus().getByText('En línea', { exact: true }).waitFor({ timeout: 30_000 });
+  const machines = page.locator('ul[aria-label="Máquinas"]');
+  await expectTexts(machines, ['1 workspace', 'Aún no hay sesiones']);
+  await page.getByRole('button', { name: 'Configuración' }).waitFor();
+  await page.getByRole('button', { name: 'Agregar máquina' }).waitFor();
+  await page.getByRole('button', { name: 'Forzar actualización de la app' }).waitFor();
+  await page.getByRole('button', { name: 'Quitar máquina' }).waitFor();
+  await page.getByRole('button', { name: 'Workspaces' }).waitFor();
+  await page.getByText('Ninguna sesión en ejecución', { exact: true }).waitFor();
+  await page.getByText('Conectado al daemon de esta máquina.', { exact: true }).waitFor();
+  await page.getByRole('region', { name: 'Resumen de las máquinas' }).waitFor();
+  assert.equal(await page.getByText('Nenhuma sessão rodando', { exact: true }).count(), 0, 'no Portuguese on the home screen');
+  await shotBothThemes('06-main-es');
+  log('home in Spanish');
+
+  // Pairing, with a refused code.
+  await page.getByRole('button', { name: 'Agregar máquina' }).click();
+  await page.getByRole('heading', { name: 'Vincular máquina' }).waitFor();
+  await page.getByText('Dirección del PC', { exact: true }).waitFor();
+  await page.getByText('Nombre de este dispositivo', { exact: true }).waitFor();
+  await page.getByText('Código', { exact: true }).waitFor();
+  await page.getByText('Genera un código de 6 dígitos en el PC y escríbelo aquí. Es válido por 5 minutos.').waitFor();
+  await page.fill('input[placeholder="000000"]', '12');
+  await page.getByRole('button', { name: 'Vincular', exact: true }).click();
+  await page.getByRole('alert').getByText('El código tiene 6 dígitos.').waitFor();
+  await page.screenshot({ path: join(shotsDir, '07-pairing-es.png') });
+  log('pairing screen in Spanish');
+  await page.getByRole('button', { name: 'Volver' }).click();
+  await machineStatus().getByText('En línea', { exact: true }).waitFor({ timeout: 30_000 });
+
+  // The choice survives a reload.
+  await page.reload({ waitUntil: 'networkidle' });
+  await machineStatus().getByText('En línea', { exact: true }).waitFor({ timeout: 30_000 });
+  assert.equal(await htmlLang(), 'es', 'the choice survives a reload');
+  assert.equal(await storedLanguage(), 'es');
+  await page.getByRole('button', { name: 'Agregar máquina' }).waitFor();
+  log('reload kept Spanish');
+
+  // Back to Portuguese, so the steps after this one find the app as they expect.
+  await page.getByRole('button', { name: 'Configuración' }).click();
+  await page.getByRole('heading', { name: 'Configuración', level: 1 }).waitFor();
+  assert.equal(await page.locator('select[data-slot="language-select"]').inputValue(), 'es');
+  await chooseLanguage('pt-BR');
+  await page.getByRole('heading', { name: 'Ajustes', level: 1 }).waitFor({ timeout: 10_000 });
+  assert.equal(await htmlLang(), 'pt-BR');
+  assert.equal(await storedLanguage(), 'pt-BR');
+  await page.getByRole('button', { name: 'Voltar' }).click();
+  await machineStatus().getByText('Online', { exact: true }).waitFor({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Adicionar máquina' }).waitFor();
+  await page.getByText('Nenhuma sessão rodando', { exact: true }).waitFor();
+  log('switched back to Portuguese from Spanish');
 }
 
 // ---------- step: Settings "Agent accounts" and the usage drawer in English (own daemon and context) ----------
@@ -970,6 +1068,7 @@ async function main() {
   await stepWorkspaceAreaInEnglish();
   await stepReloadKeepsEnglish();
   await stepSwitchBack();
+  await stepSpanish();
   await stepAccountsAndUsageInEnglish();
   await stepChatInEnglish();
 

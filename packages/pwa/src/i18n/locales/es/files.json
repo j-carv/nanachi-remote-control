@@ -1,0 +1,45 @@
+{
+  "viewer": {
+    "crop": "Recortar",
+    "cropAgain": "Recortar de nuevo",
+    "close": "Cerrar",
+    "share": "Compartir",
+    "save": "Guardar",
+    "attachToChat": "Adjuntar al chat",
+    "viewCrop": "Ver recorte"
+  },
+  "cropper": {
+    "title": "Recortar",
+    "dialog": "Recortar imagen",
+    "cancel": "Cancelar recorte",
+    "ratio": "Proporción del recorte",
+    "failed": "No se pudo recortar esta imagen.",
+    "cropping": "Recortando…",
+    "handles": {
+      "cropArea": "Área de recorte",
+      "nwDragHandle": "Control de la esquina superior izquierda",
+      "nDragHandle": "Control superior",
+      "neDragHandle": "Control de la esquina superior derecha",
+      "eDragHandle": "Control derecho",
+      "seDragHandle": "Control de la esquina inferior derecha",
+      "sDragHandle": "Control inferior",
+      "swDragHandle": "Control de la esquina inferior izquierda",
+      "wDragHandle": "Control izquierdo"
+    }
+  },
+  "crop": {
+    "free": "Libre",
+    "suffix": "recorte"
+  },
+  "thumb": {
+    "loading": "Cargando imagen",
+    "open": "Abrir {{name}}"
+  },
+  "attachment": {
+    "download": "Descargar",
+    "downloading": "Descargando…"
+  },
+  "toolImage": {
+    "name": "imagen"
+  }
+}

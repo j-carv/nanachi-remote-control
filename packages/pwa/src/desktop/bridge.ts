@@ -11,6 +11,11 @@ export interface NanachiDesktopBridge {
   readonly version: string;
   status(): Promise<DaemonStatus>;
   onStatus(callback: (status: DaemonStatus) => void): () => void;
+  /**
+   * Desktop's language changed in its control center. Missing from a Desktop older than this event, so the guard below does
+   * not require it; the value is checked by `followDesktopLanguage`.
+   */
+  onLanguage?(callback: (language: unknown) => void): () => void;
   pairingCode(): Promise<PairingCode>;
   getAutostart(): Promise<boolean>;
   setAutostart(value: boolean): Promise<boolean>;

@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  FolderTree,
   Gauge,
   GitCompare,
   Layers,
@@ -25,6 +26,7 @@ import {
   Settings2,
   SlidersHorizontal,
   SquareSlash,
+  SquareTerminal,
 } from 'lucide-react';
 import type { AvailableCommand, LoopRequest, Session, SessionStatus, Workspace } from '@nanachi/shared';
 import { splitOptions } from '../agentConfig.js';
@@ -39,6 +41,7 @@ import { useCssHeight } from '../components/useCssHeight.js';
 import { NewSessionSheet } from '../components/NewSessionSheet.js';
 import { ActionSheet, ActionSheetButton, type ActionSheetItem } from '../components/ActionSheet.js';
 import { RemoveSessionSheet } from '../components/RemoveSessionSheet.js';
+import { ShellSheet } from '../components/ShellSheet.js';
 import { UsageDrawer } from '../components/UsageDrawer.js';
 import { ListGroup, SectionHeading } from '../components/ListGroup.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
@@ -65,6 +68,7 @@ import { nestItems, type ChatNode } from '../chat/nesting.js';
 import { IDLE_PROMPT_CURSOR, promptHistoryOf, recallNewer, recallOlder, type PromptCursor, type PromptStep } from '../chat/promptHistory.js';
 import {
   bareCommandName,
+  commandForEnter,
   commandSheetFor,
   configSheetChoices,
   insertCommand,
@@ -76,6 +80,8 @@ import { SlashMenu } from '../chat/SlashMenu.js';
 import { acceptsPrompt, isInputEnabled, isResumable } from '../chat/controls.js';
 import { useAttachmentDrafts, type DraftAttachment } from '../chat/useAttachmentDrafts.js';
 import { useChat } from '../chat/useChat.js';
+import { allowsSidePane, ENTER_SENDS_QUERY, enterSends } from '../wide/layout.js';
+import { useBackAffordance, useLayout } from '../wide/layoutContext.js';
 import { displaySessionTitle, sessionStatusText, sessionTitle } from '../sessionText.js';
 import { useAsync } from '../useAsync.js';
 import { PermissionCard } from '../chat/PermissionCard.js';
@@ -137,6 +143,7 @@ export function ChatScreen({
   onRepair,
 }: ChatScreenProps) {
   const { t } = useTranslation('chat');
+  const { t: tw } = useTranslation('wide');
   const controller = useChat({ api, connection, storage, session });
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const { chat } = controller;
@@ -177,6 +184,16 @@ export function ChatScreen({
    * the new Modo Loop button fit. Wider screens keep the header as it was.
    */
   const compactHeader = useMediaQuery('(max-width: 399px)');
+  // Wide screens: the chat sits in the right pane (not over the whole window); from 1280 px it can open files, changes
+  // and a terminal in a third pane. Enter sends only for a mouse and keyboard (a touch screen keeps Enter as a new line).
+  const layout = useLayout();
+  const embedded = layout !== 'phone';
+  const sidePane = allowsSidePane(layout);
+  const backAffordance = useBackAffordance();
+  const enterToSend = useMediaQuery(ENTER_SENDS_QUERY);
+  const [shellOpen, setShellOpen] = useState(false);
+  /** A tooltip for the icon buttons of the header: a pointer has no other way to read them. */
+  const tip = (label: string): string | undefined => (embedded ? label : undefined);
   const loopActive = controller.loop !== null && controller.loop.state !== 'stopped';
   /** Item the header chip asked to show. The effect below scrolls to it once it is rendered. */
   const [revealRequest, setRevealRequest] = useState<{ id: string } | null>(null);
@@ -651,6 +668,22 @@ export function ChatScreen({
    * seguinte. Com o menu de comandos aberto as setas são dele, então aqui não fazem nada.
    */
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      enterSends(
+        { key: event.key, shiftKey: event.shiftKey, altKey: event.altKey, isComposing: event.nativeEvent.isComposing },
+        enterToSend,
+      )
+    ) {
+      event.preventDefault();
+      // With the menu of a typed `/rev` open, Enter completes the command (the row on top) instead of sending half of it.
+      const completing = !commandsOpen && typedQuery !== undefined ? commandForEnter(controller.commands, typedQuery) : undefined;
+      if (completing !== undefined) {
+        pickCommand(completing);
+        return;
+      }
+      if (canSend) event.currentTarget.form?.requestSubmit();
+      return;
+    }
     if (menuQuery !== undefined || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
     const field = event.currentTarget;
     if (field.selectionStart !== field.selectionEnd) return;
@@ -690,15 +723,17 @@ export function ChatScreen({
   return (
     <ChatAttachContext.Provider value={composerOpen ? attachFromViewer : null}>
       <div
-        className="fixed inset-x-0 top-0 bottom-0 z-[5] flex justify-center bg-background text-foreground"
-        style={boxStyle}
+        className="fixed inset-x-0 top-0 bottom-0 z-[5] flex justify-center bg-background text-foreground wide:absolute wide:inset-0 wide:z-0"
+        style={embedded ? undefined : boxStyle}
       >
-        <div className="flex h-full min-h-0 w-full max-w-[560px] flex-col gap-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pr-[calc(env(safe-area-inset-right,0px)+12px)] pl-[calc(env(safe-area-inset-left,0px)+12px)]">
+        <div className="flex h-full min-h-0 w-full max-w-[560px] flex-col gap-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pr-[calc(env(safe-area-inset-right,0px)+12px)] pl-[calc(env(safe-area-inset-left,0px)+12px)] wide:max-w-none wide:pt-3 wide:pr-6 wide:pl-6">
           <div className="flex shrink-0 flex-col">
           <header className="flex min-h-11 items-center gap-1">
-            <Button variant="ghost" size="icon" className="-ml-2" aria-label={t('actions.back', { ns: 'common' })} onClick={() => nav.back()}>
-              <ChevronLeft className="size-6" aria-hidden="true" />
-            </Button>
+            {backAffordance === 'back' && (
+              <Button variant="ghost" size="icon" className="-ml-2" aria-label={t('actions.back', { ns: 'common' })} onClick={() => nav.back()}>
+                <ChevronLeft className="size-6" aria-hidden="true" />
+              </Button>
+            )}
             <div className="flex min-w-0 flex-1 flex-col px-1">
               <div className="flex min-w-0 items-center gap-2">
                 <span
@@ -713,7 +748,7 @@ export function ChatScreen({
               </div>
             </div>
             {current.kind === 'acp' && !compactHeader && (
-              <Button variant="ghost" size="icon" aria-label={t('header.usage')} onClick={() => setUsageOpen(true)}>
+              <Button variant="ghost" size="icon" aria-label={t('header.usage')} title={tip(t('header.usage'))} onClick={() => setUsageOpen(true)}>
                 <Gauge aria-hidden="true" />
               </Button>
             )}
@@ -722,6 +757,7 @@ export function ChatScreen({
                 variant="ghost"
                 size="icon"
                 aria-label={t('header.loop')}
+                title={tip(t('header.loop'))}
                 aria-haspopup="dialog"
                 aria-expanded={loopOpen}
                 onClick={openLoop}
@@ -729,11 +765,34 @@ export function ChatScreen({
                 {loopActive ? <Repeat1 aria-hidden="true" /> : <Repeat aria-hidden="true" />}
               </Button>
             )}
+            {sidePane && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('sessions.files', { ns: 'workspace' })}
+                  title={t('sessions.files', { ns: 'workspace' })}
+                  onClick={() => nav.push({ kind: 'files', workspace, path: '' })}
+                >
+                  <FolderTree aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('sessions.terminal', { ns: 'workspace' })}
+                  title={t('sessions.terminal', { ns: 'workspace' })}
+                  onClick={() => setShellOpen(true)}
+                >
+                  <SquareTerminal aria-hidden="true" />
+                </Button>
+              </>
+            )}
             {!compactHeader && (
               <Button
                 variant="ghost"
                 size="icon"
                 aria-label={t('header.changes')}
+                title={tip(t('header.changes'))}
                 onClick={() => nav.push({ kind: 'changes', workspace, session: current })}
               >
                 <GitCompare aria-hidden="true" />
@@ -743,6 +802,7 @@ export function ChatScreen({
               variant="ghost"
               size="icon"
               aria-label={t('header.configure')}
+              title={tip(t('header.configure'))}
               aria-haspopup="dialog"
               aria-expanded={configOpen}
               onClick={() => setConfigOpen(true)}
@@ -764,7 +824,7 @@ export function ChatScreen({
             />
           </header>
             {/* Place line and chips span the whole header, so they keep room beside the buttons. Indented to the title. */}
-            <div className="-mt-1 flex min-w-0 items-center gap-2 pr-1 pl-[62px]">
+            <div className={cn('-mt-1 flex min-w-0 items-center gap-2 pr-1', backAffordance === 'back' ? 'pl-[62px]' : 'pl-[22px]')}>
               <p data-slot="session-place" className="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground">{place}</p>
               {current.kind === 'acp' && <LoopChip loop={controller.loop} onOpen={openLoop} />}
               {/* 44px tap area around a 24px pill; the negative margins keep the header's height unchanged. */}
@@ -880,55 +940,58 @@ export function ChatScreen({
             </DrawerContent>
           </Drawer>
 
-          <ErrorNotice error={controller.loadError} onRepair={onRepair} />
-          <ErrorNotice
-            error={controller.resumeError}
-            action={notResumable ? { label: t('composer.newSession'), onClick: () => setSheetOpen(true) } : undefined}
-          />
-          <ErrorNotice error={sendError} onRepair={onRepair} />
+          {/* `contents` on the phone (the notices stay flex items of the column); a reading-width column on wide screens. */}
+          <div className="contents wide:mx-auto wide:flex wide:w-full wide:max-w-[760px] wide:flex-col wide:gap-2 wide:empty:hidden">
+            <ErrorNotice error={controller.loadError} onRepair={onRepair} />
+            <ErrorNotice
+              error={controller.resumeError}
+              action={notResumable ? { label: t('composer.newSession'), onClick: () => setSheetOpen(true) } : undefined}
+            />
+            <ErrorNotice error={sendError} onRepair={onRepair} />
 
-          {controller.notice !== null && (
-            <div
-              data-slot="notice"
-              role="status"
-              className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
-            >
-              <p className="text-[15px] leading-snug">{controller.notice}</p>
-              <Button variant="ghost" onClick={controller.dismissNotice}>
-                OK
-              </Button>
-            </div>
-          )}
+            {controller.notice !== null && (
+              <div
+                data-slot="notice"
+                role="status"
+                className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+              >
+                <p className="text-[15px] leading-snug">{controller.notice}</p>
+                <Button variant="ghost" onClick={controller.dismissNotice}>
+                  OK
+                </Button>
+              </div>
+            )}
 
-          {loopNotice !== null && (
-            <div
-              data-slot="loop-notice"
-              role="status"
-              className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
-            >
-              <p className="text-[15px] leading-snug">{loopNotice}</p>
-              <Button variant="ghost" onClick={() => setLoopNotice(null)}>
-                OK
-              </Button>
-            </div>
-          )}
+            {loopNotice !== null && (
+              <div
+                data-slot="loop-notice"
+                role="status"
+                className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+              >
+                <p className="text-[15px] leading-snug">{loopNotice}</p>
+                <Button variant="ghost" onClick={() => setLoopNotice(null)}>
+                  OK
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div
               data-slot="chat-timeline"
               ref={timelineRef}
               onScroll={onTimelineScroll}
-              className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain px-0.5 py-2 *:shrink-0"
+              className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain [overflow-anchor:none] px-0.5 py-2 *:shrink-0 wide:items-center wide:px-2"
             >
               {!controller.loaded && controller.loadError === null && (
-                <p className="text-sm text-muted-foreground">{t('timeline.loading')}</p>
+                <p className="text-sm text-muted-foreground wide:w-full wide:max-w-[760px]">{t('timeline.loading')}</p>
               )}
               {start > 0 && (
                 <Button variant="secondary" className="self-center" onClick={loadEarlier}>
                   {t('timeline.loadEarlier')}
                 </Button>
               )}
-              <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3">
+              <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3 wide:w-full wide:max-w-[760px]">
                 {topNodes.map((node) => (
                   <div key={node.item.id} data-item-id={node.item.id} className={ITEM_FRAME_CLASS}>
                     <ChatItemView node={node} api={api} view={backgroundView} />
@@ -936,12 +999,13 @@ export function ChatScreen({
                 ))}
               </div>
               {chat.permissions.map((request) => (
-                <PermissionCard
-                  key={request.requestId}
-                  api={api}
-                  request={request}
-                  onRespond={(optionId) => controller.respond(request.requestId, optionId)}
-                />
+                <div key={request.requestId} className="wide:w-full wide:max-w-[760px]">
+                  <PermissionCard
+                    api={api}
+                    request={request}
+                    onRespond={(optionId) => controller.respond(request.requestId, optionId)}
+                  />
+                </div>
               ))}
             </div>
             {!atBottom && (
@@ -962,7 +1026,7 @@ export function ChatScreen({
             )}
           </div>
 
-          <div ref={bottomRef} className="flex shrink-0 flex-col gap-2">
+          <div ref={bottomRef} className="flex shrink-0 flex-col gap-2 wide:mx-auto wide:w-full wide:max-w-[760px]">
             {working !== undefined && (
               <div role="status" className="flex min-h-11 shrink-0 items-center gap-2.5 pl-1 text-sm text-muted-foreground">
                 {chat.status === 'running' || controller.resuming ? (
@@ -1119,6 +1183,11 @@ export function ChatScreen({
                 <span className="max-[359px]:sr-only">{sending ? t('composer.sending') : t('composer.send')}</span>
               </Button>
             </form>
+            {composerOpen && (
+              <p data-slot="composer-hint" className="-mt-1 hidden pb-2 text-right text-xs text-muted-foreground wide:pointer-fine:block">
+                {tw('composerHint')}
+              </p>
+            )}
           </div>
 
           {removing && (
@@ -1158,6 +1227,18 @@ export function ChatScreen({
               onConfirm={(file) => {
                 attachments.replace(cropping.id, file);
                 setCropping(null);
+              }}
+            />
+          )}
+
+          {shellOpen && (
+            <ShellSheet
+              api={api}
+              workspace={workspace}
+              onClose={() => setShellOpen(false)}
+              onCreated={(created) => {
+                setShellOpen(false);
+                nav.push({ kind: 'chat', workspace, session: created });
               }}
             />
           )}

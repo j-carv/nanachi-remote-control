@@ -11,8 +11,8 @@ import { ListGroup, listRowClass, SectionHeading } from './ListGroup.js';
 
 /**
  * Settings row that picks the app language. The section title and the option names are the same in every language
- * ("Idioma / Language", "Português (Brasil)", "English"), so the row can be found after a switch to a language the
- * user does not read. The native select opens the iOS wheel, like the session pickers.
+ * ("Idioma / Language", "Português (Brasil)", "English", "Español"), so the row can be found after a switch to a
+ * language the user does not read. The native select opens the iOS wheel, like the session pickers.
  */
 export function LanguageSection() {
   // Subscribes to the language, so the select shows the new value (the screen is remounted on a change anyway).

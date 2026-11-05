@@ -2,6 +2,7 @@ import type { AvailableCommand, SessionConfigOption } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
 import {
   bareCommandName,
+  commandForEnter,
   commandSheetFor,
   configSheetChoices,
   filterCommands,
@@ -66,6 +67,31 @@ describe('filterCommands', () => {
   it('lista vazia quando nada casa', () => {
     expect(filterCommands(COMMANDS, 'xyz')).toEqual([]);
     expect(filterCommands([], 'lo')).toEqual([]);
+  });
+});
+
+describe('commandForEnter', () => {
+  it('is the first match of what was typed, so Enter completes the command instead of sending the half-typed text', () => {
+    expect(commandForEnter(COMMANDS, 're')?.name).toBe('review');
+    expect(commandForEnter(COMMANDS, 'co')?.name).toBe('compact');
+    expect(commandForEnter(COMMANDS, '')?.name).toBe('loop');
+  });
+
+  it('follows the order of filterCommands, so it is the row on top of the menu', () => {
+    for (const query of ['lo', 'co', 'BRAIN', 'servidores']) {
+      expect(commandForEnter(COMMANDS, query)).toBe(filterCommands(COMMANDS, query)[0]);
+    }
+  });
+
+  it('is nothing when the typed text is already the name of a command: Enter sends it', () => {
+    expect(commandForEnter(COMMANDS, 'review')).toBeUndefined();
+    expect(commandForEnter(COMMANDS, 'REVIEW')).toBeUndefined();
+    expect(commandForEnter(COMMANDS, 'skill:brainstorming')).toBeUndefined();
+  });
+
+  it('is nothing when no command matches or the agent announced none: Enter sends the text', () => {
+    expect(commandForEnter(COMMANDS, 'xyz')).toBeUndefined();
+    expect(commandForEnter([], 'lo')).toBeUndefined();
   });
 });
 

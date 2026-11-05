@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareLocales, flattenLeaves, placeholdersOf } from './localeCheck.js';
+import { compareLocales, flattenLeaves, placeholdersOf, pluralCategoriesOf } from './localeCheck.js';
 
 describe('flattenLeaves', () => {
   it('flattens nested objects into dotted paths and flags leaves that are not strings', () => {
@@ -76,6 +76,59 @@ describe('compareLocales', () => {
     expect(compareLocales(lonely, 'pt-BR', ['common'])).toEqual([
       'pt-BR/common.json: "thing_one" has no "_other" form',
       'en/common.json: "thing_one" has no "_other" form',
+    ]);
+  });
+});
+
+describe('pluralCategoriesOf', () => {
+  it('reports what the engine knows: Spanish and Portuguese have `many`, English does not', () => {
+    expect(pluralCategoriesOf('en')).toEqual(expect.arrayContaining(['one', 'other']));
+    expect(pluralCategoriesOf('en')).not.toContain('many');
+    expect(pluralCategoriesOf('es')).toEqual(expect.arrayContaining(['one', 'many', 'other']));
+    expect(pluralCategoriesOf('pt-BR')).toContain('many');
+  });
+
+  it('falls back to one and other for a code the engine rejects', () => {
+    expect(pluralCategoriesOf('not a language')).toEqual(['one', 'other']);
+  });
+});
+
+describe('compareLocales and the plural forms of each language', () => {
+  const categories = (language: string): readonly string[] => (language === 'es' ? ['one', 'many', 'other'] : ['one', 'other']);
+  const ptBr = { common: { hello: 'Olá', count_one: '{{count}} item', count_other: '{{count}} itens' } };
+  const es = { hello: 'Hola', count_one: '{{count}} elemento', count_many: '{{count}} de elementos', count_other: '{{count}} elementos' };
+
+  it('accepts the extra form a language needs next to the reference forms', () => {
+    expect(compareLocales({ 'pt-BR': ptBr, es: { common: es } }, 'pt-BR', ['common'], categories)).toEqual([]);
+  });
+
+  it('reports a form the language needs for some counts but lacks (a count that picks it would show the bare key)', () => {
+    const { count_many: _many, ...withoutMany } = es;
+    expect(compareLocales({ 'pt-BR': ptBr, es: { common: withoutMany } }, 'pt-BR', ['common'], categories)).toEqual([
+      'es/common.json: "count" has no "_many" form, which es uses for some counts',
+    ]);
+  });
+
+  it('does not ask for a form the language never uses, and does not check the reference language itself', () => {
+    const files = { 'pt-BR': ptBr, en: { common: { hello: 'Hello', count_one: '{{count}} item', count_other: '{{count}} items' } } };
+    expect(compareLocales(files, 'pt-BR', ['common'], () => ['one', 'many', 'other'])).toEqual([
+      'en/common.json: "count" has no "_many" form, which en uses for some counts',
+    ]);
+    expect(compareLocales(files, 'pt-BR', ['common'], categories)).toEqual([]);
+  });
+
+  it('measures an extra form against the reference _other text: its placeholders must match', () => {
+    const wrong = { ...es, count_many: '{{total}} de elementos' };
+    expect(compareLocales({ 'pt-BR': ptBr, es: { common: wrong } }, 'pt-BR', ['common'], categories)).toEqual([
+      'es/common.json: "count_many" uses {{total}} but pt-BR uses {{count}}',
+    ]);
+  });
+
+  it('still reports an extra key that is not a plural form of a reference text', () => {
+    const files = { 'pt-BR': ptBr, es: { common: { ...es, other_many: 'x', more: 'y' } } };
+    expect(compareLocales(files, 'pt-BR', ['common'], categories)).toEqual([
+      'es/common.json: extra key "other_many"',
+      'es/common.json: extra key "more"',
     ]);
   });
 });
