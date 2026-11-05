@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
+<title>Instalador do Nanachi</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<div class="stage">
+  <div class="card" data-slot="installer">
+    <div class="backdrop" aria-hidden="true"><div class="blob one"></div><div class="blob two"></div><div class="blob three"></div></div>
+
+    <header class="titlebar">
+      <span class="name">Instalador do Nanachi</span>
+      <div class="window-buttons">
+        <button type="button" class="window-button" data-slot="minimize" aria-label="Minimizar"><svg viewBox="0 0 14 14"><path d="M2.5 7h9"/></svg></button>
+        <button type="button" class="window-button" data-slot="close" aria-label="Fechar"><svg viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="view" data-view="idle">
+        <div class="logo-wrap"><span class="ring"></span><span class="ring late"></span><img class="logo" src="icon.png" alt="" width="84" height="84"></div>
+        <h1>Nanachi</h1>
+        <p class="muted">Seus agentes de IA rodando no PC, no seu bolso.</p>
+        <div class="actions"><button type="button" class="button primary large" data-slot="install">Instalar</button></div>
+        <button type="button" class="link" data-slot="options-open">Opções</button>
+      </section>
+
+      <section class="view" data-view="options" hidden>
+        <div class="options">
+          <div class="field">
+            <label for="target">Pasta de instalação</label>
+            <div class="field-row">
+              <input id="target" type="text" data-slot="target" spellcheck="false" autocomplete="off">
+              <button type="button" class="button" data-slot="choose-folder">Alterar…</button>
+            </div>
+            <p class="small-text error-text" data-slot="target-error" role="alert" hidden></p>
+          </div>
+          <label class="switch"><span>Criar atalho na Área de Trabalho</span><input type="checkbox" data-slot="desktop-shortcut" checked></label>
+          <label class="switch"><span>Iniciar com o Windows</span><input type="checkbox" data-slot="start-with-windows" checked></label>
+        </div>
+        <div class="actions">
+          <button type="button" class="button" data-slot="options-close">Voltar</button>
+          <button type="button" class="button primary" data-slot="install-from-options">Instalar</button>
+        </div>
+      </section>
+
+      <section class="view" data-view="close" hidden>
+        <img class="logo small" src="icon.png" alt="" width="56" height="56">
+        <h2>O Nanachi está aberto</h2>
+        <p class="muted" data-slot="close-detail">Para continuar, ele precisa ser fechado.</p>
+        <div class="actions">
+          <button type="button" class="button" data-slot="close-cancel">Cancelar</button>
+          <button type="button" class="button primary" data-slot="close-confirm">Fechar o Nanachi e continuar</button>
+        </div>
+      </section>
+
+      <section class="view" data-view="progress" hidden>
+        <img class="logo small" src="icon.png" alt="" width="56" height="56">
+        <h2>Instalando o Nanachi</h2>
+        <div class="progress">
+          <div class="progress-meta"><span class="step" data-slot="step" aria-live="polite">Preparando…</span><span class="percent" data-slot="percent">0%</span></div>
+          <div class="track" role="progressbar" aria-label="Progresso da instalação" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-slot="track"><div class="fill"></div></div>
+        </div>
+        <p class="note">Isso leva um minuto. Pode deixar a janela aberta.</p>
+      </section>
+
+      <section class="view" data-view="done" hidden>
+        <div class="checkmark"><svg viewBox="0 0 26 26"><path d="M5 13.5l5.2 5.2L21 7.8"/></svg></div>
+        <h2>Nanachi instalado</h2>
+        <p class="muted" data-slot="done-detail">Tudo pronto.</p>
+        <div class="actions"><button type="button" class="button primary large" data-slot="launch">Abrir o Nanachi</button></div>
+        <button type="button" class="link" data-slot="done-close">Fechar</button>
+      </section>
+
+      <section class="view" data-view="error" hidden>
+        <img class="logo small" src="icon.png" alt="" width="56" height="56">
+        <h2>Não foi possível instalar</h2>
+        <p class="error-text" data-slot="error-message" role="alert"></p>
+        <div class="actions">
+          <button type="button" class="button" data-slot="error-close">Fechar</button>
+          <button type="button" class="button primary" data-slot="retry">Tentar de novo</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span data-slot="version">Versão</span>
+      <span data-slot="scope">Só para o seu usuário. Não pede administrador.</span>
+    </footer>
+  </div>
+</div>
+<script src="installer.js"></script>
+</body>
+</html>

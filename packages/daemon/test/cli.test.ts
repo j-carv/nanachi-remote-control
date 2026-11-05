@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import type { PairResponse } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
 import { runCli, type CliIO } from '../src/cli.js';
+import { PAIR_CODE_TTL_MS } from '../src/pairing.js';
 import { loadOrCreateVapid } from '../src/vapid.js';
 import { setupDaemonTests, type TestDaemon } from './support.js';
 
@@ -47,6 +48,108 @@ describe('CLI', () => {
       payload: { code, deviceName: 'iPhone' },
     });
     expect(res.statusCode).toBe(200);
+  });
+
+  it('pair --json imprime só {"code","expiresAt"} e o código vale no POST /api/pair', async () => {
+    const before = Date.now();
+    const cli = captureIO();
+    expect(await runCli(['pair', '--json'], { NANACHI_HOME: env.home }, cli.io)).toBe(0);
+    const after = Date.now();
+
+    expect(cli.out).toHaveLength(1);
+    expect(cli.err).toEqual([]);
+    const line = cli.out[0] ?? '';
+    const parsed: unknown = JSON.parse(line);
+    expect(Object.keys(parsed as object)).toEqual(['code', 'expiresAt']);
+    const { code, expiresAt } = parsed as { code: string; expiresAt: number };
+    expect(code).toMatch(/^\d{6}$/);
+    expect(expiresAt).toBeGreaterThanOrEqual(before + PAIR_CODE_TTL_MS);
+    expect(expiresAt).toBeLessThanOrEqual(after + PAIR_CODE_TTL_MS);
+    expect(line).toBe(JSON.stringify({ code, expiresAt }));
+
+    const daemon = await env.start();
+    const res = await daemon.app.inject({
+      method: 'POST',
+      url: '/api/pair',
+      payload: { code, deviceName: 'Nanachi Desktop (teste)' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('pair com argumento desconhecido sai com 2 e não gera código', async () => {
+    const cli = captureIO();
+    expect(await runCli(['pair', '--yaml'], { NANACHI_HOME: env.home }, cli.io)).toBe(2);
+    expect(cli.out).toEqual([]);
+    expect(cli.err.join('\n')).toMatch(/pair \[--json\]/);
+  });
+
+  it('device add --name --json imprime só {"deviceId","token"} e o token já autentica no /api/me', async () => {
+    const cli = captureIO();
+    expect(await runCli(['device', 'add', '--name', 'Nanachi Desktop (PC)', '--json'], { NANACHI_HOME: env.home }, cli.io)).toBe(0);
+
+    expect(cli.err).toEqual([]);
+    expect(cli.out).toHaveLength(1);
+    const line = cli.out[0] ?? '';
+    const parsed: unknown = JSON.parse(line);
+    expect(Object.keys(parsed as object)).toEqual(['deviceId', 'token']);
+    const { deviceId, token } = parsed as { deviceId: string; token: string };
+    expect(deviceId).not.toBe('');
+    expect(token.length).toBeGreaterThanOrEqual(32);
+    expect(line).toBe(JSON.stringify({ deviceId, token }));
+
+    const daemon = await env.start();
+    const me = await daemon.app.inject({ method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${token}` } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ deviceId, deviceName: 'Nanachi Desktop (PC)' });
+
+    // The database only holds the hash, never the token.
+    const hashes = daemon.db.prepare<[], { token_hash: string }>('SELECT token_hash FROM devices').all();
+    expect(hashes.map((row) => row.token_hash)).not.toContain(token);
+  });
+
+  it('device add não derruba o código de pareamento que ainda vale (é o motivo de ele existir)', async () => {
+    // O usuário pediu um código e está digitando no celular.
+    expect(await runCli(['pair'], { NANACHI_HOME: env.home }, captureIO().io)).toBe(0);
+    const daemon = await env.start();
+    const code = latestCode(daemon.db);
+
+    // O Desktop se pareia agora: com `pair --json` isso marcaria o código acima como usado.
+    expect(await runCli(['device', 'add', '--name', 'Nanachi Desktop (PC)', '--json'], { NANACHI_HOME: env.home }, captureIO().io)).toBe(0);
+
+    const res = await daemon.app.inject({ method: 'POST', url: '/api/pair', payload: { code, deviceName: 'iPhone' } });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('device add sem --json imprime uma linha legível e cria o device', async () => {
+    const cli = captureIO();
+    expect(await runCli(['device', 'add', '--name', 'Notebook'], { NANACHI_HOME: env.home }, cli.io)).toBe(0);
+    expect(cli.out).toHaveLength(1);
+    expect(cli.out[0]).toMatch(/Notebook/);
+
+    const list = captureIO();
+    expect(await runCli(['devices'], { NANACHI_HOME: env.home }, list.io)).toBe(0);
+    expect(list.out.join('\n')).toContain('Notebook');
+  });
+
+  it.each([
+    ['sem argumentos', ['device']],
+    ['sem a ação add', ['device', 'list']],
+    ['sem --name', ['device', 'add', '--json']],
+    ['--name sem valor', ['device', 'add', '--name']],
+    ['nome vazio', ['device', 'add', '--name', '   ', '--json']],
+    ['nome com mais de 64 caracteres', ['device', 'add', '--name', 'x'.repeat(65), '--json']],
+    ['nome com caractere de controle', ['device', 'add', '--name', 'a\nb', '--json']],
+    ['--name repetido', ['device', 'add', '--name', 'a', '--name', 'b']],
+    ['argumento desconhecido', ['device', 'add', '--name', 'a', '--yaml']],
+  ])('device add %s sai com 2, mostra o uso e não cria nada', async (_label, argv) => {
+    const cli = captureIO();
+    expect(await runCli(argv, { NANACHI_HOME: env.home }, cli.io)).toBe(2);
+    expect(cli.out).toEqual([]);
+    expect(cli.err.join('\n')).toMatch(/device add --name/);
+
+    const list = captureIO();
+    expect(await runCli(['devices'], { NANACHI_HOME: env.home }, list.io)).toBe(0);
+    expect(list.out).toEqual(['Nenhum dispositivo pareado.']);
   });
 
   it('devices lista os dispositivos sem expor hash ou token', async () => {
