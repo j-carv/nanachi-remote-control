@@ -53,7 +53,7 @@ import { AccountSelectionError, type AccountLauncher } from './accounts/launch.j
 import { mergeEnv } from './agent-env.js';
 import { AgentImages } from './agent-images.js';
 import { agentBinDirs, phoneSendBinDir, withPathPrepended } from './agent-path.js';
-import { USAGE_CACHE_MS, USAGE_CANCEL_GRACE_MS, USAGE_IDLE_MS, USAGE_TIMEOUT_MS, usageCommandOf } from './agent-usage.js';
+import { USAGE_CACHE_MS, USAGE_CANCEL_GRACE_MS, USAGE_IDLE_MS, USAGE_TIMEOUT_MS, usageCommandOf, usageTimeoutOf } from './agent-usage.js';
 import { AgentTokens } from './agent-tokens.js';
 import { resolveAgentCommand, type AgentCommand } from './agent-command.js';
 import { PathError, resolveInsideRoots } from './roots.js';
@@ -382,6 +382,8 @@ export class SessionManager {
       blocked: (agentId, accountId) => options.accounts.isRemoving(agentId, accountId),
       log: options.log,
       timeoutMs: options.usageTimeoutMs ?? USAGE_TIMEOUT_MS,
+      // A fixed budget from the caller (tests) applies to every agent; otherwise each agent gets its own.
+      timeoutFor: options.usageTimeoutMs === undefined ? usageTimeoutOf : undefined,
       cacheMs: options.usageCacheMs ?? USAGE_CACHE_MS,
       idleMs: options.usageIdleMs ?? USAGE_IDLE_MS,
       cancelGraceMs: USAGE_CANCEL_GRACE_MS,

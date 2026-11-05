@@ -50,6 +50,8 @@ export interface UsageProbeOptions {
   log: FastifyBaseLogger;
   /** Teto da leitura inteira (subir o processo, negociar e responder ao comando). */
   timeoutMs: number;
+  /** Budget for one agent, when it differs from 	imeoutMs (a slow cold start). */
+  timeoutFor?: ((agentId: string) => number) | undefined;
   /** Quanto tempo uma leitura fica no cache (leitura nova só depois disso). */
   cacheMs: number;
   /** Quanto tempo o processo de uso fica vivo sem ninguém pedir. */
@@ -268,9 +270,10 @@ export class UsageProbe {
     command: string,
   ): Promise<string> {
     this.clearIdle(slot);
+    const limitMs = this.options.timeoutFor?.(agentId) ?? this.options.timeoutMs;
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
-      timer = setTimeout(() => resolve(TIMED_OUT), this.options.timeoutMs);
+      timer = setTimeout(() => resolve(TIMED_OUT), limitMs);
     });
     const state: TurnState = { abandoned: false };
     const work = this.run(agentId, accountId, slot, agent, command, state);
@@ -279,7 +282,7 @@ export class UsageProbe {
       if (outcome === TIMED_OUT) {
         state.abandoned = true;
         await this.abandon(slot, work);
-        throw new UsageProbeError('agent_timeout', `agente não respondeu ao ${command} em ${this.options.timeoutMs} ms`);
+        throw new UsageProbeError('agent_timeout', `agente não respondeu ao ${command} em ${limitMs} ms`);
       }
       this.armIdle(slot);
       return outcome;
