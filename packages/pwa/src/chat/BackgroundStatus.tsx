@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Check, CircleDashed, Square, X } from 'lucide-react';
 import type { BackgroundJob } from '@nanachi/shared';
 import { StatusDot } from '../components/StatusDot.js';
@@ -36,6 +37,8 @@ interface BackgroundStatusProps {
 }
 
 export function BackgroundStatus({ state, showText = false }: BackgroundStatusProps) {
+  // The state the glyph first showed. A later change fades the new glyph in; the first state does not move (history).
+  const [initialState] = useState(state);
   return (
     <span
       data-slot="background-status"
@@ -44,7 +47,9 @@ export function BackgroundStatus({ state, showText = false }: BackgroundStatusPr
       aria-label={showText ? undefined : backgroundStateText(state)}
       className={cn('flex shrink-0 items-center gap-1.5', showText && 'text-xs text-muted-foreground')}
     >
-      <Glyph state={state} />
+      <span key={state} className={cn('flex', state !== initialState && 'animate-enter-scale motion-reduce:animate-none')}>
+        <Glyph state={state} />
+      </span>
       {showText && <span>{backgroundStateText(state)}</span>}
     </span>
   );

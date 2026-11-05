@@ -79,6 +79,9 @@
   /* desktop deltas: the frame (title bar and sidebar) and the text on a destructive fill */
   --ui-chrome: oklch(0.965 0 0);
   --ui-destructive-foreground: oklch(1 0 0);
+  /* Motion tokens, used by the transitions in the TSX and the keyframes below. Premium: enters and moves. Spring: the one pop. */
+  --ease-premium: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -157,14 +160,21 @@
     scrollbar-color: color-mix(in oklab, var(--ui-foreground) 26%, transparent) transparent;
   }
 
-  /* Reduced motion: every transition and animation of the app collapses to nothing. */
+  /* Reduced motion: every transition and animation of the app collapses to nothing (the end state is shown at once). */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
+      animation-delay: 0ms !important;
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+      transition-delay: 0ms !important;
       transition-duration: 0.01ms !important;
+    }
+    /* A spinner that stops reads as a stalled action, so it keeps turning, at a calmer pace. */
+    .animate-spin {
+      animation-duration: 1.4s !important;
+      animation-iteration-count: infinite !important;
     }
   }
 }
@@ -192,17 +202,40 @@
   cursor: text;
 }
 
-/* Quiet motion (120-180 ms). The page enters once per section; dialogs and toasts have their own short entrances. */
+/*
+ * Motion vocabulary. Enters and moves use the premium ease; the spring is reserved for the one pop of feedback (a copied
+ * check). Durations stay short (120-280 ms). An element that already has a `transform` (a placed tooltip) animates `scale`
+ * instead, so the two never fight. Under prefers-reduced-motion every animation and transition is cut to its end state
+ * (base layer); only the spinner keeps turning.
+ */
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
+  }
+}
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
   }
 }
 @keyframes dialog-enter {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.985);
+    transform: translateY(6px) scale(0.97);
+  }
+}
+@keyframes dialog-leave {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
   }
 }
 @keyframes fade-enter {
@@ -210,32 +243,120 @@
     opacity: 0;
   }
 }
+@keyframes fade-leave {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes scale-enter {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
+@keyframes scale-leave {
+  to {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
 @keyframes toast-enter {
   from {
     opacity: 0;
-    transform: translateX(12px);
+    transform: translateX(24px) scale(0.98);
   }
 }
-@keyframes bar-enter {
-  from {
+@keyframes toast-leave {
+  to {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateX(24px) scale(0.98);
+  }
+}
+@keyframes pop {
+  0% {
+    opacity: 0;
+    scale: 0.5;
+  }
+  60% {
+    opacity: 1;
+    scale: 1.12;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+  50% {
+    opacity: 0.5;
+    scale: 0.82;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
   }
 }
 
+/* Enters: the page once per section, rows with a stagger (`--row-index`, capped at the 8th row), bars, toasts, popovers. */
 @utility animate-page {
-  animation: page-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: page-enter 240ms var(--ease-premium) backwards;
 }
-@utility animate-toast {
-  animation: toast-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+@utility animate-row {
+  animation: row-enter 260ms var(--ease-premium) backwards;
+  animation-delay: calc(min(var(--row-index, 0), 8) * 40ms);
 }
 @utility animate-bar {
-  animation: bar-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: bar-enter 240ms var(--ease-premium) backwards;
+}
+@utility animate-toast {
+  animation: toast-enter 280ms var(--ease-premium) backwards;
+}
+@utility animate-scale-in {
+  animation: scale-enter 180ms var(--ease-premium) backwards;
+}
+@utility animate-fade-in {
+  animation: fade-enter 200ms ease-out backwards;
+}
+/* Exits: the element stays on screen for the length of the animation, then its owner removes it (Toast, Tooltip, Dialog). */
+@utility animate-toast-out {
+  animation: toast-leave 180ms ease-in forwards;
+}
+@utility animate-scale-out {
+  animation: scale-leave 120ms ease-in forwards;
+}
+/* Feedback: a pop when a check appears, a soft breath for a running state, a sweep over a placeholder while data loads. */
+@utility animate-pop {
+  animation: pop 380ms var(--ease-spring) backwards;
+}
+@utility animate-breathe {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+@utility animate-shimmer {
+  /* A highlight band sweeps over the placeholder's own colour (`bg-muted`), so the bar keeps its tone. */
+  background-image: linear-gradient(90deg, transparent 35%, color-mix(in oklab, var(--ui-foreground) 7%, transparent) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
 }
 
 dialog.ui-dialog[open] {
-  animation: dialog-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: dialog-enter 240ms var(--ease-premium) backwards;
 }
 dialog.ui-dialog[open]::backdrop {
-  animation: fade-enter 160ms ease-out;
+  animation: fade-enter 200ms ease-out backwards;
+}
+/* Closing: Dialog keeps the element open for as long as this animation runs, then closes it (see Dialog.tsx). */
+dialog.ui-dialog[open][data-leaving] {
+  animation: dialog-leave 160ms ease-in forwards;
+}
+dialog.ui-dialog[open][data-leaving]::backdrop {
+  animation: fade-leave 160ms ease-in forwards;
 }

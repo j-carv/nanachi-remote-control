@@ -12,6 +12,7 @@ import { splitCommand } from './commands.js';
 import { stripAnsi } from './ansi.js';
 import { stripPromptNotes } from './promptNotes.js';
 import { splitLoopMarkers } from './loopMarkers.js';
+import type { HistoryIds } from './liveItems.js';
 
 interface ChatItemViewProps {
   node: ChatNode;
@@ -19,6 +20,8 @@ interface ChatItemViewProps {
   view: BackgroundView;
   /** Rendered as a child of a tool card: flat rows, no card of their own. */
   nested?: boolean;
+  /** Items shown with the history (see liveItems.ts); passed down to the rows of a tool card. */
+  history?: HistoryIds | null | undefined;
 }
 
 /** Texto do usuário. Mensagem que começa com `/comando` destaca o comando (mono) e segue como texto normal. */
@@ -39,7 +42,7 @@ function UserText({ text }: { text: string }) {
  * Memorizado: o reducer troca só o item que mudou (o último em streaming), então os outros não são
  * reconciliados nem reanalisados a cada chunk.
  */
-export const ChatItemView = memo(function ChatItemView({ node, api, view, nested = false }: ChatItemViewProps) {
+export const ChatItemView = memo(function ChatItemView({ node, api, view, nested = false, history }: ChatItemViewProps) {
   const { t } = useTranslation('chat');
   const { item } = node;
   switch (item.kind) {
@@ -87,16 +90,16 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
     case 'agent_thought':
       return (
         <details className="group text-sm text-muted-foreground">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-medium transition-colors duration-200 hover:text-foreground motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
             <Brain className="size-4 shrink-0" aria-hidden="true" />
             {t('item.thought')}
             <span className="font-normal">· {t('item.thoughtSize', { count: item.text.length })}</span>
             <ChevronDown
-              className="ml-auto size-4 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+              className="ml-auto size-4 shrink-0 transition-transform duration-200 ease-(--ease-out-premium) group-open:rotate-180 motion-reduce:transition-none"
               aria-hidden="true"
             />
           </summary>
-          <p className="pb-1 pl-6 whitespace-pre-wrap">{stripAnsi(item.text)}</p>
+          <p className="pb-1 pl-6 whitespace-pre-wrap group-open:animate-enter motion-reduce:animate-none">{stripAnsi(item.text)}</p>
         </details>
       );
 
@@ -108,7 +111,8 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
           nested={node.children}
           flat={nested}
           view={view}
-          renderNested={(child) => <ChatItemView node={child} api={api} view={view} nested />}
+          history={history}
+          renderNested={(child) => <ChatItemView node={child} api={api} view={view} nested history={history} />}
         />
       );
 

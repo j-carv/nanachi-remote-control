@@ -78,7 +78,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
                     data-mono={item.mono === true ? 'true' : undefined}
                     aria-current={item.checked === true ? 'true' : undefined}
                     className={cn(
-                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-colors hover:bg-accent active:bg-accent',
+                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99]',
                       item.tone === 'danger' && 'text-destructive',
                       item.tone === 'muted' && 'text-muted-foreground',
                       item.mono === true && 'font-mono text-[15px]',
@@ -101,7 +101,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
         <button
           type="button"
           data-slot="action-sheet-cancel"
-          className="flex min-h-14 w-full items-center justify-center px-4 text-base font-semibold text-foreground transition-colors hover:bg-accent active:bg-accent"
+          className="flex min-h-14 w-full items-center justify-center px-4 text-base font-semibold text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99]"
           onClick={onClose}
         >
           {t('actions.cancel')}

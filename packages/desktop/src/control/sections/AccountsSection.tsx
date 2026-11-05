@@ -13,7 +13,7 @@ import { cx } from '../ui/cx.js';
 import { Notice } from '../ui/Notice.js';
 import { StatusDot } from '../ui/StatusDot.js';
 import { EmptyState, ErrorState, GroupSkeleton } from '../ui/States.js';
-import { Group, SectionHeading } from '../ui/Surface.js';
+import { Group, rowStyle, SectionHeading } from '../ui/Surface.js';
 import { useToast } from '../ui/Toast.js';
 import { Tooltip } from '../ui/Tooltip.js';
 import { Page } from './Page.js';
@@ -32,13 +32,18 @@ export interface AccountsViewProps {
   onOpenSessions: () => void;
 }
 
-function AccountRow({ agent, account, busy, onSetActive }: { agent: AgentAccountsInfo; account: AccountInfo; busy: boolean; onSetActive: () => void }) {
+function AccountRow({ agent, account, index, busy, onSetActive }: { agent: AgentAccountsInfo; account: AccountInfo; index: number; busy: boolean; onSetActive: () => void }) {
   const { t } = useTranslation();
   const status = STATUS[account.status];
   const mainLabel = t('accounts.main');
   const name = account.name.toLowerCase();
   return (
-    <li data-slot="account-row" data-status={account.status} className="flex min-h-14 items-center gap-3 px-4 py-2">
+    <li
+      data-slot="account-row"
+      data-status={account.status}
+      style={rowStyle(index)}
+      className="animate-row flex min-h-14 items-center gap-3 px-4 py-2 transition-colors duration-150 ease-[var(--ease-premium)] hover:bg-accent/50"
+    >
       <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
         <UserRound aria-hidden="true" />
       </span>
@@ -91,11 +96,12 @@ export function AccountsView({ agents, settingActive, onSetActive, onOpenSession
             </SectionHeading>
             <Group>
               <ul className="divide-y divide-border" aria-labelledby={headingId}>
-                {agent.accounts.map((account) => (
+                {agent.accounts.map((account, index) => (
                   <AccountRow
                     key={account.id}
                     agent={agent}
                     account={account}
+                    index={index}
                     busy={settingActive === `${agent.agentId}:${account.id}`}
                     onSetActive={() => onSetActive(agent, account)}
                   />

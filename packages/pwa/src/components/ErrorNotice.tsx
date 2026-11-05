@@ -22,7 +22,7 @@ export function ErrorNotice({ error, message, onRepair, action }: ErrorNoticePro
     message === undefined && error instanceof ApiError && error.kind === 'unauthorized' && onRepair !== undefined;
 
   return (
-    <div role="alert" className="flex flex-col gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-foreground">
+    <div role="alert" className="flex animate-enter flex-col gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-foreground">
       <div className="flex gap-3">
         <CircleExclamationPoint className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
         <p className="min-w-0 leading-5">{message ?? describeWorkspaceError(error)}</p>

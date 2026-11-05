@@ -30,11 +30,13 @@ function DrawerOverlay({ className, ...props }: React.ComponentProps<typeof Draw
  * Where the sheet goes from 900 px. The classes use `!` because vaul's own stylesheet (not in a cascade layer) positions
  * the sheet with a slide-up animation, and a layered rule only wins over it when it is important. `dialog`: centred, 32 rem.
  * `side`: a panel on the right edge, full height, for what the user reads while the chat stays visible.
+ * The entrances and exits are `motion-safe:`: their selectors are more specific than `motion-reduce:animate-none!`, so
+ * the reduced-motion case has to leave them out rather than override them.
  */
 const WIDE_PLACEMENT = {
   dialog:
-    'wide:top-1/2 wide:right-auto wide:bottom-auto wide:left-1/2 wide:w-[min(28rem,calc(100vw-4rem))] wide:max-h-[min(46rem,calc(100dvh-4rem))] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:rounded-xl wide:border wide:data-[state=open]:animate-dialog-in! wide:data-[state=closed]:animate-dialog-out!',
-  side: 'wide:top-0 wide:right-0 wide:bottom-0 wide:left-auto wide:h-dvh wide:w-[min(26rem,100vw)] wide:max-h-none wide:rounded-none wide:border-t-0 wide:border-l wide:data-[state=open]:animate-panel-in! wide:data-[state=closed]:animate-dialog-out!',
+    'wide:top-1/2 wide:right-auto wide:bottom-auto wide:left-1/2 wide:w-[min(28rem,calc(100vw-4rem))] wide:max-h-[min(46rem,calc(100dvh-4rem))] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:rounded-xl wide:border wide:data-[state=open]:motion-safe:animate-dialog-in! wide:data-[state=closed]:motion-safe:animate-dialog-out!',
+  side: 'wide:top-0 wide:right-0 wide:bottom-0 wide:left-auto wide:h-dvh wide:w-[min(26rem,100vw)] wide:max-h-none wide:rounded-none wide:border-t-0 wide:border-l wide:data-[state=open]:motion-safe:animate-panel-in! wide:data-[state=closed]:motion-safe:animate-dialog-out!',
 } as const;
 
 function DrawerContent({

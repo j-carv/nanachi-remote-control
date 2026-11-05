@@ -6,7 +6,7 @@ import { createApiClient, ApiError, type ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
 import { AgentAccountsSection } from '../components/AgentAccountsSection.js';
 import { LanguageSection } from '../components/LanguageSection.js';
-import { ListGroup, listMainClass, listRowClass, SectionHeading } from '../components/ListGroup.js';
+import { ListGroup, listMainClass, listRowClass, listRowPressClass, SectionHeading } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { Button } from '@/components/ui/button';
@@ -185,7 +185,7 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
         </SectionHeading>
         <ListGroup>
           <li>
-            <button type="button" className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent`} onClick={() => nav.push({ kind: 'devices' })}>
+            <button type="button" className={`${listRowClass} ${listRowPressClass}`} onClick={() => nav.push({ kind: 'devices' })}>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-base">{t('devices.row')}</span>
                 <span className="text-sm text-muted-foreground">{t('devices.rowHint', { name: selected.name })}</span>

@@ -1,6 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { cx } from './cx.js';
+
+/**
+ * Inline style for a row of a list that enters with a stagger: `animate-row` reads `--row-index` (capped at the 8th row, so a
+ * long list does not keep the user waiting). Only the rows that mount together stagger; rows added later do not replay it.
+ */
+export function rowStyle(index: number): CSSProperties & Record<`--${string}`, number> {
+  return { '--row-index': index };
+}
 
 /** One bordered surface with hairline-separated rows. Never a card per row, never a card inside a card. */
 export function Group({ children, className, label }: { children: ReactNode; className?: string | undefined; label?: string | undefined }) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { cx } from './cx.js';
 
 export interface TooltipProps {
   label: string;
@@ -12,7 +13,11 @@ export interface TooltipProps {
 }
 
 const HOVER_DELAY_MS = 450;
+/** How long a tooltip stays on screen after the pointer leaves: the `animate-scale-out` length (styles.css). */
+const EXIT_MS = 120;
 const EDGE = 12;
+/** The tooltip grows out of its anchor's edge: the scale starts from the side that faces the control. */
+const ORIGIN: Record<NonNullable<TooltipProps['side']>, string> = { top: 'center bottom', bottom: 'center top', right: 'left center' };
 
 function placement(rect: DOMRect, side: NonNullable<TooltipProps['side']>, align: NonNullable<TooltipProps['align']>): CSSProperties {
   const centerX = Math.min(Math.max(rect.left + rect.width / 2, 70), window.innerWidth - 70);
@@ -27,22 +32,31 @@ function placement(rect: DOMRect, side: NonNullable<TooltipProps['side']>, align
 /**
  * A tooltip for icon-only controls and clipped text. Portal-based, so a group's `overflow-hidden` never clips it.
  * It is decorative: the control carries its own `aria-label`, so nothing is announced twice. The delay applies to the
- * pointer; a keyboard focus shows it at once.
+ * pointer; a keyboard focus shows it at once. It scales in on show and scales out on hide: the element stays mounted for
+ * `EXIT_MS` after the hide, so the exit can play.
  */
 export function Tooltip({ label, shortcut, side = 'top', align = 'center', children }: TooltipProps) {
   const wrapper = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   const hide = (): void => {
     window.clearTimeout(timer.current);
-    setAnchor(null);
+    // Nothing on screen: the pending show (if any) is cancelled above, and there is no exit to play.
+    if (anchor === null) return;
+    setLeaving(true);
+    timer.current = window.setTimeout(() => {
+      setAnchor(null);
+      setLeaving(false);
+    }, EXIT_MS);
   };
   const show = (delay: number): void => {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const target = wrapper.current?.firstElementChild;
       if (target) setAnchor(target.getBoundingClientRect());
+      setLeaving(false);
     }, delay);
   };
 
@@ -81,8 +95,11 @@ export function Tooltip({ label, shortcut, side = 'top', align = 'center', child
         ? createPortal(
             <div
               aria-hidden="true"
-              style={placement(anchor, side, align)}
-              className="pointer-events-none fixed z-[100] flex max-w-[260px] animate-[fade-enter_110ms_ease-out] items-center gap-2 rounded-md bg-foreground px-2 py-1 text-xs leading-4 text-background shadow-md"
+              style={{ ...placement(anchor, side, align), transformOrigin: ORIGIN[side] }}
+              className={cx(
+                'pointer-events-none fixed z-[100] flex max-w-[260px] items-center gap-2 rounded-md bg-foreground px-2 py-1 text-xs leading-4 text-background shadow-md',
+                leaving ? 'animate-scale-out' : 'animate-scale-in',
+              )}
             >
               <span>{label}</span>
               {shortcut ? <span className="text-[11px] opacity-65">{shortcut}</span> : null}

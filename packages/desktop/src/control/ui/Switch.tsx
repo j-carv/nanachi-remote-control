@@ -11,7 +11,10 @@ export interface SwitchProps {
   id?: string | undefined;
 }
 
-/** A toggle in neutral greys: on is the foreground colour, off is the control grey. 36 x 20 px. */
+/**
+ * A toggle in neutral greys: on is the foreground colour, off is the control grey. 36 x 20 px. The thumb travels on the
+ * premium ease and widens a little while the control is pressed, so the press reads before the release.
+ */
 export function Switch({ checked, onCheckedChange, disabled = false, label, labelledBy, describedBy, id }: SwitchProps) {
   return (
     <button
@@ -26,14 +29,14 @@ export function Switch({ checked, onCheckedChange, disabled = false, label, labe
       data-state={checked ? 'checked' : 'unchecked'}
       onClick={() => onCheckedChange(!checked)}
       className={cx(
-        'inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-150 disabled:pointer-events-none disabled:opacity-45',
+        'group inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ease-[var(--ease-premium)] disabled:pointer-events-none disabled:opacity-45',
         checked ? 'bg-primary' : 'bg-input',
       )}
     >
       <span
         aria-hidden="true"
         className={cx(
-          'pointer-events-none block size-4 rounded-full shadow-sm transition-transform duration-150 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          'pointer-events-none block size-4 rounded-full shadow-sm transition-[translate,scale,background-color] duration-200 ease-[var(--ease-premium)] group-active:scale-x-[1.18]',
           checked ? 'translate-x-4 bg-primary-foreground' : 'translate-x-0 bg-card',
         )}
       />

@@ -27,7 +27,7 @@ import { Notice } from '../ui/Notice.js';
 import { ErrorState, GroupSkeleton } from '../ui/States.js';
 import { Skeleton } from '../ui/Skeleton.js';
 import { Switch } from '../ui/Switch.js';
-import { Group, SectionHeading } from '../ui/Surface.js';
+import { Group, rowStyle, SectionHeading } from '../ui/Surface.js';
 import { useToast } from '../ui/Toast.js';
 import { Tooltip } from '../ui/Tooltip.js';
 import { Page } from './Page.js';
@@ -70,7 +70,7 @@ export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) 
       aria-label={t('folders.drive.label', { letter })}
       data-allowed={checked}
       className={cx(
-        'flex flex-col rounded-lg border bg-card transition-[border-color,box-shadow] duration-150',
+        'flex flex-col rounded-lg border bg-card transition-[border-color,box-shadow] duration-200 ease-[var(--ease-premium)]',
         checked ? 'border-foreground/45 shadow-[0_0_0_1px_color-mix(in_oklab,var(--ui-foreground)_12%,transparent)]' : 'border-border',
       )}
     >
@@ -128,16 +128,22 @@ export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) 
 export interface FolderRowProps {
   entry: DraftEntry;
   editable: boolean;
+  /** Position in the list, for the entrance stagger. */
+  index?: number | undefined;
   onReveal: (path: string) => void;
   onRemove: (path: string) => void;
 }
 
-export function FolderRow({ entry, editable, onReveal, onRemove }: FolderRowProps) {
+export function FolderRow({ entry, editable, index = 0, onReveal, onRemove }: FolderRowProps) {
   const { t } = useTranslation();
   const { parent, name } = splitPath(entry.path);
   const Icon = entry.exists ? Folder : FolderX;
   return (
-    <li className="group flex min-h-11 items-center gap-3 px-4 py-1.5 hover:bg-accent/50" data-slot="folder-row">
+    <li
+      className="group animate-row flex min-h-11 items-center gap-3 px-4 py-1.5 transition-colors duration-150 ease-[var(--ease-premium)] hover:bg-accent/50"
+      data-slot="folder-row"
+      style={rowStyle(index)}
+    >
       <Icon className={cx('size-4 shrink-0', entry.exists ? 'text-muted-foreground' : 'text-attention')} aria-hidden="true" />
       <span className="selectable flex min-w-0 flex-1 items-baseline font-mono text-[12.5px] leading-5" title={entry.path}>
         {parent ? <span className="truncate text-muted-foreground">{parent}</span> : null}
@@ -291,8 +297,8 @@ export function FoldersView({ state, entries, paths, changes, saving, restarting
         ) : entries.length > 0 ? (
           <Group>
             <ul aria-labelledby="folders-list" className="divide-y divide-border">
-              {entries.map((entry) => (
-                <FolderRow key={entry.path} entry={entry} editable={editable} onReveal={onReveal} onRemove={onRemove} />
+              {entries.map((entry, index) => (
+                <FolderRow key={entry.path} entry={entry} editable={editable} index={index} onReveal={onReveal} onRemove={onRemove} />
               ))}
             </ul>
           </Group>

@@ -271,7 +271,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
                     aria-pressed={selected}
                     onClick={() => patch({ interval: durationInputOf(ms) })}
                     className={cn(
-                      'h-11 min-w-0 rounded-md px-1 text-sm font-medium whitespace-nowrap transition-colors',
+                      'h-11 min-w-0 rounded-md px-1 text-sm font-medium whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none',
                       selected ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-accent',
                     )}
                   >
@@ -436,7 +436,7 @@ function ModeCard({ mode, icon: Icon, checked, onSelect }: ModeCardProps) {
       tabIndex={checked ? 0 : -1}
       onClick={onSelect}
       className={cn(
-        'flex min-h-11 w-full items-start gap-3 rounded-xl border bg-card p-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+        'flex min-h-11 w-full items-start gap-3 rounded-xl border bg-card p-3.5 text-left outline-none transition-colors duration-200 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring',
         checked ? 'border-foreground ring-1 ring-foreground' : 'border-border hover:bg-accent',
       )}
     >
@@ -459,7 +459,7 @@ function ModeCard({ mode, icon: Icon, checked, onSelect }: ModeCardProps) {
           checked ? 'border-primary bg-primary' : 'border-input',
         )}
       >
-        {checked && <span className="size-2 rounded-full bg-primary-foreground" />}
+        {checked && <span className="size-2 animate-enter-scale rounded-full bg-primary-foreground motion-reduce:animate-none" />}
       </span>
     </button>
   );

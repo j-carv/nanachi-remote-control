@@ -28,7 +28,7 @@ export function UpdateBar() {
     >
       <div
         role="status"
-        className="pointer-events-auto flex w-full max-w-[560px] items-center gap-3 rounded-xl border border-border bg-popover py-1 pr-1 pl-4 text-popover-foreground"
+        className="pointer-events-auto flex w-full max-w-[560px] animate-enter items-center gap-3 rounded-xl border border-border bg-popover py-1 pr-1 pl-4 text-popover-foreground"
       >
         <p className="min-w-0 flex-1 text-sm">{t('update.available')}</p>
         <Button onClick={() => window.location.reload()}>

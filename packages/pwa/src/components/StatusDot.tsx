@@ -25,15 +25,21 @@ interface StatusDotProps {
   pulse?: boolean | undefined;
 }
 
-/** Bolinha de estado (conexão de uma máquina, conta de agente). Decorativa: o texto ao lado diz o estado. */
+/**
+ * Bolinha de estado (conexão de uma máquina, conta de agente). Decorativa: o texto ao lado diz o estado.
+ * A bolinha de "running" respira (o anel usa a cor do tom, que é o `currentColor` do texto); mudar de tom faz
+ * a cor deslizar em vez de trocar de repente.
+ */
 export function StatusDot({ tone, pulse = false }: StatusDotProps) {
+  const breathes = pulse || tone === 'running';
   return (
     <span
       aria-hidden="true"
       className={cn(
-        'inline-block size-2.5 shrink-0 rounded-full',
+        'inline-block size-2.5 shrink-0 rounded-full transition-colors duration-300 ease-out-premium',
         TONE_BG[tone],
-        pulse && 'animate-pulse motion-reduce:animate-none',
+        TONE_TEXT[tone],
+        breathes && 'animate-pulse-soft motion-reduce:animate-none',
       )}
     />
   );

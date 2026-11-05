@@ -22,7 +22,8 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          'z-50 min-w-56 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg',
+          // Opens by scaling in from the side the menu is anchored to (Radix sets that origin); closes with a fade.
+          'z-50 min-w-56 origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg data-[state=closed]:animate-fade-out data-[state=open]:animate-enter-scale',
           className,
         )}
         {...props}
@@ -46,7 +47,7 @@ function DropdownMenuItem({
       data-slot="dropdown-menu-item"
       data-variant={variant}
       className={cn(
-        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md px-3 py-2 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
+        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md px-3 py-2 text-base transition-colors duration-150 outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
         className,
       )}
       {...props}
@@ -74,7 +75,7 @@ function DropdownMenuRadioItem({
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md py-2 pr-9 pl-3 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
+        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md py-2 pr-9 pl-3 text-base transition-colors duration-150 outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
         className,
       )}
       {...props}

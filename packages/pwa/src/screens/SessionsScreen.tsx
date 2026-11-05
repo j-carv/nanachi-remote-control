@@ -12,7 +12,7 @@ import { ActionSheetButton } from '../components/ActionSheet.js';
 import { RemoveSessionSheet } from '../components/RemoveSessionSheet.js';
 import { ResumeSheet } from '../components/ResumeSheet.js';
 import { ShellSheet } from '../components/ShellSheet.js';
-import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listMainClass, listRowClass, staggerDelay } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { SessionStatusPill } from '../components/SessionStatusPill.js';
@@ -184,17 +184,17 @@ export function SessionsScreen({
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {list.data === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
       {list.data !== null && sessions.length === 0 && (
-        <p className="pl-1 text-muted-foreground">{t('sessions.empty')}</p>
+        <p className="animate-enter pl-1 text-muted-foreground">{t('sessions.empty')}</p>
       )}
 
       {sessions.length > 0 && (
         <ListGroup label={t('sessions.listLabel')}>
-          {sessions.map((session) => {
+          {sessions.map((session, index) => {
             const label = sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
             return (
-              <li key={session.id}>
+              <li key={session.id} className="animate-enter" style={staggerDelay(index)}>
                 <SwipeRow actionLabel={t('sessions.removeFromApp')} onAction={() => setPendingRemoval(session)}>
                   <div className={listRowClass}>
                     <button type="button" className={`${listMainClass} py-1.5`} onClick={() => nav.push({ kind: 'chat', workspace, session })}>

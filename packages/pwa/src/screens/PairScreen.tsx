@@ -161,7 +161,7 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
         </div>
 
         {error !== null && (
-          <p role="alert" className="flex gap-3 rounded-lg bg-destructive/10 p-4 text-sm leading-5">
+          <p role="alert" className="flex animate-enter gap-3 rounded-lg bg-destructive/10 p-4 text-sm leading-5">
             <CircleExclamationPoint className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />
             {error}
           </p>

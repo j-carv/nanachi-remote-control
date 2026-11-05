@@ -58,7 +58,12 @@ export function CopyButton({ text, label }: CopyButtonProps) {
         void copyText(text).then((done) => setCopied(done));
       }}
     >
-      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      {/* The check mounts fresh each time, so its pop plays on every copy; it swaps back to the copy icon after COPIED_MS. */}
+      {copied ? (
+        <Check aria-hidden="true" className="animate-pop text-success" />
+      ) : (
+        <Copy aria-hidden="true" />
+      )}
     </Button>
   );
 }

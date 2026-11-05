@@ -17,6 +17,7 @@ import { formatRelativeTime } from '../relativeTime.js';
 import { displaySessionTitle } from '../sessionText.js';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { staggerDelay } from './ListGroup.js';
 import { StatusDot, TONE_TEXT, type StatusTone } from './StatusDot.js';
 
 interface MachineCardProps {
@@ -27,6 +28,8 @@ interface MachineCardProps {
   selected: boolean;
   /** Epoch ms, for the relative times. */
   now: number;
+  /** Position in the list, for the staggered entrance. */
+  index?: number | undefined;
   onSelect(): void;
   onOpenSession(target: SessionTarget): void;
 }
@@ -62,15 +65,15 @@ function hostOf(baseUrl: string): string {
   return new URL(baseUrl).host;
 }
 
-/** Placeholder lines while the machine's first load runs. Pulses (state, not decoration), stops under reduced motion. */
+/** Placeholder lines while the machine's first load runs: a sheen sweeps across them, and it stops under reduced motion. */
 function CardSkeleton() {
   const { t } = useTranslation('machines');
   return (
-    <div className="flex flex-col gap-2.5 motion-safe:animate-pulse">
+    <div className="flex flex-col gap-2.5">
       <span className="sr-only">{t('card.loading')}</span>
-      <div className="h-3 w-3/4 rounded bg-muted" />
-      <div className="h-3 w-1/2 rounded bg-muted" />
-      <div className="h-3 w-2/3 rounded bg-muted" />
+      <div className="h-3 w-3/4 rounded animate-shimmer" />
+      <div className="h-3 w-1/2 rounded animate-shimmer" />
+      <div className="h-3 w-2/3 rounded animate-shimmer" />
     </div>
   );
 }
@@ -150,7 +153,7 @@ function SessionRow({ session, now, onOpen }: { session: Session; now: number; o
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:bg-accent"
+        className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:bg-accent active:scale-[0.99]"
       >
         <StatusDot tone={ROW_TONE[session.status]} />
         <span className={cn('min-w-0 flex-1 truncate text-base', awaiting && 'font-medium')}>{displaySessionTitle(session.title)}</span>
@@ -163,22 +166,32 @@ function SessionRow({ session, now, onOpen }: { session: Session; now: number; o
 }
 
 /** One machine on the home screen: status and latency, counts by session state, recent sessions, logged-in agents. */
-export function MachineCard({ machine, overview, connection, selected, now, onSelect, onOpenSession }: MachineCardProps) {
+export function MachineCard({
+  machine,
+  overview,
+  connection,
+  selected,
+  now,
+  index = 0,
+  onSelect,
+  onOpenSession,
+}: MachineCardProps) {
   const { t } = useTranslation('machines');
   const status = headerStatus(connection, overview, t);
 
   return (
     <li
       className={cn(
-        'overflow-hidden rounded-xl border bg-card/80',
+        'animate-enter overflow-hidden rounded-xl border bg-card/80 transition-colors duration-200 ease-out-premium',
         selected ? 'border-foreground/30' : 'border-border',
       )}
+      style={staggerDelay(index)}
     >
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring active:bg-accent"
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left outline-none transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring active:bg-accent active:scale-[0.99]"
       >
         <StatusDot tone={status.tone} pulse={status.pulse} />
         <span className="min-w-0 flex-1">

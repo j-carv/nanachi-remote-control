@@ -52,6 +52,8 @@ import { ChatAttachContext } from '../chat/attachContext.js';
 import { ATTACHMENT_LIMIT, uploadFiles } from '../chat/attachments.js';
 import { ChatItemView } from '../chat/ChatItemView.js';
 import { BackgroundDrawer } from '../chat/BackgroundDrawer.js';
+import { RunningDots } from '../chat/RunningIndicator.js';
+import { arrivedLive, historyOf, type HistoryIds } from '../chat/liveItems.js';
 import { LoopChip } from '../chat/LoopChip.js';
 import { LoopSheet } from '../chat/LoopSheet.js';
 import { loopCommandFor } from '../chat/loopCommand.js';
@@ -222,8 +224,16 @@ export function ChatScreen({
   /** Primeiro item renderizado (janela da conversa). Null até o histórico carregar. */
   const [floor, setFloor] = useState<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
+  /** Items already in the conversation when its history appeared. Only items that arrive later enter with motion (chat/liveItems.ts). */
+  const [history, setHistory] = useState<HistoryIds | null>(null);
   /** Quantos itens existiam quando o usuário saiu do fim: a contagem do botão é o que chegou depois. */
   const baseline = useRef(0);
+  /** A smooth "jump to end" is running: its scroll events do not count as the user leaving the end. */
+  const jumping = useRef(false);
+  /** User-requested scrolls are smooth; with the system's reduced motion setting they are instant. */
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  /** Number of sends. The send button is keyed by it, so each send pops the button once. */
+  const [sends, setSends] = useState(0);
   /** Item visível antes de carregar anteriores: depois da mudança a tela volta a mostrar o mesmo ponto. */
   const anchor = useRef<{ element: Element; top: number } | null>(null);
   const pendingRestore = useRef<SavedPosition | undefined>(savedPositions.get(current.id));
@@ -300,6 +310,11 @@ export function ChatScreen({
     return nested.roots;
   }, [chat.items, start]);
 
+  // The first render that has the history fixes what counts as history; everything appended later is live.
+  useEffect(() => {
+    if (controller.loaded && history === null) setHistory(historyOf(chat.items));
+  }, [controller.loaded, history, chat.items]);
+
   // Antes da pintura: ancora o item visível depois de carregar anteriores, restaura a posição salva ou gruda no fim.
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
@@ -344,7 +359,8 @@ export function ChatScreen({
     }
     const box = timeline.getBoundingClientRect();
     const target = element.getBoundingClientRect();
-    timeline.scrollTop += target.top - box.top - (box.height - target.height) / 2;
+    const offset = target.top - box.top - (box.height - target.height) / 2;
+    timeline.scrollTo({ top: timeline.scrollTop + offset, behavior: reduceMotion ? 'auto' : 'smooth' });
     seenTop.current = timeline.scrollTop;
     stick.current = false;
     element.dataset.highlighted = 'true';
@@ -378,13 +394,21 @@ export function ChatScreen({
     setFloor(earlierFloor(start, WINDOW_STEP));
   }
 
+  /** The "Ir para o fim" button: a smooth scroll the user asked for. Streaming follow (below) stays instant. */
   function jumpToEnd() {
     const timeline = timelineRef.current;
     if (timeline === null) return;
     stick.current = true;
     setAtBottom(true);
-    timeline.scrollTop = timeline.scrollHeight;
+    // Only a real move produces the scroll events that clear the guard; with nothing to scroll it would stay armed.
+    jumping.current = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight > 0;
+    timeline.scrollTo({ top: timeline.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' });
     seenTop.current = timeline.scrollTop;
+  }
+
+  /** A touch or a wheel turn is the user taking over: a jump in progress stops protecting the position. */
+  function endJump() {
+    jumping.current = false;
   }
 
   function onTimelineScroll() {
@@ -392,6 +416,11 @@ export function ChatScreen({
     if (timeline === null) return;
     seenTop.current = timeline.scrollTop;
     const near = isNearBottom(timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight);
+    // The positions a smooth jump passes through are not "away from the end": keep following until it arrives.
+    if (jumping.current) {
+      if (!near) return;
+      jumping.current = false;
+    }
     stick.current = near;
     if (near !== atBottom) {
       setAtBottom(near);
@@ -449,6 +478,7 @@ export function ChatScreen({
     if (attachments.drafts.length === 0) {
       if (controller.sendPrompt(text)) {
         clearDraft();
+        setSends((count) => count + 1);
         stick.current = true;
       }
       return;
@@ -466,6 +496,7 @@ export function ChatScreen({
       // Sem conexão, o send já mostra o aviso; os anexos continuam na prévia para tentar de novo.
       if (controller.sendPrompt(text, uploaded)) {
         clearDraft();
+        setSends((count) => count + 1);
         attachments.clear();
         setAttachNotice(null);
         stick.current = true;
@@ -836,7 +867,7 @@ export function ChatScreen({
                   aria-haspopup="dialog"
                   aria-expanded={backgroundOpen}
                   onClick={() => setBackgroundOpen(true)}
-                  className="-my-2.5 flex shrink-0 items-center py-2.5"
+                  className="-my-2.5 flex shrink-0 animate-enter items-center py-2.5 motion-reduce:animate-none"
                 >
                   <span className="flex h-6 items-center gap-1 rounded-full bg-secondary px-2 text-xs font-medium tabular-nums text-foreground">
                     <Layers className="size-3.5" aria-hidden="true" />
@@ -953,7 +984,7 @@ export function ChatScreen({
               <div
                 data-slot="notice"
                 role="status"
-                className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+                className="flex shrink-0 animate-enter items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5 motion-reduce:animate-none"
               >
                 <p className="text-[15px] leading-snug">{controller.notice}</p>
                 <Button variant="ghost" onClick={controller.dismissNotice}>
@@ -966,7 +997,7 @@ export function ChatScreen({
               <div
                 data-slot="loop-notice"
                 role="status"
-                className="flex shrink-0 items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5"
+                className="flex shrink-0 animate-enter items-center justify-between gap-2 rounded-xl bg-muted py-1.5 pr-1.5 pl-3.5 motion-reduce:animate-none"
               >
                 <p className="text-[15px] leading-snug">{loopNotice}</p>
                 <Button variant="ghost" onClick={() => setLoopNotice(null)}>
@@ -981,6 +1012,8 @@ export function ChatScreen({
               data-slot="chat-timeline"
               ref={timelineRef}
               onScroll={onTimelineScroll}
+              onTouchStart={endJump}
+              onWheel={endJump}
               className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain [overflow-anchor:none] px-0.5 py-2 *:shrink-0 wide:items-center wide:px-2"
             >
               {!controller.loaded && controller.loadError === null && (
@@ -993,8 +1026,12 @@ export function ChatScreen({
               )}
               <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3 wide:w-full wide:max-w-[760px]">
                 {topNodes.map((node) => (
-                  <div key={node.item.id} data-item-id={node.item.id} className={ITEM_FRAME_CLASS}>
-                    <ChatItemView node={node} api={api} view={backgroundView} />
+                  <div
+                    key={node.item.id}
+                    data-item-id={node.item.id}
+                    className={cn(ITEM_FRAME_CLASS, arrivedLive(history, node.item.id) && 'animate-enter motion-reduce:animate-none')}
+                  >
+                    <ChatItemView node={node} api={api} view={backgroundView} history={history} />
                   </div>
                 ))}
               </div>
@@ -1012,13 +1049,17 @@ export function ChatScreen({
               <Button
                 variant="outline"
                 data-slot="jump-bottom"
-                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-card shadow-lg"
+                className="absolute inset-x-0 bottom-3 z-10 mx-auto w-max animate-enter rounded-full bg-card shadow-lg motion-reduce:animate-none"
                 onClick={jumpToEnd}
               >
                 <ArrowDown aria-hidden="true" />
                 {t('timeline.jumpToEnd')}
                 {unseen > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground">
+                  // Keyed by the count: each new item pops the badge once.
+                  <span
+                    key={unseen}
+                    className="flex h-5 min-w-5 animate-pop items-center justify-center rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground motion-reduce:animate-none"
+                  >
                     {unseen}
                   </span>
                 )}
@@ -1028,9 +1069,14 @@ export function ChatScreen({
 
           <div ref={bottomRef} className="flex shrink-0 flex-col gap-2 wide:mx-auto wide:w-full wide:max-w-[760px]">
             {working !== undefined && (
-              <div role="status" className="flex min-h-11 shrink-0 items-center gap-2.5 pl-1 text-sm text-muted-foreground">
-                {chat.status === 'running' || controller.resuming ? (
+              <div
+                role="status"
+                className="flex min-h-11 shrink-0 animate-enter items-center gap-2.5 pl-1 text-sm text-muted-foreground motion-reduce:animate-none"
+              >
+                {controller.resuming ? (
                   <LoaderCircle className="size-4 shrink-0 animate-spin text-running motion-reduce:animate-none" aria-hidden="true" />
+                ) : chat.status === 'running' ? (
+                  <RunningDots />
                 ) : (
                   <StatusDot tone={STATUS_TONE[chat.status]} pulse={chat.status === 'starting'} />
                 )}
@@ -1067,7 +1113,10 @@ export function ChatScreen({
                   aria-valuenow={Math.round(progress * 100)}
                   className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
                 >
-                  <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
+                  <div
+                    className="h-full bg-primary transition-[width] duration-200 ease-(--ease-out-premium) motion-reduce:transition-none"
+                    style={{ width: `${Math.round(progress * 100)}%` }}
+                  />
                 </div>
                 <span className="text-sm text-muted-foreground tabular-nums">{t('composer.uploading', { percent: Math.round(progress * 100) })}</span>
               </div>
@@ -1172,13 +1221,19 @@ export function ChatScreen({
                 onFocus={() => setComposerFocused(true)}
                 onBlur={() => setComposerFocused(false)}
                 className={cn(
-                  'max-h-40 min-w-0 flex-1 resize-none rounded-md border border-input bg-card px-3 py-2.5 text-base leading-snug text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50',
+                  'max-h-40 min-w-0 flex-1 resize-none rounded-md border border-input bg-card px-3 py-2.5 text-base leading-snug text-foreground outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 motion-reduce:transition-none',
                   // Stopped and error sessions show a longer placeholder ("Retomar e enviar"), which needs two lines at 320 px.
                   resumable ? 'min-h-[4.25rem]' : 'min-h-11',
                 )}
               />
               {/* Below 360px the text would take the room the field needs: an icon, with the text kept for screen readers. */}
-              <Button type="submit" className="px-3.5 max-[359px]:size-11 max-[359px]:px-0" disabled={!canSend}>
+              {/* Keyed by the send count: each send remounts the button, so it pops once. Enabled and disabled fade in the base button. */}
+              <Button
+                key={sends}
+                type="submit"
+                className={cn('px-3.5 max-[359px]:size-11 max-[359px]:px-0', sends > 0 && 'animate-pop motion-reduce:animate-none')}
+                disabled={!canSend}
+              >
                 <SendHorizontal className="hidden max-[359px]:block" aria-hidden="true" />
                 <span className="max-[359px]:sr-only">{sending ? t('composer.sending') : t('composer.send')}</span>
               </Button>

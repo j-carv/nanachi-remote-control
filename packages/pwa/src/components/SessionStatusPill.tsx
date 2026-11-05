@@ -33,15 +33,28 @@ interface SessionStatusPillProps {
   kind?: 'acp' | 'pty';
 }
 
-/** Estado da sessão: ícone colorido (o único tom do status) + texto em cinza escuro. */
+/**
+ * Estado da sessão: ícone colorido (o único tom do status) + texto em cinza escuro. Running gira o ícone e a pílula
+ * respira num anel na cor de running; a cor do ícone desliza quando o estado muda.
+ */
 export function SessionStatusPill({ status, kind = 'acp' }: SessionStatusPillProps) {
   const visual = STATUS_VISUAL[status];
   const Icon = visual.icon;
   return (
-    <Badge data-status={status} className="gap-1.5 bg-secondary px-2 py-1 text-xs text-foreground">
+    <Badge
+      data-status={status}
+      className={cn(
+        'gap-1.5 bg-secondary px-2 py-1 text-xs text-foreground',
+        status === 'running' && 'animate-pulse-soft motion-reduce:animate-none [--pulse-color:var(--ui-running)]',
+      )}
+    >
       <Icon
         aria-hidden="true"
-        className={cn('size-3.5', TONE_TEXT[visual.tone], visual.spin && 'animate-spin motion-reduce:animate-none')}
+        className={cn(
+          'size-3.5 transition-colors duration-300 ease-out-premium',
+          TONE_TEXT[visual.tone],
+          visual.spin && 'animate-spin motion-reduce:animate-none',
+        )}
       />
       {sessionStatusText(status, kind)}
     </Badge>

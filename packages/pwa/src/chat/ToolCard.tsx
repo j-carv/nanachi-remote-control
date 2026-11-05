@@ -9,6 +9,7 @@ import { summarizeTool, type ToolItem } from './toolSummary.js';
 import type { ToolCallStatus } from './reducer.js';
 import { BackgroundJobRows, BackgroundStatus } from './BackgroundStatus.js';
 import { effectiveState, type BackgroundState, type BackgroundView } from './background.js';
+import { arrivedLive, type HistoryIds } from './liveItems.js';
 import type { ChatNode } from './nesting.js';
 import { NESTED_FRAME_CLASS } from './itemFrame.js';
 
@@ -22,6 +23,10 @@ const STATUS_TONE: Record<ToolCallStatus, string> = {
 };
 
 const NO_NODES: readonly ChatNode[] = [];
+
+/** Chevron of a summary: turns when the card opens (the transition is the only motion here). */
+const CHEVRON_CLASS =
+  'size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-(--ease-out-premium) group-open:rotate-180 motion-reduce:transition-none';
 
 /** State shown on the card: the background state when the call has one, else what its ACP status says. */
 function cardState(item: ToolItem, view: BackgroundView): BackgroundState {
@@ -57,6 +62,8 @@ export interface ToolCardProps {
   /** A child inside a parent card: no border or background, so the children read as rows of the parent. */
   flat?: boolean;
   view: BackgroundView;
+  /** Items shown with the history (see liveItems.ts). Only a child that arrived after them enters with motion. */
+  history?: HistoryIds | null | undefined;
 }
 
 /**
@@ -65,7 +72,7 @@ export interface ToolCardProps {
  * tool call com trabalho em segundo plano ou filhos) mostra rótulo, tipo do agente, estado e quantas ações internas
  * tem; começa recolhido e abre para listar os filhos.
  */
-export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = false, view }: ToolCardProps) {
+export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = false, view, history }: ToolCardProps) {
   const { t } = useTranslation('chat');
   const background = item.background;
   const state = cardState(item, view);
@@ -77,9 +84,12 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
   const summary = useMemo(() => summarizeTool(item), [item]);
   const hasChanges = summary.added > 0 || summary.removed > 0;
   const tone = item.status === null ? 'text-muted-foreground' : STATUS_TONE[item.status];
+  // The status text as the card first showed it: a later change cross-fades, the first value does not (history).
+  const [initialStatusText] = useState(summary.statusText);
   const last = nested.at(-1);
   const lastTitle = last === undefined ? '' : titleOf(last);
   const innerCount = t('tool.innerActions', { count: nested.length });
+  const rowHover = 'transition-colors duration-200 hover:bg-accent motion-reduce:transition-none';
 
   return (
     <details
@@ -91,7 +101,10 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
       {backgroundStyle ? (
         <summary
           data-slot="tool-summary"
-          className="flex min-h-11 cursor-pointer list-none flex-col justify-center gap-0.5 px-3 py-2 [&::-webkit-details-marker]:hidden"
+          className={cn(
+            'flex min-h-11 cursor-pointer list-none flex-col justify-center gap-0.5 px-3 py-2 [&::-webkit-details-marker]:hidden',
+            rowHover,
+          )}
         >
           <span className="flex min-w-0 items-center gap-2.5">
             <BackgroundStatus state={state} showText={state === 'unknown'} />
@@ -101,10 +114,7 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
             {background?.agentType !== undefined && (
               <Badge className="shrink-0 bg-muted font-normal text-muted-foreground">{background.agentType}</Badge>
             )}
-            <ChevronDown
-              className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
-              aria-hidden="true"
-            />
+            <ChevronDown className={CHEVRON_CLASS} aria-hidden="true" />
           </span>
           {last !== undefined && (
             <span data-slot="tool-inner-count" className="truncate pl-6 text-[13px] text-muted-foreground">
@@ -115,9 +125,21 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
       ) : (
         <summary
           data-slot="tool-summary"
-          className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden"
+          className={cn(
+            'flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden',
+            rowHover,
+          )}
         >
-          <Badge className={cn('bg-secondary font-semibold', tone)}>{summary.statusText}</Badge>
+          <Badge
+            key={summary.statusText}
+            className={cn(
+              'bg-secondary font-semibold',
+              tone,
+              summary.statusText !== initialStatusText && 'animate-enter-scale motion-reduce:animate-none',
+            )}
+          >
+            {summary.statusText}
+          </Badge>
           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 whitespace-nowrap">
             <span data-slot="tool-title" className="min-w-0 truncate font-mono text-sm font-semibold">
               {summary.title}
@@ -136,18 +158,20 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
               <span className="text-destructive">−{summary.removed}</span>
             </span>
           )}
-          <ChevronDown
-            className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
-            aria-hidden="true"
-          />
+          <ChevronDown className={CHEVRON_CLASS} aria-hidden="true" />
         </summary>
       )}
 
-      <div className={cn('flex flex-col gap-2.5 px-3 pb-3', flat && 'pb-1')}>
+      {/* Browsers hide a closed card's body, so the fade-in runs each time the card opens. */}
+      <div className={cn('flex flex-col gap-2.5 px-3 pb-3 group-open:animate-enter motion-reduce:animate-none', flat && 'pb-1')}>
         {nested.length > 0 && (
           <ul data-slot="tool-inner" className="flex flex-col divide-y divide-border">
             {nested.map((child) => (
-              <li key={child.item.id} data-item-id={child.item.id} className={NESTED_FRAME_CLASS}>
+              <li
+                key={child.item.id}
+                data-item-id={child.item.id}
+                className={cn(NESTED_FRAME_CLASS, arrivedLive(history, child.item.id) && 'animate-enter')}
+              >
                 {renderNested(child)}
               </li>
             ))}

@@ -154,7 +154,7 @@ function ActivityRow({ label, value, hint, onOpen }: { label: string; value: num
   );
   const className = 'flex h-11 w-full items-center gap-3 px-4';
   return onOpen ? (
-    <button type="button" onClick={onOpen} className={cx(className, 'focus-inset hover:bg-accent')}>
+    <button type="button" onClick={onOpen} className={cx(className, 'focus-inset transition-colors duration-150 ease-[var(--ease-premium)] hover:bg-accent')}>
       {content}
     </button>
   ) : (

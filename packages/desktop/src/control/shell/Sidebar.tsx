@@ -27,8 +27,12 @@ export interface SidebarProps {
   sessionsOpen: boolean;
 }
 
+/** One item: 36 px high, with a 2 px gap between items. The active indicator moves in steps of that pitch (see `Sidebar`). */
+const ITEM_HEIGHT_REM = 2.25;
+const ITEM_PITCH_REM = ITEM_HEIGHT_REM + 0.125;
+
 const ITEM =
-  'group relative flex h-9 w-full items-center gap-3 rounded-lg px-[13px] text-[13.5px] font-medium transition-colors duration-150';
+  'group relative flex h-9 w-full items-center gap-3 rounded-lg px-[13px] text-[13.5px] font-medium transition-[color,background-color,scale] duration-200 ease-[var(--ease-premium)] active:scale-[0.98]';
 
 interface NavItemProps {
   meta: SectionMeta;
@@ -55,10 +59,7 @@ function NavItem({ meta, index, active, collapsed, dirty, nativeTip, onSelect }:
       aria-label={collapsed ? label : undefined}
       title={collapsed && nativeTip ? `${tip} (${shortcut})` : undefined}
       onClick={onSelect}
-      className={cx(
-        ITEM,
-        active ? 'bg-card text-foreground shadow-[0_0_0_1px_var(--ui-border),0_1px_2px_rgb(0_0_0/0.06)]' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-      )}
+      className={cx(ITEM, active ? 'text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
     >
       <span className="relative grid size-[18px] shrink-0 place-items-center">
         <Icon className="size-[18px]" strokeWidth={active ? 2 : 1.75} aria-hidden="true" />
@@ -110,18 +111,31 @@ export function Sidebar({ section, collapsed: saved, dirty, version, onSelect, o
   const collapsed = saved || sessionsOpen;
   const toggleLabel = collapsed ? t('shell.sidebar.expand') : t('shell.sidebar.collapse');
 
+  // The card behind the active item is one element that slides to the item's row, so the selection moves instead of jumping.
+  const activeIndex = SECTIONS.findIndex((meta) => meta.id === section);
+
   return (
     <nav
       id="sidebar"
       aria-label={t('shell.sidebar.label')}
       style={{ width: collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED }}
-      className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-chrome transition-[width] duration-150 ease-out"
+      className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-chrome transition-[width] duration-200 ease-[var(--ease-premium)]"
     >
-      <ul className="flex flex-col gap-0.5 px-[9px] pt-3" onKeyDown={moveFocus}>
-        {SECTIONS.map((meta, index) => (
-          <NavItem key={meta.id} meta={meta} index={index} active={meta.id === section} collapsed={collapsed} dirty={dirty.has(meta.id)} nativeTip={sessionsOpen} onSelect={() => onSelect(meta.id)} />
-        ))}
-      </ul>
+      <div className="relative px-[9px] pt-3">
+        {activeIndex === -1 ? null : (
+          <span
+            aria-hidden="true"
+            data-slot="nav-indicator"
+            style={{ transform: `translateY(${activeIndex * ITEM_PITCH_REM}rem)` }}
+            className="pointer-events-none absolute inset-x-[9px] top-3 h-9 rounded-lg bg-card shadow-[0_0_0_1px_var(--ui-border),0_1px_2px_rgb(0_0_0/0.06)] transition-transform duration-300 ease-[var(--ease-premium)]"
+          />
+        )}
+        <ul className="flex flex-col gap-0.5" onKeyDown={moveFocus}>
+          {SECTIONS.map((meta, index) => (
+            <NavItem key={meta.id} meta={meta} index={index} active={meta.id === section} collapsed={collapsed} dirty={dirty.has(meta.id)} nativeTip={sessionsOpen} onSelect={() => onSelect(meta.id)} />
+          ))}
+        </ul>
+      </div>
       {sessionsOpen ? null : (
         <div className="mt-auto flex flex-col gap-2 px-[9px] pb-3">
           <div className={cx('flex h-8 items-center', collapsed ? 'justify-center' : 'justify-between pr-0.5 pl-3.5')}>
