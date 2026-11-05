@@ -51,7 +51,12 @@ export function PermissionCard({ api, request, onRespond }: PermissionCardProps)
               key={option.optionId}
               variant={allow ? 'default' : 'secondary'}
               data-permission={allow ? 'allow' : 'reject'}
-              className={cn('min-w-0 flex-1 basis-[120px]', waiting && 'disabled:opacity-100')}
+              // Option names come from the agent and can be long ("Yes, and don't ask again for <command>"): the label
+              // wraps inside the button instead of overflowing onto its neighbours, and the button grows to fit it.
+              className={cn(
+                'h-auto min-h-11 min-w-0 flex-1 basis-[140px] py-2.5 text-center leading-snug whitespace-normal [overflow-wrap:anywhere]',
+                waiting && 'disabled:opacity-100',
+              )}
               disabled={picked !== null}
               onClick={() => respond(option.optionId)}
             >
