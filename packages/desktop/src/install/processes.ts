@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { sep } from 'node:path';
+import { powershellPath, systemDirectory } from '../common/system-paths.js';
 
 /** A process whose executable lives inside a folder (the install folder). */
 export interface RunningProcess {
@@ -37,13 +38,25 @@ export function scanPrefix(dir: string): string {
   return dir.endsWith(sep) ? dir : `${dir}${sep}`;
 }
 
-/** Rejects when the scan itself fails: "nothing runs" must never be an answer made up from an error. */
-export function findRunningInDir(dir: string, selfPid: number): Promise<RunningProcess[]> {
+/** The part of `execFile` the scan uses; tests pass a fake. */
+export type ExecFileLike = (
+  file: string,
+  args: string[],
+  options: { cwd?: string; windowsHide: boolean; timeout: number; env: NodeJS.ProcessEnv },
+  callback: (error: Error | null, stdout: string, stderr: string) => void,
+) => unknown;
+
+/**
+ * Rejects when the scan itself fails: "nothing runs" must never be an answer made up from an error. PowerShell is the
+ * absolute system one, run from `System32`: a bare `powershell.exe` is looked up in the working directory first.
+ */
+export function findRunningInDir(dir: string, selfPid: number, exec: ExecFileLike = execFile): Promise<RunningProcess[]> {
   return new Promise((resolvePromise, reject) => {
-    execFile(
-      'powershell.exe',
+    exec(
+      powershellPath(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCAN_SCRIPT],
       {
+        cwd: systemDirectory(),
         windowsHide: true,
         timeout: 30_000,
         env: { ...process.env, NANACHI_SCAN_DIR: scanPrefix(dir), NANACHI_SELF_PID: String(selfPid) },

@@ -63,7 +63,7 @@ describe('createDeviceAddRunner', () => {
     });
 
     // A name with spaces, parentheses and a quote: it must reach the CLI untouched (no shell is involved).
-    const name = 'Nanachi Desktop (JOAO "PC")';
+    const name = 'Nanachi Desktop (OFFICE "PC")';
     expect(await run(name)).toBe('{"deviceId":"d-1","token":"t"}\n');
     expect(seen).toEqual([
       {

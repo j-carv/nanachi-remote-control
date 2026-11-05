@@ -1,0 +1,155 @@
+import { describe, expect, it } from 'vitest';
+import type { ControlResult } from '../../src/common/control-api.js';
+import type { DaemonStatus } from '../../src/common/types.js';
+import { createMockControlApi, type MockScenario } from '../../src/control/mock/mock-api.js';
+
+const NOW = 1_700_000_000_000;
+const make = (scenario: MockScenario = 'default') => createMockControlApi({ scenario, latencyMs: 0, now: () => NOW });
+
+function value<T>(result: ControlResult<T>): T {
+  if (!result.ok) throw new Error(`unexpected ${result.code}: ${result.message}`);
+  return result.value;
+}
+
+/** The mock is what the renderer tests and the screenshots run against, so it has to keep to the contract. */
+describe('mock ControlApi', () => {
+  it('overview answers the daemon, the node and the activity', async () => {
+    const info = value(await make().overview());
+    expect(info.daemon.state).toBe('running');
+    expect(info.daemon.mode).toBe('spawned');
+    expect(info.tailscale.state).toBe('off');
+    expect(info.activity).toMatchObject({ workspaces: expect.any(Number), devices: 3 });
+    expect(info.dataFolder).toMatch(/^[A-Z]:\\/);
+  });
+
+  it('folders: roots carry exists and coveredBy; drives carry sizes', async () => {
+    const state = value(await make().folders.get());
+    expect(state.editable).toBe(true);
+    expect(state.roots.find((root) => root.path === 'C:\\Projetos\\nanachi-remote')?.coveredBy).toBe('C:\\Projetos');
+    expect(state.roots.find((root) => root.path === 'E:\\Antigos')?.exists).toBe(false);
+    expect(state.drives.map((drive) => drive.root)).toContain('D:\\');
+  });
+
+  it('save writes the list; "later" leaves a restart pending, "restart" does not', async () => {
+    const api = make();
+    const later = value(await api.folders.save(['C:\\Projetos', 'D:/Trabalho/'], false));
+    expect(later.applied).toBe('pending');
+    expect(later.state.roots.map((root) => root.path)).toEqual(['C:\\Projetos', 'D:\\Trabalho']);
+    expect(later.state.restartPending).toBe(true);
+    const now = value(await api.folders.save(['C:\\Projetos', 'D:\\Trabalho', 'C:\\projetos\\'], true));
+    expect(now.applied).toBe('restarted');
+    expect(now.state.restartPending).toBe(false);
+    expect(now.state.roots).toHaveLength(2);
+  });
+
+  it('save refuses a path that is not complete, and a read-only daemon', async () => {
+    const refused = await make().folders.save(['projetos'], true);
+    expect(refused).toMatchObject({ ok: false, code: 'invalid_input' });
+    const readOnly = await make('readonly').folders.save(['C:\\a'], true);
+    expect(readOnly).toMatchObject({ ok: false, code: 'not_own_daemon' });
+    expect(value(await make('attached').folders.get()).editable).toBe(false);
+  });
+
+  it('save asks for confirmation instead of restarting over busy sessions, and restarts once the count is confirmed', async () => {
+    const api = make('busy');
+    const asked = value(await api.folders.save(['C:\\Projetos'], true));
+    expect(asked.applied).toBe('needs_confirmation');
+    expect(asked.state.busySessions).toBe(2);
+    // Nothing was written.
+    expect(value(await api.folders.get()).roots.map((root) => root.path)).toContain('D:\\Trabalho');
+    expect(value(await api.folders.save(['C:\\Projetos'], true, 1)).applied).toBe('needs_confirmation');
+    const done = value(await api.folders.save(['C:\\Projetos'], true, 2));
+    expect(done.applied).toBe('restarted');
+    expect(done.state.roots.map((root) => root.path)).toEqual(['C:\\Projetos']);
+  });
+
+  it('a restart goes through the daemon status events', async () => {
+    const api = make();
+    const seen: DaemonStatus['state'][] = [];
+    const off = api.onDaemonStatus((status) => seen.push(status.state));
+    value(await api.restartDaemon());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    off();
+    expect(seen).toEqual(['starting', 'running']);
+    expect(await make('attached').restartDaemon()).toMatchObject({ ok: false, code: 'not_own_daemon' });
+  });
+
+  it('devices: this app cannot be revoked, another one can', async () => {
+    const api = make();
+    expect(await api.devices.revoke('dev-2')).toMatchObject({ ok: false, code: 'invalid_input' });
+    const after = value(await api.devices.revoke('dev-1'));
+    expect(after.find((device) => device.id === 'dev-1')?.revoked).toBe(true);
+    expect(after.find((device) => device.isThisApp)?.revoked).toBe(false);
+  });
+
+  it('pairing code: six digits, valid for about five minutes', async () => {
+    const code = value(await make().devices.pairingCode());
+    expect(code.code).toMatch(/^\d{6}$/);
+    expect(code.expiresAt - NOW).toBeGreaterThan(4 * 60_000);
+    expect(code.expiresAt - NOW).toBeLessThanOrEqual(5 * 60_000);
+  });
+
+  it('accounts: setActive moves "in use" inside one agent only', async () => {
+    const agents = value(await make().accounts.setActive('claude', 'work'));
+    expect(agents.find((agent) => agent.agentId === 'claude')?.accounts.filter((account) => account.active).map((account) => account.id)).toEqual(['work']);
+    expect(agents.find((agent) => agent.agentId === 'codex')?.accounts.find((account) => account.active)?.id).toBe('default');
+  });
+
+  it('accounts.list(true) asks the daemon to check the logins again', async () => {
+    const api = make();
+    await api.accounts.list();
+    await api.accounts.list(true);
+    expect(api.mock.calls).toEqual(['accounts.list', 'accounts.list:refresh']);
+  });
+
+  it('attached to a daemon Desktop did not start: read-only roots, and devices/accounts/activity are not available', async () => {
+    const api = make('attached');
+    const folders = value(await api.folders.get());
+    // Desktop's own list is not that daemon's list: unknown, and empty.
+    expect(folders).toMatchObject({ editable: false, rootsUnknown: true, roots: [] });
+    expect(value(await make().folders.get()).rootsUnknown).toBe(false);
+    expect(value(await api.overview()).activity).toBeNull();
+    expect(await api.devices.list()).toMatchObject({ ok: false, code: 'not_paired' });
+    expect(await api.accounts.list()).toMatchObject({ ok: false, code: 'unauthorized' });
+    expect(await api.devices.pairingCode()).toMatchObject({ ok: false, code: 'not_paired' });
+  });
+
+  it('tailscale: start passes through starting and ends running (or needs_login), stop turns it off', async () => {
+    const api = make();
+    const seen: string[] = [];
+    api.tailscale.onStatus((status) => seen.push(status.state));
+    expect((await api.tailscale.start()).state).toBe('starting');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(seen).toEqual(['starting', 'running']);
+    expect((await api.tailscale.stop()).state).toBe('off');
+    const login = make('login');
+    await login.tailscale.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect((await login.tailscale.status()).state).toBe('needs_login');
+  });
+
+  it('a daemon that is down answers ControlErrors, not exceptions', async () => {
+    const api = make('down');
+    expect(await api.overview()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+    expect(await api.folders.get()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+    expect(await api.devices.list()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+  });
+
+  it('the window follows toggleMaximize and tells its listeners', async () => {
+    const api = make();
+    const states: boolean[] = [];
+    api.window.onState((state) => states.push(state.maximized));
+    expect((await api.window.toggleMaximize()).maximized).toBe(true);
+    expect((await api.window.toggleMaximize()).maximized).toBe(false);
+    expect(states).toEqual([true, false]);
+  });
+
+  it('logs grow while you watch and the autostart switch sticks', async () => {
+    const api = make();
+    const first = await api.logs.get();
+    const second = await api.logs.get();
+    expect(second.daemon.length).toBeGreaterThan(first.daemon.length);
+    expect(await api.settings.setAutostart(false)).toEqual({ value: false, supported: true });
+    expect((await api.settings.getAutostart()).value).toBe(false);
+  });
+});

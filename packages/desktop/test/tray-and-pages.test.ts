@@ -41,7 +41,8 @@ describe('tray menu', () => {
     const calls: string[] = [];
     return {
       calls,
-      openPanel: () => void calls.push('open'),
+      openControl: () => void calls.push('control'),
+      openSessions: () => void calls.push('sessions'),
       generatePairingCode: () => void calls.push('pair'),
       setAutostart: (enabled) => void calls.push(`autostart:${enabled}`),
       quit: () => void calls.push('quit'),
@@ -53,7 +54,8 @@ describe('tray menu', () => {
     expect(menu.map((item) => item.label ?? item.type)).toEqual([
       'Nanachi · rodando',
       'separator',
-      'Abrir painel',
+      'Abrir Nanachi',
+      'Abrir sessões',
       'Gerar código de pareamento',
       'Iniciar com o Windows',
       'separator',
@@ -69,11 +71,12 @@ describe('tray menu', () => {
       const item = menu.find((entry) => entry.label === label);
       (item?.click as ((i: unknown) => void) | undefined)?.({ checked });
     };
-    click('Abrir painel');
+    click('Abrir Nanachi');
+    click('Abrir sessões');
     click('Gerar código de pareamento');
     click('Iniciar com o Windows', false);
     click('Sair');
-    expect(a.calls).toEqual(['open', 'pair', 'autostart:false', 'quit']);
+    expect(a.calls).toEqual(['control', 'sessions', 'pair', 'autostart:false', 'quit']);
   });
 
   it('shows the autostart checkbox state, and disables it outside the installed app', () => {

@@ -11,7 +11,7 @@ export interface TrayController {
 export function createTray(iconPath: string, actions: TrayActions, initial: Omit<TrayMenuInput, 'actions'>): TrayController {
   const image = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32, quality: 'best' });
   const tray = new Tray(image);
-  tray.on('click', () => actions.openPanel());
+  tray.on('click', () => actions.openControl());
 
   function update(input: Omit<TrayMenuInput, 'actions'>): void {
     tray.setToolTip(trayTooltip(input.status));

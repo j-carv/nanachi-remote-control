@@ -1,6 +1,20 @@
 import { dirname } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { findRunningInDir } from '../src/install/processes.js';
+import { powershellPath, systemDirectory } from '../src/common/system-paths.js';
+import { findRunningInDir, type ExecFileLike } from '../src/install/processes.js';
+
+describe('findRunningInDir (command line)', () => {
+  it('runs the absolute system PowerShell from System32, never a bare name looked up in the working directory', async () => {
+    const seen: Array<{ file: string; cwd: string | undefined }> = [];
+    const exec: ExecFileLike = (file, _args, options, callback) => {
+      seen.push({ file, cwd: options.cwd });
+      callback(null, '', '');
+      return undefined;
+    };
+    await expect(findRunningInDir('C:\Apps\Nanachi', 1, exec)).resolves.toEqual([]);
+    expect(seen).toEqual([{ file: powershellPath(), cwd: systemDirectory() }]);
+  });
+});
 
 /**
  * The real scan, against the real process list: the one thing the fake `findRunning` of the other tests cannot prove.
