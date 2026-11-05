@@ -38,7 +38,7 @@ interface StatusLook {
 }
 
 /** Tone and pulse of each connection state; the texts are in `machines.json` under `status.<state>`. */
-const STATUS_LOOK: Record<ConnectionStatus, StatusLook> = {
+export const STATUS_LOOK: Record<ConnectionStatus, StatusLook> = {
   online: { tone: 'success', pulse: false },
   connecting: { tone: 'muted', pulse: true },
   offline: { tone: 'muted', pulse: false },

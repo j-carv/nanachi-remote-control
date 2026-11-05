@@ -1,0 +1,11 @@
+{
+  "title": "Dispositivos de esta máquina",
+  "list": "Dispositivos",
+  "current": "este dispositivo",
+  "meta": "Creado {{created}} · visto por última vez {{lastSeen}}",
+  "metaNeverSeen": "Creado {{created}} · nunca visto",
+  "revoke": "Revocar",
+  "revokeLabel": "Revocar {{name}}",
+  "confirmCurrent": "¿Revocar \"{{name}}\"? Es este dispositivo: perderá el acceso y tendrá que vincularse de nuevo.",
+  "confirmOther": "¿Revocar \"{{name}}\"? Perderá el acceso a esta máquina de inmediato."
+}

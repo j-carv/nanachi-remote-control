@@ -69,7 +69,7 @@ export function LoopSheet(props: LoopSheetProps) {
   const { t } = useTranslation('chat');
   return (
     <Drawer open={props.open} onOpenChange={props.onOpenChange}>
-      <DrawerContent>
+      <DrawerContent panel="side">
         <DrawerHeader>
           <DrawerTitle>{t('loop.sheet.title')}</DrawerTitle>
           <DrawerDescription>{t('loop.sheet.description')}</DrawerDescription>

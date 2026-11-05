@@ -1,0 +1,26 @@
+{
+  "list": {
+    "label": "Máquinas, workspaces y sesiones",
+    "machines": "Cambiar de máquina",
+    "newSessionIn": "Nueva sesión en {{name}}",
+    "collapse": "Contraer {{name}}",
+    "expand": "Desplegar {{name}}",
+    "sessionsOf": "Sesiones de {{name}}",
+    "noSessions": "Ninguna sesión",
+    "noWorkspaces": "Aún no hay workspaces.",
+    "unreachable": "No se pudieron cargar los workspaces.",
+    "showMore": "Mostrar {{count}} más",
+    "showLess": "Ver menos"
+  },
+  "empty": {
+    "title": "Elige una sesión",
+    "hint": "Abre una sesión de la lista o empieza una nueva dentro de un workspace.",
+    "noWorkspaces": "Agrega una carpeta del PC como workspace para empezar.",
+    "unauthorized": "Este dispositivo ya no tiene acceso a esta máquina."
+  },
+  "side": {
+    "label": "Panel lateral",
+    "close": "Cerrar"
+  },
+  "composerHint": "Enter envía · Shift+Enter añade una línea"
+}

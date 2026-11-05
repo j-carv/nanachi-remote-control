@@ -41,6 +41,10 @@ import {
   initialNav,
   pushNav,
   replaceNav,
+  resetHistoryStep,
+  selectHistoryStep,
+  selectNav,
+  type HistoryStep,
   type Navigator,
   type NavState,
   type Route,
@@ -51,6 +55,8 @@ import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { useConnectionPool } from './useConnectionPool.js';
 import { UpdateBar } from './updates/UpdateBar.js';
+import { useLayoutMode } from './wide/layoutContext.js';
+import { WideLayout } from './wide/WideLayout.js';
 
 /** What the access notice at the top says. Kept as a kind, not a text, so it follows the language when it changes. */
 type AccessNotice = 'save_failed' | 'read_failed';
@@ -80,6 +86,8 @@ function AppRoutes() {
     initialNav(machines.length > 0 ? { kind: 'home' } : { kind: 'pair', baseUrl: null }),
   );
   const { pool, statuses } = useConnectionPool(machines);
+  // Phone below 900 px (the app as it has always been); from 900 px a list pane stands beside the active screen.
+  const layout = useLayoutMode();
   const selected = resolveSelected(machines, selectedId);
   const selectedMachineId = selected?.id;
   // A rota só é gravada depois de saber onde o app está (restauração respondida) ou após o usuário navegar.
@@ -223,6 +231,34 @@ function AppRoutes() {
     },
   };
 
+  /**
+   * Writes the browser history side of a navigation that drops screens (see `HistoryStep`). A rewind is asynchronous: the
+   * popstate it causes arrives at the depth the new stack already has, so the handler above leaves the stack as it is.
+   */
+  function followHistory(step: HistoryStep): void {
+    if (step.kind === 'push') window.history.pushState({ depth: step.depth }, '');
+    else if (step.kind === 'replace') window.history.replaceState({ depth: step.depth }, '');
+    else window.history.go(-step.entries);
+  }
+
+  /**
+   * Wide screens: picking something in the list pane shows that screen beside it. It does not stack: the list is always on
+   * screen, so whatever was open leaves, and the back gesture does not walk through the earlier picks.
+   */
+  function pick(next: Route): void {
+    markNavigated();
+    const result = selectNav(nav, next);
+    followHistory(selectHistoryStep(nav));
+    setNav(result.nav);
+  }
+
+  /** Wide screens: another machine starts at its own home screen (the open routes belonged to the previous one). */
+  function resetToHome(): void {
+    markNavigated();
+    followHistory(resetHistoryStep(nav));
+    setNav(initialNav({ kind: 'home' }));
+  }
+
   /** Grava a lista. Se o storage recusar, o aviso aparece e a lista segue só nesta sessão. */
   function commitMachines(next: Machine[]): void {
     const saved = writeMachines(storage, next);
@@ -267,11 +303,14 @@ function AppRoutes() {
   function handleRemove(machine: Machine): void {
     if (!window.confirm(t('removeMachineConfirm', { name: machine.name }))) return;
     if (forgetMachine(machine) === undefined) router.replace({ kind: 'pair', baseUrl: null });
+    // Removed from the list pane with another screen open: the open routes belonged to the machine that left.
+    else if (nav.index > 0 || activeRoute(nav).kind !== 'home') resetToHome();
   }
 
   const route = activeRoute(nav);
+  const wideMode = layout === 'phone' ? null : layout;
 
-  function renderScreen(current: Route): ReactNode {
+  function renderScreen(current: Route, navigator: Navigator = router): ReactNode {
     if (current.kind === 'pair' || selected === undefined) {
       return (
         <PairScreen
@@ -279,7 +318,7 @@ function AppRoutes() {
             current.kind === 'pair' && current.baseUrl !== null ? current.baseUrl : window.location.origin
           }
           canCancel={machines.length > 0}
-          onCancel={() => router.back()}
+          onCancel={() => navigator.back()}
           onPaired={handlePaired}
         />
       );
@@ -292,29 +331,29 @@ function AppRoutes() {
           selected={selected}
           statuses={statuses}
           onSelect={select}
-          onAdd={() => router.push({ kind: 'pair', baseUrl: null })}
+          onAdd={() => navigator.push({ kind: 'pair', baseUrl: null })}
           onRemove={handleRemove}
-          onRepair={(machine) => router.push({ kind: 'pair', baseUrl: machine.baseUrl })}
-          onOpenWorkspaces={() => router.push({ kind: 'workspaces' })}
-          onOpenSettings={() => router.push({ kind: 'settings' })}
+          onRepair={(machine) => navigator.push({ kind: 'pair', baseUrl: machine.baseUrl })}
+          onOpenWorkspaces={() => navigator.push({ kind: 'workspaces' })}
+          onOpenSettings={() => navigator.push({ kind: 'settings' })}
           onOpenSession={openNotification}
         />
       );
     }
 
     if (current.kind === 'settings') {
-      return <SettingsScreen machines={machines} selected={selected} nav={router} />;
+      return <SettingsScreen machines={machines} selected={selected} nav={navigator} />;
     }
 
     if (current.kind === 'devices') {
       return (
         <DevicesScreen
           machine={selected}
-          nav={router}
+          nav={navigator}
           onRevokedSelf={() => {
             // Revogou este aparelho: a máquina sai daqui e o app vai para o pareamento dela.
             forgetMachine(selected);
-            router.replace({ kind: 'pair', baseUrl: selected.baseUrl });
+            navigator.replace({ kind: 'pair', baseUrl: selected.baseUrl });
           }}
         />
       );
@@ -324,7 +363,7 @@ function AppRoutes() {
       <MachineRoutes
         machine={selected}
         route={current}
-        nav={router}
+        nav={navigator}
         connection={pool.get(selected.id)}
         storage={storage}
       />
@@ -345,7 +384,33 @@ function AppRoutes() {
       )}
       {/* Keyed on the language: switching it remounts the screen, so helpers that call `t` while rendering
           (status texts, relative times) pick it up. The navigation state lives above and is kept. */}
-      <Fragment key={i18n.language}>{renderScreen(route)}</Fragment>
+      {wideMode !== null && selected !== undefined ? (
+        <Fragment key={i18n.language}>
+          <WideLayout
+            key={selected.id}
+            mode={wideMode}
+            nav={nav}
+            router={router}
+            machines={machines}
+            selected={selected}
+            statuses={statuses}
+            connection={pool.get(selected.id)}
+            storage={storage}
+            onSelectMachine={(id) => {
+              if (id === selected.id) return;
+              select(id);
+              resetToHome();
+            }}
+            onAddMachine={() => pick({ kind: 'pair', baseUrl: null })}
+            onRemoveMachine={handleRemove}
+            onRepair={(machine) => pick({ kind: 'pair', baseUrl: machine.baseUrl })}
+            onPick={pick}
+            renderScreen={renderScreen}
+          />
+        </Fragment>
+      ) : (
+        <Fragment key={i18n.language}>{renderScreen(route)}</Fragment>
+      )}
     </>
   );
 }

@@ -1,0 +1,72 @@
+{
+  "title": "Desktop",
+  "group": "Nanachi Desktop",
+  "failure": {
+    "action": "No pude completarlo ahora. Inténtalo de nuevo.",
+    "update": "No pude buscar actualizaciones ahora."
+  },
+  "daemon": {
+    "label": "Daemon",
+    "checking": "Comprobando…",
+    "starting": "Iniciando…",
+    "running": "En ejecución",
+    "attached": "Conectado al daemon existente",
+    "attachedDetail": "{{line}}. Desktop no lo cierra al salir.",
+    "stopped": "Detenido",
+    "error": "Error",
+    "notRunning": "El daemon no está en ejecución.",
+    "port": "Puerto {{port}}",
+    "portVersion": "Puerto {{port}} · versión {{version}}",
+    "restricted": "Acceso local bloqueado",
+    "restrictedText": "El daemon solo acepta accesos a través de Tailscale (allowedTailscaleLogins en config.json), así que este panel local no puede usarlo. Usa otra carpeta de datos (NANACHI_HOME) para Desktop o abre la dirección de Tailscale.",
+    "logTail": "Últimas líneas del registro del daemon"
+  },
+  "autostart": {
+    "title": "Iniciar con Windows",
+    "description": "Nanachi se abre en la bandeja al iniciar sesión en Windows."
+  },
+  "pairing": {
+    "row": "Generar código de vinculación",
+    "rowHint": "Para vincular el iPhone u otro navegador con este PC.",
+    "title": "Código de vinculación",
+    "description": "Escribe este código en Nanachi en el iPhone, o en otro navegador, para vincularlo con este PC.",
+    "codeLabel": "Código {{digits}}",
+    "generating": "Generando el código…",
+    "failed": "No pude generar el código ahora. Comprueba que el daemon esté en ejecución e inténtalo de nuevo.",
+    "close": "Cerrar",
+    "retry": "Intentar de nuevo",
+    "another": "Generar otro",
+    "expiresIn": "Vence en {{time}}",
+    "expired": "Venció"
+  },
+  "update": {
+    "row": "Buscar actualizaciones",
+    "checking": "Buscando…",
+    "version": "Versión {{version}}",
+    "upToDate": "Versión {{current}}. Tienes la más reciente.",
+    "available": "Versión {{current}}. Nueva versión {{latest}} disponible.",
+    "availableLink": "Nueva versión {{latest}}",
+    "error": "Versión {{current}}. {{message}}"
+  },
+  "tailscale": {
+    "title": "Tailscale integrado",
+    "description": "Este PC se une a tu tailnet como un dispositivo aparte. El Tailscale instalado en Windows no se modifica.",
+    "off": "Apagado",
+    "starting": "Iniciando…",
+    "needsLogin": "Falta iniciar sesión en tu cuenta de Tailscale",
+    "needsLoginDetail": "Abre el enlace, inicia sesión y aprueba este PC. La dirección aparece aquí cuando termine.",
+    "connected": "Conectado",
+    "tailnet": "Tailnet {{name}}",
+    "error": "Error",
+    "login": "Iniciar sesión en Tailscale",
+    "address": "Dirección para el iPhone",
+    "copyAddress": "Copiar dirección",
+    "requirements": "La tailnet necesita tener MagicDNS y certificados HTTPS activos.",
+    "steps": {
+      "install": "Instala la app de Tailscale en el iPhone e inicia sesión con la misma cuenta.",
+      "open": "Abre {{address}} en Safari.",
+      "code": "Si la app pide un código, usa \"Generar código de vinculación\" aquí.",
+      "share": "Toca Compartir y luego \"Agregar a pantalla de inicio\"."
+    }
+  }
+}

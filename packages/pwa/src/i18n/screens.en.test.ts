@@ -228,13 +228,15 @@ describe('DevicesScreen', () => {
 });
 
 describe('LanguageSection', () => {
-  it('lists both languages, each in its own language, under a title that never changes', () => {
-    for (const language of ['pt-BR', 'en'] as const) {
+  it('lists every language, each in its own language, under a title that never changes', () => {
+    for (const language of ['pt-BR', 'en', 'es'] as const) {
       setLanguage(language);
       const markup = html(createElement(LanguageSection));
       expect(markup).toContain('Idioma / Language');
       expect(markup).toContain('>Português (Brasil)</option>');
       expect(markup).toContain('>English</option>');
+      expect(markup).toContain('>Español</option>');
+      expect([...markup.matchAll(/<option /g)]).toHaveLength(3);
     }
   });
 

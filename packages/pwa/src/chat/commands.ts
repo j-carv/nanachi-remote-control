@@ -40,6 +40,18 @@ export function filterCommands(commands: readonly AvailableCommand[], query: str
   return ranked.sort((a, b) => a.rank - b.rank).map((entry) => entry.command);
 }
 
+/**
+ * The command that Enter completes while the menu of a typed `/search` is open: the first match, which is the row on top of
+ * the menu. Undefined when nothing matches, or when the text already is the name of a command (nothing is left to complete):
+ * Enter then sends the text as it would without the menu.
+ */
+export function commandForEnter(commands: readonly AvailableCommand[], query: string): AvailableCommand | undefined {
+  const needle = query.trim().toLowerCase();
+  const matches = filterCommands(commands, needle);
+  if (matches.some((command) => command.name.toLowerCase() === needle)) return undefined;
+  return matches[0];
+}
+
 export interface InsertResult {
   text: string;
   caret: number;

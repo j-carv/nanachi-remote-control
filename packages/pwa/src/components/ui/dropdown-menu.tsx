@@ -35,6 +35,35 @@ function DropdownMenuRadioGroup({ ...props }: React.ComponentProps<typeof Dropdo
   return <DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />;
 }
 
+/** An action item of the menu (add, remove). `destructive` paints the text red. */
+function DropdownMenuItem({
+  className,
+  variant = 'default',
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & { variant?: 'default' | 'destructive' }) {
+  return (
+    <DropdownMenuPrimitive.Item
+      data-slot="dropdown-menu-item"
+      data-variant={variant}
+      className={cn(
+        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md px-3 py-2 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
+  return (
+    <DropdownMenuPrimitive.Separator
+      data-slot="dropdown-menu-separator"
+      className={cn('-mx-1 my-1 h-px bg-border', className)}
+      {...props}
+    />
+  );
+}
+
 /** Item de escolha única (a máquina selecionada): mostra um check à direita. */
 function DropdownMenuRadioItem({
   className,
@@ -45,7 +74,7 @@ function DropdownMenuRadioItem({
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md py-2 pr-9 pl-3 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-5 [&_svg]:shrink-0',
+        'relative flex min-h-11 cursor-default items-center gap-3 rounded-md py-2 pr-9 pl-3 text-base outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 wide:min-h-9 [&_svg]:size-5 [&_svg]:shrink-0',
         className,
       )}
       {...props}
@@ -64,6 +93,8 @@ export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 };

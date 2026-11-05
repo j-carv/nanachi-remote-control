@@ -134,7 +134,7 @@ export function BackgroundDrawer({ open, onOpenChange, entries, onPick }: Backgr
   const now = useNow(open);
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      <DrawerContent panel="side">
         <DrawerHeader>
           <DrawerTitle>{t('background.title')}</DrawerTitle>
         </DrawerHeader>

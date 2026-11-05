@@ -1,0 +1,54 @@
+{
+  "status": {
+    "online": {
+      "label": "En línea",
+      "hint": "Conectado al daemon de esta máquina."
+    },
+    "connecting": {
+      "label": "Conectando…",
+      "hint": "Abriendo la conexión con el PC."
+    },
+    "offline": {
+      "label": "Sin conexión",
+      "hint": "Sin conexión con el PC. Reintentando automáticamente."
+    },
+    "unauthorized": {
+      "label": "No autorizado",
+      "hint": "Este teléfono ya no tiene acceso a esta máquina. Vincula de nuevo con un código nuevo."
+    }
+  },
+  "main": {
+    "settings": "Configuración",
+    "addMachine": "Agregar máquina",
+    "machineStatus": "Estado de la máquina",
+    "summary": "Resumen de las máquinas",
+    "machines": "Máquinas",
+    "noneRunning": "Ninguna sesión en ejecución",
+    "workspaces": "Workspaces",
+    "removeMachine": "Quitar máquina"
+  },
+  "summary": {
+    "running": "{{count}} en ejecución",
+    "awaiting": "{{count}} esperándote"
+  },
+  "card": {
+    "checking": "Comprobando…",
+    "online": "En línea · {{latencyMs}} ms",
+    "loading": "Cargando",
+    "noWorkspaces": "Aún no hay workspaces. Agrega una carpeta en Workspaces.",
+    "workspaces_one": "{{count}} workspace",
+    "workspaces_many": "{{count}} de workspaces",
+    "workspaces_other": "{{count}} workspaces",
+    "idle_one": "{{count}} lista",
+    "idle_many": "{{count}} listas",
+    "idle_other": "{{count}} listas",
+    "noSessions": "Aún no hay sesiones",
+    "lastActivity": "Última actividad {{time}}",
+    "agents": "Agentes con sesión iniciada",
+    "sessions": "Sesiones",
+    "awaitingPermission": "Esperando permiso",
+    "unauthorized": "Este teléfono ya no tiene acceso a este PC. Vincula de nuevo.",
+    "noResponse": "Sin respuesta del PC.",
+    "loadFailed": "No se pudieron cargar las sesiones."
+  }
+}

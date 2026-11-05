@@ -2,6 +2,7 @@
 export const SUPPORTED_LANGUAGES = [
   { code: 'pt-BR', label: 'Português (Brasil)' },
   { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
 ] as const;
 
 export type Language = (typeof SUPPORTED_LANGUAGES)[number]['code'];
@@ -12,7 +13,10 @@ export const DEFAULT_LANGUAGE: Language = 'pt-BR';
 /** localStorage key of the language chosen on this device. */
 export const LANGUAGE_KEY = 'nanachi.language';
 
-/** Title of the Settings section. The same text in every language, so it can be found after a wrong switch. */
+/**
+ * Title of the Settings section. The same text in every language, so it can be found after a wrong switch. "Idioma" is
+ * the Spanish word as well as the Portuguese one, so it reads naturally in all three languages.
+ */
 export const LANGUAGE_SECTION_TITLE = 'Idioma / Language';
 
 export function isLanguage(value: unknown): value is Language {

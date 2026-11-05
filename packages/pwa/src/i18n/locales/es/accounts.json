@@ -1,0 +1,88 @@
+{
+  "section": {
+    "title": "Cuentas de los agentes",
+    "description": "Inicio de sesión de cada agente en {{machine}}.",
+    "refresh": "Actualizar cuentas",
+    "refreshing": "Actualizando cuentas",
+    "checking": "Comprobando…",
+    "checked": "Comprobado {{time}}"
+  },
+  "status": {
+    "logged_in": "Sesión iniciada",
+    "logged_out": "Sin sesión",
+    "unknown": "Sin comprobar",
+    "loginHelp": "Inicia sesión desde la terminal del PC (p. ej.: claude, codex login, agy)."
+  },
+  "badge": {
+    "inUse": "En uso"
+  },
+  "actions": {
+    "label": "Acciones de la cuenta",
+    "use": "Usar en sesiones nuevas",
+    "login": "Iniciar sesión",
+    "rename": "Renombrar",
+    "remove": "Quitar"
+  },
+  "add": {
+    "title": "Agregar cuenta",
+    "description": "Ponle un nombre a la nueva cuenta de {{agent}}. Después inicias sesión con ella.",
+    "submit": "Crear"
+  },
+  "rename": {
+    "title": "Renombrar cuenta",
+    "description": "Nuevo nombre para {{account}} en {{agent}}.",
+    "submit": "Guardar"
+  },
+  "remove": {
+    "title": "Quitar cuenta",
+    "text": "¿Quitar \"{{account}}\" de {{agent}}? Se borra el inicio de sesión de esta cuenta en este PC y las sesiones que la usaban vuelven a la cuenta principal. La cuenta en sí no se ve afectada.",
+    "confirm": "Quitar",
+    "removing": "Quitando…"
+  },
+  "validation": {
+    "empty": "Escribe un nombre.",
+    "tooLong": "Nombre demasiado largo (máx. {{max}} caracteres)."
+  },
+  "select": {
+    "label": "Cuenta",
+    "removed": "Cuenta quitada",
+    "lockedHint": "Cámbiala cuando el agente termine"
+  },
+  "login": {
+    "title": "Iniciar sesión en la cuenta",
+    "openLinkPrompt": "Abre el enlace e inicia sesión con la cuenta que quieres agregar",
+    "openLink": "Abrir enlace",
+    "copyLink": "Copiar enlace",
+    "pcTabNote": "El PC también puede abrir una pestaña de inicio de sesión; puedes ignorarla.",
+    "enterCode": "Escribe este código en la página",
+    "copyCode": "Copiar código",
+    "pasteCodePrompt": "Después de iniciar sesión, copia el código que aparece y pégalo aquí",
+    "send": "Enviar",
+    "sending": "Enviando…",
+    "showOutput": "Ver la salida del inicio de sesión",
+    "close": "Cerrar",
+    "cancelling": "Cancelando…",
+    "step": {
+      "starting": "Preparando…",
+      "waiting": "Esperando a que inicies sesión…",
+      "codeSent": "Código enviado. Esperando a que termine el inicio de sesión…",
+      "verifying": "Comprobando…",
+      "success": "Cuenta conectada",
+      "successAs": "Cuenta conectada: {{account}}",
+      "cancelled": "Inicio de sesión cancelado.",
+      "genericFailure": "el inicio de sesión falló"
+    }
+  },
+  "copy": {
+    "copied": "Copiado"
+  },
+  "removeSession": {
+    "title": "Quitar de la app",
+    "text": "¿Quitar esta sesión de la app? El historial se queda en {{agent}} y puedes recuperarla en Reanudar desde el PC.",
+    "running": "La sesión está trabajando. Si la quitas ahora, se interrumpe el trabajo.",
+    "awaiting_permission": "La sesión está esperando tu permiso. Si la quitas ahora, se interrumpe el trabajo.",
+    "starting": "La sesión se está iniciando. Si la quitas ahora, se interrumpe el inicio.",
+    "confirm": "Quitar",
+    "removing": "Quitando…"
+  }
+}

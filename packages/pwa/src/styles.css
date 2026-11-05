@@ -10,6 +10,50 @@
 @import "tailwindcss" source(none);
 @source ".";
 
+/*
+ * The wide layout starts at 900 px wide (list pane beside the screen) and gets a third pane at 1280 px, but only when
+ * the viewport is at least 500 px tall: an iPhone Pro Max in landscape is 932 or 956 px wide and 430 or 440 px tall,
+ * and keeps the phone layout. These are the `wide:` and `wider:` variants; wide/layout.ts has the same two media
+ * queries and wide/layout.test.ts fails if they drift. `wider` stays declared after `wide` so it wins when both match.
+ * The keyframes belong to the sheets that become dialogs and side panels on wide screens (components/ui/drawer.tsx).
+ */
+@custom-variant wide (@media (min-width: 900px) and (min-height: 500px));
+@custom-variant wider (@media (min-width: 1280px) and (min-height: 500px));
+
+@theme {
+  --animate-dialog-in: dialog-in 160ms cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-dialog-out: dialog-out 120ms ease-in forwards;
+  --animate-panel-in: panel-in 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      scale: 0.97;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+  @keyframes dialog-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      translate: 24px 0;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+}
+
 /* Maps the `--ui-*` variables to the shadcn/ui colour names (bg-primary, text-muted-foreground, ...). */
 @theme inline {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
@@ -114,6 +158,28 @@
   textarea {
     font: inherit;
     color: inherit;
+  }
+
+  /*
+   * A mouse or a trackpad (not a finger): clickable things get the pointer cursor, which Tailwind's preflight no longer
+   * sets on buttons, and scrollbars are thin and quiet instead of the platform's wide grey ones. Touch screens never match.
+   */
+  @media (hover: hover) and (pointer: fine) {
+    button:not(:disabled),
+    [role='button']:not([aria-disabled='true']),
+    summary,
+    select:not(:disabled),
+    a[href],
+    label[for],
+    input[type='checkbox']:not(:disabled),
+    input[type='file']:not(:disabled) {
+      cursor: pointer;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in oklab, var(--ui-muted-foreground) 45%, transparent) transparent;
+    }
   }
 }
 

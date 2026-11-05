@@ -1,0 +1,26 @@
+{
+  "title": "Vincular máquina",
+  "intro": "Genera un código de 6 dígitos en el PC y escríbelo aquí. Es válido por 5 minutos.",
+  "introTailscale": "Entra sin código con tu cuenta de Tailscale, o usa un código de 6 dígitos generado en el PC.",
+  "fields": {
+    "address": "Dirección del PC",
+    "deviceName": "Nombre de este dispositivo",
+    "code": "Código"
+  },
+  "tailscale": {
+    "signIn": "Iniciar sesión con Tailscale",
+    "signingIn": "Iniciando sesión…",
+    "connectedAs": "Conectado como {{login}}",
+    "or": "o usa un código de vinculación"
+  },
+  "submit": "Vincular",
+  "submitting": "Vinculando…",
+  "errors": {
+    "invalidInput": "Revisa la dirección, el código (6 dígitos) y el nombre del dispositivo.",
+    "addressScheme": "La dirección debe empezar con http:// o https://.",
+    "https": "Usa https:// en la dirección del PC (p. ej.: https://pc-sala.tu-tailnet.ts.net). http:// solo vale para localhost, 127.0.0.1 o el propio origen de esta app.",
+    "codeLength": "El código tiene 6 dígitos.",
+    "tailscaleUnavailable": "Iniciar sesión con Tailscale no está habilitado para esta cuenta en este PC. Usa un código de vinculación.",
+    "unexpected": "Error inesperado al vincular."
+  }
+}
