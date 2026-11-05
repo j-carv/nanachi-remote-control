@@ -16,6 +16,7 @@ const SESSION = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
+  accountId: null,
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -330,6 +331,8 @@ describe('createApiClient: contas dos agentes', () => {
       account: 'pessoa@exemplo.com',
       detail: 'Equipe · team',
       checkedAt: 1_700_000_000_000,
+      supportsAccounts: false,
+      profiles: [],
     },
   ];
 
@@ -394,5 +397,119 @@ describe('createApiClient: uso do agente', () => {
   it('resposta fora do schema vira unexpected', async () => {
     const { fetchFn } = fakeFetch(() => json({ agent: 'omp', text: 1 }));
     expect((await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'))).kind).toBe('unexpected');
+  });
+});
+
+describe('createApiClient: resets salvos', () => {
+  const RESETS = {
+    agent: 'omp',
+    entries: [
+      {
+        target: 'anthropic/1',
+        accountLabel: 'fake@example.com',
+        providerLabel: 'Anthropic',
+        available: 2,
+        usable: 1,
+        expiresAt: 'in 3 days',
+        note: null,
+        active: true,
+      },
+    ],
+    message: null,
+    fetchedAt: 1_700_000_000_000,
+  };
+  const REDEEMED = { outcome: 'reset', message: 'Reset applied for fake@example.com (Anthropic).' };
+
+  it('getUsageResets faz GET em /api/sessions/:id/usage/resets com Bearer e devolve as linhas', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json(RESETS));
+    expect(await clientWith(fetchFn).getUsageResets('s-1')).toEqual(RESETS);
+    expect(calls[0]?.init?.method).toBe('GET');
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/usage/resets');
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe('Bearer tok-1');
+  });
+
+  it('getUsageResets aceita a lista vazia com a mensagem do agente e o selo de cache', async () => {
+    const body = { agent: 'omp', entries: [], message: 'No provider accounts found.', fetchedAt: 5, cached: true };
+    const { fetchFn } = fakeFetch(() => json(body));
+    expect(await clientWith(fetchFn).getUsageResets('s-1')).toEqual(body);
+  });
+
+  it('getUsageResets: 400 resets_unsupported mantém o código', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'resets_unsupported' }, 400));
+    const error = await errorOf(clientWith(fetchFn).getUsageResets('s-1'));
+    expect(error.kind).toBe('invalid_input');
+    expect(error.status).toBe(400);
+    expect(error.code).toBe('resets_unsupported');
+  });
+
+  it('getUsageResets: 502 agent_failed e 504 agent_timeout viram o tipo próprio', async () => {
+    const failed = fakeFetch(() => json({ error: 'agent_failed' }, 502));
+    expect((await errorOf(clientWith(failed.fetchFn).getUsageResets('s-1'))).kind).toBe('agent_failed');
+    const timeout = fakeFetch(() => json({ error: 'agent_timeout' }, 504));
+    expect((await errorOf(clientWith(timeout.fetchFn).getUsageResets('s-1'))).kind).toBe('agent_timeout');
+  });
+
+  it('getUsageResets: resposta fora do schema vira unexpected', async () => {
+    const { fetchFn } = fakeFetch(() => json({ agent: 'omp', entries: [{ target: 'x' }], message: null, fetchedAt: 1 }));
+    expect((await errorOf(clientWith(fetchFn).getUsageResets('s-1'))).kind).toBe('unexpected');
+  });
+
+  it('getUsageResets protege o id no caminho', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json(RESETS));
+    await clientWith(fetchFn).getUsageResets('a/b');
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/a%2Fb/usage/resets');
+  });
+
+  it('redeemUsageReset faz POST com o alvo no corpo e devolve o resultado', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json(REDEEMED));
+    expect(await clientWith(fetchFn).redeemUsageReset('s-1', 'anthropic/1')).toEqual(REDEEMED);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/usage/resets');
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe('Bearer tok-1');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ target: 'anthropic/1' });
+  });
+
+  it('redeemUsageReset: alvo vazio ou longo demais é recusado sem tocar a rede', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json(REDEEMED));
+    expect((await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', ''))).kind).toBe('invalid_input');
+    expect((await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', 'x'.repeat(201)))).kind).toBe('invalid_input');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('redeemUsageReset: 409 reset_in_progress tem o código e o kind segue unexpected', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'reset_in_progress' }, 409));
+    const error = await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', 'anthropic/1'));
+    expect(error.kind).toBe('unexpected');
+    expect(error.status).toBe(409);
+    expect(error.code).toBe('reset_in_progress');
+  });
+
+  it('redeemUsageReset: 400 invalid_request mantém o código', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'invalid_request' }, 400));
+    const error = await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', 'anthropic/1'));
+    expect(error.kind).toBe('invalid_input');
+    expect(error.code).toBe('invalid_request');
+  });
+
+  it('redeemUsageReset: 504 agent_timeout e 502 agent_failed mantêm o status', async () => {
+    const timeout = fakeFetch(() => json({ error: 'agent_timeout' }, 504));
+    const slow = await errorOf(clientWith(timeout.fetchFn).redeemUsageReset('s-1', 'anthropic/1'));
+    expect(slow.kind).toBe('agent_timeout');
+    expect(slow.status).toBe(504);
+    const failed = fakeFetch(() => json({ error: 'agent_failed' }, 502));
+    const broken = await errorOf(clientWith(failed.fetchFn).redeemUsageReset('s-1', 'anthropic/1'));
+    expect(broken.kind).toBe('agent_failed');
+  });
+
+  it('redeemUsageReset: resultado com outcome desconhecido vira unexpected', async () => {
+    const { fetchFn } = fakeFetch(() => json({ outcome: 'maybe', message: 'x' }));
+    expect((await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', 'anthropic/1'))).kind).toBe('unexpected');
+  });
+
+  it('redeemUsageReset nunca repete o pedido sozinho', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json({ error: 'agent_timeout' }, 504));
+    await errorOf(clientWith(fetchFn).redeemUsageReset('s-1', 'anthropic/1'));
+    expect(calls).toHaveLength(1);
   });
 });

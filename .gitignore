@@ -22,3 +22,8 @@ e2e/screenshots/
 
 # Notas e contratos internos (locais, fora do git)
 /docs/
+
+# Nanachi Desktop: build outputs (stage = runtime folder to package, release = electron-builder output)
+/packages/desktop/stage/
+/packages/desktop/release/
+/packages/desktop/dist/

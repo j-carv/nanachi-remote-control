@@ -41,6 +41,46 @@ describe('ActionSheetPanel', () => {
     expect(html).toContain('data-tone="danger"');
   });
 
+  it('mostra um cabeçalho por sequência de ações da mesma seção, na ordem das ações', () => {
+    const html = render([
+      { label: 'Claude 4.5', section: 'Cursor', onSelect: noop },
+      { label: 'GPT-5', section: 'Cursor', onSelect: noop },
+      { label: 'Opus', section: 'Claude CLI', onSelect: noop },
+      { label: 'Enviar /model ao agente', onSelect: noop },
+    ]);
+
+    expect(html.match(/data-slot="action-sheet-section-title"/g)).toHaveLength(2);
+    expect(html.indexOf('>Cursor<')).toBeLessThan(html.indexOf('Claude 4.5'));
+    expect(html.indexOf('Claude 4.5')).toBeLessThan(html.indexOf('>Claude CLI<'));
+    expect(html.indexOf('>Claude CLI<')).toBeLessThan(html.indexOf('Enviar /model ao agente'));
+  });
+
+  it('o cabeçalho da seção fica fixo no topo da lista rolável, com o fundo da folha e acima das linhas', () => {
+    const html = render([
+      { label: 'Claude 4.5', section: 'Cursor', onSelect: noop },
+      { label: 'Opus', section: 'Claude CLI', onSelect: noop },
+    ]);
+
+    const classes = [...html.matchAll(/data-slot="action-sheet-section-title" class="([^"]*)"/g)].map(
+      (match) => (match[1] ?? '').split(/\s+/),
+    );
+
+    expect(classes).toHaveLength(2);
+    for (const list of classes) {
+      expect(list).toEqual(expect.arrayContaining(['sticky', 'top-0', 'z-10', 'bg-card']));
+    }
+  });
+
+  it('sem seções, não há cabeçalho nem classe de cabeçalho fixo', () => {
+    const html = render([
+      { label: 'Rápido', onSelect: noop },
+      { label: 'Potente', onSelect: noop },
+    ]);
+
+    expect(html).not.toContain('action-sheet-section-title');
+    expect(html).not.toContain('sticky');
+  });
+
   it('rótulos repetidos não quebram a renderização', () => {
     const html = render([
       { label: 'Sem argumento', onSelect: noop },

@@ -1,4 +1,5 @@
 import type { AvailableCommand, SessionConfigOption } from '@nanachi/shared';
+import { choiceLabel, modelGroupsOf } from './modelSource.js';
 
 /**
  * Lógica do menu de comandos do agente (sem React). Um comando vai como texto `/<nome> <args>`: o daemon não
@@ -183,6 +184,37 @@ export function parseHintChoices(hint: string | null): HintChoices | undefined {
 export function bareCommandName(text: string): string | undefined {
   const match = /^\/(\S+)$/.exec(text.trim());
   return match?.[1];
+}
+
+/** One row of the native picker sheet: a choice of a select option, ready to become an action sheet item. */
+export interface ConfigSheetChoice {
+  value: string;
+  label: string;
+  detail: string | undefined;
+  /** The option's current value. */
+  checked: boolean;
+  /** Provider header (model picker spanning several providers); undefined for flat lists. */
+  section: string | undefined;
+}
+
+/**
+ * Rows of the native picker sheet for a select option. A model picker that spans providers gets one section per
+ * provider, in the order of the select's `<optgroup>`s, with `name · vendor` labels. Every other list stays flat.
+ */
+export function configSheetChoices(
+  option: Extract<SessionConfigOption, { type: 'select' }>,
+): ConfigSheetChoice[] {
+  const groups = modelGroupsOf(option);
+  const row = (choice: (typeof option.options)[number], section: string | undefined): ConfigSheetChoice => ({
+    value: choice.value,
+    label: groups === undefined ? choice.name : choiceLabel(choice),
+    detail: choice.description ?? undefined,
+    checked: choice.value === option.currentValue,
+    section,
+  });
+  return groups === undefined
+    ? option.options.map((choice) => row(choice, undefined))
+    : groups.flatMap((group) => group.options.map((choice) => row(choice, group.providerLabel)));
 }
 
 /** A sheet that a picked or sent command opens instead of going into the composer as text. */

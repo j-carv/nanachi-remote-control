@@ -89,6 +89,23 @@ export const AgentsResponseSchema = z.object({
 export type AgentsResponse = z.infer<typeof AgentsResponseSchema>;
 
 /**
+ * Uma conta de um agente (várias contas por agente, PLAN.md). `id` "default" é a conta principal (`isDefault`).
+ * `active` marca a conta que sessões novas usam. Os demais campos têm o mesmo sentido de `AgentAccountSchema`.
+ */
+export const AgentProfileSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  isDefault: z.boolean(),
+  active: z.boolean(),
+  status: z.enum(['logged_in', 'logged_out', 'unknown']),
+  account: z.string().min(1).nullable(),
+  detail: z.string().min(1).nullable(),
+  checkedAt: z.number().int().nonnegative(),
+});
+
+export type AgentProfile = z.infer<typeof AgentProfileSchema>;
+
+/**
  * Conta logada em um agente, como o daemon vê. `unknown` = não deu para checar com segurança (ou o agente não tem
  * verificador). `account` é e-mail ou nome de conta; `detail` é organização, plano ou provedores. Nunca segredo.
  */
@@ -99,9 +116,51 @@ export const AgentAccountSchema = z.object({
   account: z.string().min(1).nullable(),
   detail: z.string().min(1).nullable(),
   checkedAt: z.number().int().nonnegative(),
+  /** Agente com contas extras (perfis). Os campos de cima descrevem sempre a conta principal. */
+  supportsAccounts: z.boolean().default(false),
+  /** Principal primeiro, depois as contas extras. Vazio quando `supportsAccounts` é false. */
+  profiles: z.array(AgentProfileSchema).default([]),
 });
 
 export type AgentAccount = z.infer<typeof AgentAccountSchema>;
+
+/** Nome de uma conta: recortado, 1 a 40 caracteres. */
+const AccountLabelSchema = z.string().trim().min(1).max(40);
+
+/** POST /api/agents/:agent/accounts (Bearer token). */
+export const CreateAgentAccountRequestSchema = z.object({
+  label: AccountLabelSchema,
+});
+
+export type CreateAgentAccountRequest = z.infer<typeof CreateAgentAccountRequestSchema>;
+
+/** PATCH /api/agents/:agent/accounts/:accountId (Bearer token). */
+export const RenameAgentAccountRequestSchema = z.object({
+  label: AccountLabelSchema,
+});
+
+export type RenameAgentAccountRequest = z.infer<typeof RenameAgentAccountRequestSchema>;
+
+/** PUT /api/agents/:agent/accounts/active (Bearer token). `default` é a conta principal. */
+export const SetActiveAccountRequestSchema = z.object({
+  accountId: z.string().min(1),
+});
+
+export type SetActiveAccountRequest = z.infer<typeof SetActiveAccountRequestSchema>;
+
+/** PUT /api/agents/:agent/accounts/active: a conta que ficou ativa. */
+export const ActiveAccountResponseSchema = z.object({
+  accountId: z.string().min(1),
+});
+
+export type ActiveAccountResponse = z.infer<typeof ActiveAccountResponseSchema>;
+
+/** PUT /api/sessions/:id/account (Bearer token). `default` é a conta principal. */
+export const SetSessionAccountRequestSchema = z.object({
+  accountId: z.string().min(1),
+});
+
+export type SetSessionAccountRequest = z.infer<typeof SetSessionAccountRequestSchema>;
 
 /** GET /api/agents/accounts[?refresh=1] (Bearer token). Uma entrada por agente do config, na ordem dele. */
 export const AgentAccountsResponseSchema = z.object({
@@ -109,6 +168,40 @@ export const AgentAccountsResponseSchema = z.object({
 });
 
 export type AgentAccountsResponse = z.infer<typeof AgentAccountsResponseSchema>;
+
+/**
+ * Login of one account (several accounts per agent, PLAN.md). `starting` = the login process is up and has not shown
+ * the link yet; `waiting` = there is a link to open (and, for Codex, a code); `verifying` = the login finished and the
+ * daemon is checking the account; the last three are final. `needsCode`: the CLI waits for the code pasted back
+ * (Claude). `output` = the last 4000 characters of the login output, without escapes and without the code the user
+ * pasted.
+ */
+export const AccountLoginStateSchema = z.object({
+  accountId: z.string().min(1),
+  state: z.enum(['starting', 'waiting', 'verifying', 'succeeded', 'failed', 'cancelled']),
+  url: z.string().min(1).nullable(),
+  userCode: z.string().min(1).nullable(),
+  needsCode: z.boolean(),
+  codeSent: z.boolean(),
+  output: z.string(),
+  error: z.string().min(1).nullable(),
+  /** E-mail (or name) of the connected account. Only when `state` is `succeeded`. */
+  account: z.string().min(1).nullable(),
+});
+
+export type AccountLoginState = z.infer<typeof AccountLoginStateSchema>;
+
+/** POST /api/agents/:agent/accounts/:accountId/login/code (Bearer token). The code is never returned or logged. */
+export const AccountLoginCodeRequestSchema = z.object({
+  code: z
+    .string()
+    .min(1)
+    .max(2000)
+    // No control characters (C0, DEL and C1): the code is typed into the login terminal.
+    .regex(/^[^\p{Cc}]+$/u),
+});
+
+export type AccountLoginCodeRequest = z.infer<typeof AccountLoginCodeRequestSchema>;
 
 /** GET /api/workspaces (Bearer token). */
 export const WorkspacesResponseSchema = z.object({
@@ -148,6 +241,8 @@ export const CreateSessionRequestSchema = z.object({
   resumeTitle: z.string().min(1).optional(),
   /** Só com `agent: "shell"`: qual shell abrir. Ausente = o padrão do PC (pwsh, senão powershell). */
   shell: ShellIdSchema.optional(),
+  /** Conta do agente para a sessão (`default` = principal). Ausente = a conta ativa do agente. */
+  accountId: z.string().min(1).optional(),
 });
 
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
@@ -282,6 +377,56 @@ export const UsageResponseSchema = z.object({
 });
 
 export type UsageResponse = z.infer<typeof UsageResponseSchema>;
+
+/**
+ * One spendable rate-limit reset, as a usage drawer row. `target` is opaque to the PWA and goes back unchanged on
+ * redeem. `usable` counts the resets that can be spent now; `available` the saved ones. `expiresAt` is text as the
+ * agent prints it (omp) or ISO-8601 (codex). `note` is the reason or error the agent gave.
+ */
+export const ResetEntrySchema = z.object({
+  target: z.string().min(1).max(200),
+  accountLabel: z.string().min(1),
+  providerLabel: z.string().min(1).nullable(),
+  available: z.number().int().nonnegative(),
+  usable: z.number().int().nonnegative(),
+  expiresAt: z.string().min(1).nullable(),
+  note: z.string().min(1).nullable(),
+  active: z.boolean(),
+});
+
+export type ResetEntry = z.infer<typeof ResetEntrySchema>;
+
+/**
+ * GET /api/sessions/:id/usage/resets (Bearer token): the saved resets of the agent's accounts. `message` carries the
+ * agent's line when there are no entries (e.g. "No provider accounts found..."). `cached: true` as in usage.
+ */
+export const ResetsResponseSchema = z.object({
+  agent: z.string().min(1),
+  entries: z.array(ResetEntrySchema),
+  message: z.string().min(1).nullable(),
+  fetchedAt: z.number().int().nonnegative(),
+  cached: z.literal(true).optional(),
+});
+
+export type ResetsResponse = z.infer<typeof ResetsResponseSchema>;
+
+/** POST /api/sessions/:id/usage/resets (Bearer token) body: the `target` of a row from the listing. */
+export const ResetRedeemRequestSchema = z.object({
+  target: z.string().min(1).max(200),
+});
+
+export type ResetRedeemRequest = z.infer<typeof ResetRedeemRequestSchema>;
+
+/**
+ * Result of a redeem. `reset` spent a credit; the others say why nothing was spent (`failed` = the agent did not
+ * confirm one of those; `message` is the agent's own line, ANSI removed, or a fixed text for codex).
+ */
+export const ResetRedeemResponseSchema = z.object({
+  outcome: z.enum(['reset', 'nothing_to_reset', 'no_credit', 'already_redeemed', 'failed']),
+  message: z.string(),
+});
+
+export type ResetRedeemResponse = z.infer<typeof ResetRedeemResponseSchema>;
 
 /**
  * Error body for any API route: `error` is the stable code (e.g. `file_changed`); `details` carries extra data when

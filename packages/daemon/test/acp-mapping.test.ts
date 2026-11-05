@@ -255,8 +255,8 @@ describe('flattenConfigOptions', () => {
         type: 'select',
         currentValue: 'a',
         options: [
-          { value: 'a', name: 'A', description: null },
-          { value: 'b', name: 'B', description: 'desc' },
+          { value: 'a', name: 'A', description: null, group: 'Grupo' },
+          { value: 'b', name: 'B', description: 'desc', group: 'Grupo' },
         ],
       },
       {
@@ -268,6 +268,73 @@ describe('flattenConfigOptions', () => {
         currentValue: true,
       },
     ]);
+  });
+
+  it('mantém o nome do grupo em cada opção agrupada', () => {
+    const options = flattenConfigOptions([
+      {
+        type: 'select',
+        id: 'model',
+        name: 'Modelo',
+        category: 'model',
+        currentValue: 'openrouter/x',
+        options: [
+          { group: 'openrouter', name: 'OpenRouter', options: [{ value: 'openrouter/x', name: 'X' }] },
+          { group: 'cursor', name: 'Cursor', options: [{ value: 'cursor/y', name: 'Y' }] },
+        ],
+      },
+    ]);
+
+    const model = options[0];
+    if (model?.type !== 'select') throw new Error('o select deveria sobreviver ao mapeamento');
+    expect(model.options).toEqual([
+      { value: 'openrouter/x', name: 'X', description: null, group: 'OpenRouter' },
+      { value: 'cursor/y', name: 'Y', description: null, group: 'Cursor' },
+    ]);
+  });
+
+  it('omite group quando o nome do grupo é vazio ou só espaços, e o select sobrevive', () => {
+    const options = flattenConfigOptions([
+      {
+        type: 'select',
+        id: 'model',
+        name: 'Modelo',
+        category: 'model',
+        currentValue: 'a',
+        options: [
+          { group: 'g0', name: '', options: [{ value: 'a', name: 'A' }] },
+          { group: 'g1', name: '   ', options: [{ value: 'b', name: 'B' }] },
+          { group: 'g2', name: '  Cursor ', options: [{ value: 'c', name: 'C' }] },
+        ],
+      },
+    ]);
+
+    const model = options[0];
+    if (model?.type !== 'select') throw new Error('o select deveria sobreviver ao mapeamento');
+    expect(model.options).toEqual([
+      { value: 'a', name: 'A', description: null },
+      { value: 'b', name: 'B', description: null },
+      { value: 'c', name: 'C', description: null, group: 'Cursor' },
+    ]);
+    expect(model.options[0]).not.toHaveProperty('group');
+    expect(model.options[1]).not.toHaveProperty('group');
+  });
+
+  it('não põe group nas opções de lista plana', () => {
+    const options = flattenConfigOptions([
+      {
+        type: 'select',
+        id: 'mode',
+        name: 'Modo',
+        category: 'mode',
+        currentValue: 'default',
+        options: [{ value: 'default', name: 'Padrão' }],
+      },
+    ]);
+
+    const mode = options[0];
+    if (mode?.type !== 'select') throw new Error('o select deveria sobreviver ao mapeamento');
+    expect(mode.options[0]).not.toHaveProperty('group');
   });
 
   it('descarta opção que não passa no schema compartilhado (ex.: nome vazio)', () => {

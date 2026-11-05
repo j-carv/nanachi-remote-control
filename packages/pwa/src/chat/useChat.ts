@@ -14,6 +14,7 @@ import type { ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
 import { writeAgentConfig } from '../agentConfig.js';
 import type { StorageLike } from '../machines.js';
+import { applyAccountReply } from './accountReply.js';
 import { applyEvents, createChatState, withStatus, type ChatState } from './reducer.js';
 import { loadHistory } from './history.js';
 import { pickLoop } from './loop.js';
@@ -54,6 +55,11 @@ export interface ChatController {
   cancel(): boolean;
   respond(requestId: string, optionId: string): boolean;
   setConfig(configId: string, value: ConfigValue): boolean;
+  /**
+   * Moves the session to another account (`default` = principal): the daemon stops the agent and resumes it there.
+   * Applies the session it answers with, except its status (the WebSocket reports that). A failure throws the `ApiError` (see `describeAccountError`).
+   */
+  setAccount(accountId: string): Promise<void>;
   /** The session's loop (Loop mode): GET on open, then the WS `loop` message. Null when there is no loop. */
   loop: Loop | null;
   /** The first loop state has arrived (GET or WS). Until then the chip and the sheet claim nothing. */
@@ -256,6 +262,12 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
 
     setConfig(configId, value) {
       return send({ type: 'set_config', sessionId, configId, value });
+    },
+
+    async setAccount(accountId) {
+      const next = await api.setSessionAccount(sessionId, accountId);
+      // The status stays with the WebSocket: the reply can be older than the last `session` message.
+      setSession((previous) => applyAccountReply(previous, next));
     },
 
     loop,

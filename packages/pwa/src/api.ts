@@ -1,10 +1,15 @@
 import {
+  AccountLoginCodeRequestSchema,
+  AccountLoginStateSchema,
+  ActiveAccountResponseSchema,
   AgentAccountsResponseSchema,
+  AgentProfileSchema,
   AgentSessionsResponseSchema,
   AgentsResponseSchema,
   AttachmentResponseSchema,
   CommandsResponseSchema,
   ConfigOptionsResponseSchema,
+  CreateAgentAccountRequestSchema,
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DevicesResponseSchema,
@@ -26,10 +31,16 @@ import {
   PushKeyResponseSchema,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
+  ResetRedeemRequestSchema,
+  ResetRedeemResponseSchema,
+  ResetsResponseSchema,
+  RenameAgentAccountRequestSchema,
   RootsResponseSchema,
   SessionDiffResponseSchema,
   SessionSchema,
   SessionsResponseSchema,
+  SetActiveAccountRequestSchema,
+  SetSessionAccountRequestSchema,
   UpdateWorkspaceRequestSchema,
   UsageResponseSchema,
   WorkspaceEntriesResponseSchema,
@@ -39,7 +50,9 @@ import {
   WorkspaceInfoResponseSchema,
   WorkspaceSchema,
   WorkspacesResponseSchema,
+  type AccountLoginState,
   type AgentAccount,
+  type AgentProfile,
   type AgentSessionsResponse,
   type AgentsResponse,
   type AttachmentResponse,
@@ -57,6 +70,8 @@ import {
   type LoopRequest,
   type PairResponse,
   type PushSubscriptionRequest,
+  type ResetRedeemResponse,
+  type ResetsResponse,
   type RootsResponse,
   type Session,
   type SessionDiffResponse,
@@ -71,6 +86,7 @@ import {
   type WorkspaceInfoResponse,
 } from '@nanachi/shared';
 import { z } from 'zod';
+import { invalidateAgentAccounts } from './agentAccountsCache.js';
 import { normalizeBaseUrl } from './machines.js';
 import { blobTypeOf } from './files/blobType.js';
 
@@ -304,6 +320,24 @@ export interface ApiClient {
   fetchShells(): Promise<ShellsResponse['shells']>;
   /** Conta logada em cada agente do config. `refresh` ignora o cache de 5 min do daemon. */
   agentAccounts(refresh: boolean): Promise<AgentAccount[]>;
+  /** Adds an account to an agent that supports them (`label`: 1 to 40 characters, trimmed). It starts logged out. */
+  createAgentAccount(agentId: string, label: string): Promise<AgentProfile>;
+  /** Renames an extra account. The principal (`default`) has no editable name: the daemon answers 400. */
+  renameAgentAccount(agentId: string, accountId: string, label: string): Promise<AgentProfile>;
+  /** Removes an extra account. 409 `account_in_use` while a session is working on it. */
+  deleteAgentAccount(agentId: string, accountId: string): Promise<void>;
+  /** The account new sessions of the agent use (`default` = principal). Returns the id the daemon saved. */
+  setActiveAgentAccount(agentId: string, accountId: string): Promise<string>;
+  /** Starts the login of an account (`default` logs the principal in again). Already running for it: its current state. */
+  startAccountLogin(agentId: string, accountId: string): Promise<AccountLoginState>;
+  /** State of the account's login. 404 `not_found` when the daemon no longer remembers one. */
+  fetchAccountLogin(agentId: string, accountId: string): Promise<AccountLoginState>;
+  /** Cancels the running login of the account. */
+  cancelAccountLogin(agentId: string, accountId: string): Promise<void>;
+  /** Types the code the user pasted into a login that waits for one (Claude). Trimmed here: the daemon does not. */
+  sendAccountLoginCode(agentId: string, accountId: string, code: string): Promise<AccountLoginState>;
+  /** Moves a session to another account (`default` = principal). 409 `session_busy` while the agent is working. */
+  setSessionAccount(sessionId: string, accountId: string): Promise<Session>;
   listWorkspaces(): Promise<Workspace[]>;
   createWorkspace(input: CreateWorkspaceRequest): Promise<Workspace>;
   deleteWorkspace(id: string): Promise<void>;
@@ -322,6 +356,16 @@ export interface ApiClient {
    * Writes nothing to the session and does not resume it: a stopped session answers `session_not_active`.
    */
   fetchSessionUsage(sessionId: string): Promise<UsageResponse>;
+  /**
+   * Saved rate-limit resets of the session's agent (omp and codex only; other agents answer 400 `resets_unsupported`).
+   * Read-only: writes nothing to the session and does not resume it.
+   */
+  getUsageResets(sessionId: string): Promise<ResetsResponse>;
+  /**
+   * Spends one saved reset (`target` of a row from `getUsageResets`). Irreversible and sent once: it is never retried
+   * here. A 504 or a network error means the reset may or may not have been spent; the caller must say so.
+   */
+  redeemUsageReset(sessionId: string, target: string): Promise<ResetRedeemResponse>;
   /**
    * Envia um arquivo do celular para a sessão (corpo cru, com progresso via XHR).
    * Devolve o arquivo gravado no PC, para ser citado no `prompt`.
@@ -478,6 +522,12 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
   const authorization = `Bearer ${options.token}`;
   const createXhr: XhrFactory = options.createXhr ?? (() => new XMLHttpRequest());
 
+  /** A login that worked adds an account (or makes one logged in): the stored list of accounts is out of date. */
+  const connectedLogin = (login: AccountLoginState): AccountLoginState => {
+    if (login.state === 'succeeded') invalidateAgentAccounts(baseUrl);
+    return login;
+  };
+
   async function call(method: Method, path: string, body?: unknown): Promise<Response> {
     const headers: Record<string, string> = { authorization };
     const init: RequestInit = { method, headers };
@@ -562,6 +612,90 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       return accounts;
     },
 
+    async createAgentAccount(agentId, label) {
+      const request = CreateAgentAccountRequestSchema.safeParse({ label });
+      if (!request.success) throw new ApiError('invalid_input');
+      try {
+        return await postJson(AgentProfileSchema, `/api/agents/${pathId(agentId)}/accounts`, request.data);
+      } finally {
+        invalidateAgentAccounts(baseUrl);
+      }
+    },
+
+    async renameAgentAccount(agentId, accountId, label) {
+      const request = RenameAgentAccountRequestSchema.safeParse({ label });
+      if (!request.success) throw new ApiError('invalid_input');
+      try {
+        return await readBody(
+          await call('PATCH', `/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}`, request.data),
+          AgentProfileSchema,
+        );
+      } finally {
+        invalidateAgentAccounts(baseUrl);
+      }
+    },
+
+    async deleteAgentAccount(agentId, accountId) {
+      try {
+        await remove(`/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}`);
+      } finally {
+        invalidateAgentAccounts(baseUrl);
+      }
+    },
+
+    async setActiveAgentAccount(agentId, accountId) {
+      const request = SetActiveAccountRequestSchema.safeParse({ accountId });
+      if (!request.success) throw new ApiError('invalid_input');
+      try {
+        const saved = await readBody(
+          await call('PUT', `/api/agents/${pathId(agentId)}/accounts/active`, request.data),
+          ActiveAccountResponseSchema,
+        );
+        return saved.accountId;
+      } finally {
+        invalidateAgentAccounts(baseUrl);
+      }
+    },
+
+    async startAccountLogin(agentId, accountId) {
+      return connectedLogin(
+        await postJson(
+          AccountLoginStateSchema,
+          `/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}/login`,
+          undefined,
+        ),
+      );
+    },
+
+    async fetchAccountLogin(agentId, accountId) {
+      return connectedLogin(
+        await getJson(AccountLoginStateSchema, `/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}/login`),
+      );
+    },
+
+    async cancelAccountLogin(agentId, accountId) {
+      await remove(`/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}/login`);
+    },
+
+    async sendAccountLoginCode(agentId, accountId, code) {
+      // The daemon types the code as it arrives, so a pasted trailing space or newline would break it.
+      const request = AccountLoginCodeRequestSchema.safeParse({ code: code.trim() });
+      if (!request.success) throw new ApiError('invalid_input');
+      return connectedLogin(
+        await postJson(
+          AccountLoginStateSchema,
+          `/api/agents/${pathId(agentId)}/accounts/${pathId(accountId)}/login/code`,
+          request.data,
+        ),
+      );
+    },
+
+    async setSessionAccount(sessionId, accountId) {
+      const request = SetSessionAccountRequestSchema.safeParse({ accountId });
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(await call('PUT', `/api/sessions/${pathId(sessionId)}/account`, request.data), SessionSchema);
+    },
+
     async listWorkspaces() {
       const { workspaces } = await getJson(WorkspacesResponseSchema, '/api/workspaces');
       return workspaces;
@@ -620,6 +754,16 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
 
     async fetchSessionUsage(sessionId) {
       return postJson(UsageResponseSchema, `/api/sessions/${pathId(sessionId)}/usage`, undefined);
+    },
+
+    async getUsageResets(sessionId) {
+      return getJson(ResetsResponseSchema, `/api/sessions/${pathId(sessionId)}/usage/resets`);
+    },
+
+    async redeemUsageReset(sessionId, target) {
+      const request = ResetRedeemRequestSchema.safeParse({ target });
+      if (!request.success) throw new ApiError('invalid_input');
+      return postJson(ResetRedeemResponseSchema, `/api/sessions/${pathId(sessionId)}/usage/resets`, request.data);
     },
 
     async fetchEvents(sessionId, query) {

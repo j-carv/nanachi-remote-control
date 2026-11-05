@@ -97,3 +97,21 @@ describe('ChatItemView: mensagem do usuário', () => {
     expect(render(items[0])).toContain('Loop #2');
   });
 });
+
+describe('ChatItemView: troca de conta', () => {
+  it('mostra "Conta trocada para <nome>" como linha centralizada e discreta', () => {
+    const items = itemsOf([ev(1, { kind: 'account_changed', accountId: 'a-1', label: 'Trabalho' })]);
+    const html = render(items[0]);
+    expect(html).toContain('data-slot="account-changed"');
+    expect(html).toContain('Conta trocada para Trabalho');
+    expect(html).toContain('text-center');
+    expect(html).toContain('text-muted-foreground');
+  });
+
+  it('o nome da conta vai como texto, nunca como HTML', () => {
+    const items = itemsOf([ev(1, { kind: 'account_changed', accountId: 'a-1', label: '<b>x</b>' })]);
+    const html = render(items[0]);
+    expect(html).not.toContain('<b>x</b>');
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+});

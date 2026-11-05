@@ -37,9 +37,11 @@ function tableNames(database: Database.Database): string[] {
 }
 
 describe('openDatabase', () => {
-  it('cria as tabelas das migrações 1 a 8 e fixa user_version em 8', () => {
+  it('cria as tabelas das migrações 1 a 9 e fixa user_version em 9', () => {
     db = openDatabase(join(dir, 'data.db'));
     expect(tableNames(db)).toEqual([
+      'agent_accounts',
+      'agent_active_account',
       'devices',
       'events',
       'files',
@@ -50,7 +52,28 @@ describe('openDatabase', () => {
       'sessions',
       'workspaces',
     ]);
-    expect(db.pragma('user_version', { simple: true })).toBe(8);
+    expect(db.pragma('user_version', { simple: true })).toBe(9);
+  });
+
+  it('migração 9: sessions.account_id é TEXT anulável (sem conta = NULL, a principal), e as contas de agente são únicas por id', () => {
+    db = openDatabase(join(dir, 'data.db'));
+    const column = db
+      .prepare<[], { name: string; type: string; notnull: number }>('PRAGMA table_info(sessions)')
+      .all()
+      .find((row) => row.name === 'account_id');
+    expect(column).toEqual({ cid: expect.any(Number), name: 'account_id', type: 'TEXT', notnull: 0, dflt_value: null, pk: 0 });
+    const accounts = db
+      .prepare<[], { name: string; pk: number }>('PRAGMA table_info(agent_accounts)')
+      .all()
+      .filter((row) => row.pk === 1)
+      .map((row) => row.name);
+    expect(accounts).toEqual(['id']);
+    const active = db
+      .prepare<[], { name: string; pk: number }>('PRAGMA table_info(agent_active_account)')
+      .all()
+      .filter((row) => row.pk === 1)
+      .map((row) => row.name);
+    expect(active).toEqual(['agent']);
   });
 
   it('migração 5: sessions.worktree é TEXT anulável (sem worktree = NULL)', () => {
@@ -157,7 +180,7 @@ describe('openDatabase', () => {
     db.close();
 
     db = openDatabase(join(dir, 'data.db'));
-    expect(db.pragma('user_version', { simple: true })).toBe(8);
+    expect(db.pragma('user_version', { simple: true })).toBe(9);
     expect(ensureMachine(db, 'PC').name).toBe('PC');
   });
 

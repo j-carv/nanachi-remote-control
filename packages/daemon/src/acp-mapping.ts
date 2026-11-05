@@ -88,12 +88,23 @@ function toSharedOption(option: acp.SessionConfigOption): unknown {
     return { ...base, type: 'boolean', currentValue: option.currentValue };
   }
   const entries: Array<acp.SessionConfigSelectOption | acp.SessionConfigSelectGroup> = option.options;
-  const flat = entries.flatMap((entry) => ('group' in entry ? entry.options : [entry]));
+  // Grouped options keep the group's display name (e.g. the provider in Oh My Pi); flat options carry no `group`.
+  // A blank group name would fail `SelectOptionSchema.group` (min 1) and drop the whole select, so it is omitted.
+  const flat = entries.flatMap((entry): Array<{ item: acp.SessionConfigSelectOption; group: string | undefined }> => {
+    if (!('group' in entry)) return [{ item: entry, group: undefined }];
+    const group = entry.name.trim();
+    return entry.options.map((item) => ({ item, group: group === '' ? undefined : group }));
+  });
   return {
     ...base,
     type: 'select',
     currentValue: option.currentValue,
-    options: flat.map((item) => ({ value: item.value, name: item.name, description: item.description ?? null })),
+    options: flat.map(({ item, group }) => ({
+      value: item.value,
+      name: item.name,
+      description: item.description ?? null,
+      ...(group === undefined ? {} : { group }),
+    })),
   };
 }
 

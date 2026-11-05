@@ -96,6 +96,19 @@ const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE devices ADD COLUMN pair_method TEXT NOT NULL DEFAULT 'code' CHECK (pair_method IN ('code', 'tailscale'));
   `,
+  `
+  CREATE TABLE agent_accounts (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    label TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE agent_active_account (
+    agent TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL
+  );
+  ALTER TABLE sessions ADD COLUMN account_id TEXT NULL;
+  `,
 ];
 
 /** Abre (criando a pasta se preciso) o SQLite do daemon e aplica as migrações pendentes. */

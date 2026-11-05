@@ -20,6 +20,10 @@ import {
   PushKeyResponseSchema,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
+  ResetEntrySchema,
+  ResetRedeemRequestSchema,
+  ResetRedeemResponseSchema,
+  ResetsResponseSchema,
   RootsResponseSchema,
   SessionDiffResponseSchema,
   SessionsResponseSchema,
@@ -134,6 +138,7 @@ const session = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'starting',
+  accountId: null,
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -700,6 +705,103 @@ describe('UsageResponseSchema', () => {
 
   it('rejeita cached com outro valor', () => {
     expect(UsageResponseSchema.safeParse({ ...body, cached: false }).success).toBe(false);
+  });
+});
+
+describe('ResetEntrySchema', () => {
+  const entry = {
+    target: 'anthropic/1',
+    accountLabel: 'fake@example.com · Org',
+    providerLabel: 'Anthropic',
+    available: 2,
+    usable: 1,
+    expiresAt: 'in 3 days',
+    note: 'exhausted',
+    active: true,
+  };
+
+  it('aceita uma entrada completa', () => {
+    expect(ResetEntrySchema.parse(entry)).toEqual(entry);
+  });
+
+  it('aceita providerLabel, expiresAt e note nulos', () => {
+    const plain = { ...entry, providerLabel: null, expiresAt: null, note: null, active: false };
+    expect(ResetEntrySchema.parse(plain)).toEqual(plain);
+  });
+
+  it('rejeita contagens negativas ou fracionárias', () => {
+    expect(ResetEntrySchema.safeParse({ ...entry, available: -1 }).success).toBe(false);
+    expect(ResetEntrySchema.safeParse({ ...entry, usable: 1.5 }).success).toBe(false);
+  });
+
+  it('rejeita target vazio ou com mais de 200 caracteres', () => {
+    expect(ResetEntrySchema.safeParse({ ...entry, target: '' }).success).toBe(false);
+    expect(ResetEntrySchema.safeParse({ ...entry, target: 'x'.repeat(201) }).success).toBe(false);
+  });
+
+  it('rejeita active fora de boolean', () => {
+    expect(ResetEntrySchema.safeParse({ ...entry, active: 'yes' }).success).toBe(false);
+  });
+});
+
+describe('ResetsResponseSchema', () => {
+  const entry = {
+    target: 'openai-codex/next',
+    accountLabel: 'Conta',
+    providerLabel: 'OpenAI Codex',
+    available: 1,
+    usable: 1,
+    expiresAt: null,
+    note: null,
+    active: true,
+  };
+  const body = { agent: 'omp', entries: [entry], message: null, fetchedAt: 1_700_000_000_000 };
+
+  it('aceita a lista com entradas', () => {
+    expect(ResetsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('aceita lista vazia com a mensagem do agente', () => {
+    const empty = { ...body, entries: [], message: 'No provider accounts found. Use /login to add one.' };
+    expect(ResetsResponseSchema.parse(empty)).toEqual(empty);
+  });
+
+  it('aceita cached: true (resposta do cache) e omitido (leitura nova)', () => {
+    expect(ResetsResponseSchema.parse({ ...body, cached: true })).toEqual({ ...body, cached: true });
+    expect(ResetsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejeita cached com outro valor', () => {
+    expect(ResetsResponseSchema.safeParse({ ...body, cached: false }).success).toBe(false);
+  });
+
+  it('rejeita entradas com formato inválido', () => {
+    expect(ResetsResponseSchema.safeParse({ ...body, entries: [{ target: 'x' }] }).success).toBe(false);
+  });
+});
+
+describe('ResetRedeemRequestSchema', () => {
+  it('aceita um target não vazio', () => {
+    expect(ResetRedeemRequestSchema.parse({ target: 'anthropic/1' })).toEqual({ target: 'anthropic/1' });
+  });
+
+  it('rejeita target ausente, vazio ou longo demais', () => {
+    expect(ResetRedeemRequestSchema.safeParse({}).success).toBe(false);
+    expect(ResetRedeemRequestSchema.safeParse({ target: '' }).success).toBe(false);
+    expect(ResetRedeemRequestSchema.safeParse({ target: 'x'.repeat(201) }).success).toBe(false);
+  });
+});
+
+describe('ResetRedeemResponseSchema', () => {
+  it('aceita cada resultado possível', () => {
+    for (const outcome of ['reset', 'nothing_to_reset', 'no_credit', 'already_redeemed', 'failed']) {
+      const body = { outcome, message: 'Reset applied for fake@example.com (Anthropic).' };
+      expect(ResetRedeemResponseSchema.parse(body)).toEqual(body);
+    }
+  });
+
+  it('rejeita resultado fora da lista', () => {
+    expect(ResetRedeemResponseSchema.safeParse({ outcome: 'nothingToReset', message: '' }).success).toBe(false);
   });
 });
 

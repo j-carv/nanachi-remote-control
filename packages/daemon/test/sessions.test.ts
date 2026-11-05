@@ -104,6 +104,7 @@ describe('GET /api/workspaces/:id/sessions', () => {
       kind: 'acp',
       title: 'Título',
       status: 'running',
+      accountId: null,
       worktree: null,
       createdAt: 30,
       updatedAt: 31,

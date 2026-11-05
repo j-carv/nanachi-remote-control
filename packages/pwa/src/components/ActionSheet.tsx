@@ -15,7 +15,25 @@ export interface ActionSheetItem {
   mono?: boolean | undefined;
   /** Option row: when defined, `aria-current` marks the current value and a check mark shows it. */
   checked?: boolean | undefined;
+  /** Header shown above the first of a run of consecutive items with the same section (e.g. a model's provider). */
+  section?: string | undefined;
   onSelect(): void;
+}
+
+interface ActionSection {
+  title: string | undefined;
+  entries: Array<{ item: ActionSheetItem; index: number }>;
+}
+
+/** Splits the items into runs of the same `section`, keeping their order. Items without a section form one run. */
+function sectionsOf(items: readonly ActionSheetItem[]): ActionSection[] {
+  const sections: ActionSection[] = [];
+  items.forEach((item, index) => {
+    const last = sections.at(-1);
+    if (last !== undefined && last.title === item.section) last.entries.push({ item, index });
+    else sections.push({ title: item.section, entries: [{ item, index }] });
+  });
+  return sections;
 }
 
 interface ActionSheetPanelProps {
@@ -37,29 +55,43 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
     <div className="flex flex-col gap-2 px-3 pt-1 pb-[max(env(safe-area-inset-bottom),12px)]">
       <div className="overflow-hidden rounded-xl bg-card">
         <p data-slot="action-sheet-title" className="border-b border-border px-4 py-3 text-center text-sm text-muted-foreground">{title}</p>
-        <div className="max-h-[60dvh] divide-y divide-border overflow-y-auto">
-          {items.map((item, index) => (
-            <button
-              key={`${index}-${item.label}`}
-              type="button"
-              data-slot="action-sheet-item"
-              data-tone={item.tone}
-              data-mono={item.mono === true ? 'true' : undefined}
-              aria-current={item.checked === true ? 'true' : undefined}
-              className={cn(
-                'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-colors hover:bg-accent active:bg-accent',
-                item.tone === 'danger' && 'text-destructive',
-                item.tone === 'muted' && 'text-muted-foreground',
-                item.mono === true && 'font-mono text-[15px]',
+        <div className="max-h-[60dvh] overflow-y-auto">
+          {sectionsOf(items).map((section, sectionIndex) => (
+            <div key={sectionIndex} className={cn(sectionIndex > 0 && 'border-t border-border')}>
+              {section.title !== undefined && (
+                <p
+                  data-slot="action-sheet-section-title"
+                  className="sticky top-0 z-10 bg-card px-4 pt-3 pb-1 text-sm text-muted-foreground"
+                >
+                  {section.title}
+                </p>
               )}
-              onClick={() => onPick(item.onSelect)}
-            >
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span data-slot="action-sheet-label" className="truncate">{item.label}</span>
-                {item.detail !== undefined && <span className="text-sm text-muted-foreground">{item.detail}</span>}
-              </span>
-              {item.checked === true && <Check className="size-5 shrink-0" aria-hidden="true" data-check="true" />}
-            </button>
+              <div className="divide-y divide-border">
+                {section.entries.map(({ item, index }) => (
+                  <button
+                    key={`${index}-${item.label}`}
+                    type="button"
+                    data-slot="action-sheet-item"
+                    data-tone={item.tone}
+                    data-mono={item.mono === true ? 'true' : undefined}
+                    aria-current={item.checked === true ? 'true' : undefined}
+                    className={cn(
+                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-colors hover:bg-accent active:bg-accent',
+                      item.tone === 'danger' && 'text-destructive',
+                      item.tone === 'muted' && 'text-muted-foreground',
+                      item.mono === true && 'font-mono text-[15px]',
+                    )}
+                    onClick={() => onPick(item.onSelect)}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span data-slot="action-sheet-label" className="truncate">{item.label}</span>
+                      {item.detail !== undefined && <span className="text-sm text-muted-foreground">{item.detail}</span>}
+                    </span>
+                    {item.checked === true && <Check className="size-5 shrink-0" aria-hidden="true" data-check="true" />}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>

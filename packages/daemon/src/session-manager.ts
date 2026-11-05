@@ -12,6 +12,8 @@ import {
   type FileInfo,
   type Loop,
   type LoopRequest,
+  type ResetRedeemResponse,
+  type ResetsResponse,
   type ServerMessage,
   type Session,
   type SessionConfigOption,
@@ -47,6 +49,8 @@ import {
   type RestoreMethod,
 } from './acp-mapping.js';
 import type { ToolCallMemory } from './tool-background.js';
+import { AccountSelectionError, type AccountLauncher } from './accounts/launch.js';
+import { mergeEnv } from './agent-env.js';
 import { AgentImages } from './agent-images.js';
 import { agentBinDirs, phoneSendBinDir, withPathPrepended } from './agent-path.js';
 import { USAGE_CACHE_MS, USAGE_CANCEL_GRACE_MS, USAGE_IDLE_MS, USAGE_TIMEOUT_MS, usageCommandOf } from './agent-usage.js';
@@ -80,8 +84,16 @@ import {
 } from './repository.js';
 import { OutputBatcher, TERMINAL_RETENTION_BYTES } from './terminal-output.js';
 import { UsageProbe, UsageProbeError } from './usage-probe.js';
+import { ResetError, ResetService, type ResetTarget } from './reset-service.js';
+import { resetSourceOf } from './usage-resets.js';
 
 export const DEFAULT_TITLE = 'Nova sessão';
+
+/** Erro de reset vira SessionError (o HTTP responde o código); qualquer outro erro segue como bug. */
+function sessionErrorOf(error: unknown): unknown {
+  if (error instanceof ResetError) return new SessionError(error.code, error.message);
+  return error;
+}
 /** Teto de sessões vivas (não stopped/error) por daemon: cada uma é um processo (agente ACP ou terminal). */
 export const MAX_LIVE_SESSIONS = 8;
 const START_TIMEOUT_MS = 60_000;
@@ -93,6 +105,23 @@ const TERMINAL_ROWS = 24;
 const TERMINAL_GONE = 'terminal não está mais ativo';
 /** Status sem processo: a sessão está parada ou com erro, e pode ser retomada. */
 const TERMINAL_STATUSES: readonly SessionStatus[] = ['stopped', 'error'];
+/** Status em que o agente está trabalhando: a conta da sessão não troca nesses (o processo ainda usa a pasta dela). */
+const ACCOUNT_BUSY_STATUSES: readonly SessionStatus[] = ['starting', 'running', 'awaiting_permission'];
+/**
+ * The account a process, a resume or a start that is still being reserved belongs to. `accountId` null is the principal.
+ * `isAccountInUse` reads these: the sessions table alone does not know about a resume that has not written `starting`.
+ */
+interface AccountClaim {
+  agent: string;
+  accountId: string | null;
+}
+
+/** Account of a process about to start: the claim, and the env that points the agent at the account folder. */
+interface AccountLaunch {
+  claim: AccountClaim;
+  env: NodeJS.ProcessEnv;
+}
+
 /** Erro do prompt numa sessão que não pode ser retomada (PTY, sem acp_session_id, agente sem loadSession/resume). */
 const NOT_RESUMABLE_PROMPT_MESSAGE = 'sessão encerrada e não pode ser retomada; crie uma nova';
 
@@ -135,6 +164,9 @@ export type SessionErrorCode =
   | 'worktree_dirty'
   | 'session_not_active'
   | 'usage_unsupported'
+  | 'resets_unsupported'
+  | 'reset_in_progress'
+  | 'accounts_unsupported'
   | 'loop_not_found'
   | 'loop_finished'
   | 'loop_busy'
@@ -192,6 +224,10 @@ export interface SessionManagerOptions {
   usageIdleMs?: number | undefined;
   /** `<NANACHI_HOME>/usage-probe`: pasta de trabalho dos processos de uso, fora dos projetos. */
   usageProbeRoot: string;
+  /** Versão do daemon (clientInfo do app-server do codex, resets). */
+  appVersion: string;
+  /** Contas dos agentes: qual conta cada sessão usa, o preparo da pasta do perfil e o env que aponta para ela. */
+  accounts: AccountLauncher;
 }
 
 /** Pedido de importação: `CreateSessionRequest` com a sessão do agente a retomar. */
@@ -235,6 +271,8 @@ interface LiveSession {
   readonly connection: acp.ClientConnection;
   /** Resolve quando o processo sai (ou falha ao subir). Usado para esperar o kill. */
   readonly exited: Promise<void>;
+  /** The account folder this process was started on. */
+  readonly claim: AccountClaim;
   acpSessionId: string | undefined;
   configOptions: SessionConfigOption[];
   /** Agente anunciou só `modes`: a opção "mode" foi sintetizada e troca por session/set_mode. */
@@ -246,6 +284,8 @@ interface LiveSession {
   replaying: boolean;
   /** `promptCapabilities.image` do initialize: imagens de anexo vão inline no prompt. */
   promptImage: boolean;
+  /** O agente sabe retomar sessão (load ou resume), conhecido depois do initialize. Sem isso a conta não troca com o processo vivo. */
+  restorable: boolean | undefined;
   /** Só na importação: o replay do load vira eventos em vez de ser descartado. */
   history: HistoryRecord | undefined;
   /** Sessão criada pelo app e ainda sem primeiro prompt: esse prompt leva o aviso do phone-send. */
@@ -264,6 +304,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     timer = setTimeout(() => reject(new Error(`timeout (${ms} ms) em ${label}`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Chave dos resets de uma conta extra do codex (cache e resgate em curso): `<agente>:<conta>`. */
+function resetKeyOf(agentId: string, accountId: string): string {
+  return `${agentId}:${accountId}`;
 }
 
 function exitReason(code: number | null, signal: NodeJS.Signals | null): string {
@@ -289,14 +334,17 @@ export class SessionManager {
    * Vagas reservadas: criações e retomadas em curso, ainda sem linha viva no banco (o worktree é criado com await),
    * mas já contam para o teto de sessões.
    */
-  private readonly reserved = new Set<string>();
+  private readonly reserved = new Map<string, AccountClaim | undefined>();
   /** Retomadas em curso, por sessão: quem chega enquanto uma roda espera a mesma (ver resumeOnce). */
   private readonly resumes = new Map<string, Promise<ResumeOutcome>>();
+  /** Sessões no meio de uma troca de conta (parar o agente e retomar): outra troca espera. A conta de antes e a de depois. */
+  private readonly switching = new Map<string, readonly AccountClaim[]>();
   private readonly agentTokens = new AgentTokens();
   /** Agentes com uma listagem em andamento (no máximo uma por agente). */
   private readonly listing = new Set<string>();
   private readonly agentListTimeoutMs: number;
   private readonly usageProbe: UsageProbe;
+  private readonly resets: ResetService;
   private readonly agentImages: AgentImages;
   private readonly loops: LoopRunner;
 
@@ -320,16 +368,31 @@ export class SessionManager {
     this.loops.restore();
     this.usageProbe = new UsageProbe({
       root: options.usageProbeRoot,
-      launch: (agent, cwd, onUpdate) =>
-        this.spawnTemporary(agent, cwd, {
-          onSessionUpdate: onUpdate,
-          onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
-        }),
+      launch: (agent, cwd, onUpdate, account) =>
+        this.spawnTemporary(
+          agent,
+          cwd,
+          {
+            onSessionUpdate: onUpdate,
+            onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
+          },
+          options.accounts.env(account.agentId, account.accountId),
+        ),
+      prepare: (agentId, accountId) => options.accounts.prepare(agentId, accountId),
+      blocked: (agentId, accountId) => options.accounts.isRemoving(agentId, accountId),
       log: options.log,
       timeoutMs: options.usageTimeoutMs ?? USAGE_TIMEOUT_MS,
       cacheMs: options.usageCacheMs ?? USAGE_CACHE_MS,
       idleMs: options.usageIdleMs ?? USAGE_IDLE_MS,
       cancelGraceMs: USAGE_CANCEL_GRACE_MS,
+    });
+    this.resets = new ResetService({
+      usage: this.usageProbe,
+      workRoot: options.usageProbeRoot,
+      appVersion: options.appVersion,
+      timeoutMs: options.usageTimeoutMs ?? USAGE_TIMEOUT_MS,
+      cacheMs: options.usageCacheMs ?? USAGE_CACHE_MS,
+      log: options.log,
     });
     this.agentImages = new AgentImages({
       db: options.db,
@@ -349,11 +412,13 @@ export class SessionManager {
     const workspace = findWorkspaceById(db, input.workspaceId);
     if (workspace === undefined) throw new SessionError('not_found', 'workspace não encontrado');
     const agent = this.agentOf(input.agent);
+    const accountId = this.chooseAccount(input.agent, input.accountId);
     this.requireFreeSlot();
 
     const id = randomUUID();
     // Reserva a vaga já: o worktree é criado com await, e outra criação não pode passar do teto nesse intervalo.
-    this.reserved.add(id);
+    // A reserva também diz de que conta é (remover a conta enquanto isso é recusado).
+    this.reserved.set(id, { agent: input.agent, accountId });
     let worktree: Worktree | null;
     try {
       worktree = input.worktree === true ? await this.createWorktree(workspace, id) : null;
@@ -366,6 +431,7 @@ export class SessionManager {
         status: 'starting',
         createdAt: Date.now(),
         worktree,
+        accountId,
       });
     } finally {
       this.reserved.delete(id);
@@ -402,6 +468,7 @@ export class SessionManager {
       }
       throw new SessionError('not_found', 'pasta do workspace não existe mais');
     }
+    this.chooseAccount(SHELL_AGENT_ID, input.accountId);
     const shell = chooseShell(localShells(), input.shell);
     if (shell === undefined) {
       const detail = input.shell === undefined ? 'nenhum shell encontrado neste PC' : `shell ${input.shell} não encontrado neste PC`;
@@ -410,7 +477,7 @@ export class SessionManager {
     this.requireFreeSlot();
 
     const id = randomUUID();
-    this.reserved.add(id);
+    this.reserved.set(id, undefined);
     let worktree: Worktree | null;
     try {
       worktree = input.worktree === true ? await this.createWorktree(workspace, id) : null;
@@ -546,7 +613,7 @@ export class SessionManager {
       return { session: this.load(sessionId), failure };
     }
 
-    this.reserved.add(sessionId);
+    this.reserved.set(sessionId, { agent: session.agent, accountId: session.accountId });
     let failure: string | undefined;
     try {
       const savedOptions = findSessionConfigOptions(this.options.db, sessionId) ?? [];
@@ -779,12 +846,64 @@ export class SessionManager {
     const command = usageCommandOf(session.agent);
     if (command === undefined) throw new SessionError('usage_unsupported', 'agente sem comando de uso');
     const agent = this.agentOf(session.agent);
+    const accountId = this.options.accounts.effective(session.agent, session.accountId);
     try {
-      return await this.usageProbe.read(session.agent, agent, command);
+      return await this.usageProbe.read(session.agent, agent, command, accountId);
     } catch (error) {
       if (error instanceof UsageProbeError) throw new SessionError(error.code, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Resets salvos da sessão (omp ou codex; ver reset-service.ts). Não toca a sessão: nada é gravado nem transmitido,
+   * e a sessão não é retomada.
+   */
+  async resetsOf(sessionId: string): Promise<ResetsResponse> {
+    const target = this.resetTargetOf(sessionId);
+    try {
+      return await this.resets.list(target);
+    } catch (error) {
+      throw sessionErrorOf(error);
+    }
+  }
+
+  /** Gasta um reset salvo da sessão (`target` de uma linha da listagem). Ver ResetService.redeem. */
+  async redeemReset(sessionId: string, target: string): Promise<ResetRedeemResponse> {
+    const resetTarget = this.resetTargetOf(sessionId);
+    try {
+      return await this.resets.redeem(resetTarget, target);
+    } catch (error) {
+      throw sessionErrorOf(error);
+    }
+  }
+
+  /**
+   * Alvo dos resets da sessão: o agente dela, se tem fonte de resets. PTY e agentes sem fonte → resets_unsupported.
+   * O codex usa a conta da sessão (chave `codex:<conta>`, `CODEX_HOME` da conta e o preparo da pasta antes do app-server).
+   * O omp não tem contas no Nanachi: a chave é só o agente, sem env, qualquer que seja o `account_id` da sessão.
+   */
+  private resetTargetOf(sessionId: string): ResetTarget {
+    const session = this.load(sessionId);
+    if (session.kind === 'pty' || resetSourceOf(session.agent) === undefined) {
+      throw new SessionError('resets_unsupported', 'agente sem resets salvos');
+    }
+    const target: ResetTarget = { agentId: session.agent, agent: this.agentOf(session.agent) };
+    if (resetSourceOf(session.agent) !== 'codex') return target;
+    const accountId = this.options.accounts.effective(session.agent, session.accountId);
+    const { accounts } = this.options;
+    if (accountId === null) {
+      // The principal: nothing to add, except removing a home variable the daemon inherited from an extra account.
+      const inherited = accounts.env(session.agent, null);
+      return Object.keys(inherited).length === 0 ? target : { ...target, extraEnv: inherited };
+    }
+    return {
+      ...target,
+      accountKey: resetKeyOf(session.agent, accountId),
+      accountId,
+      extraEnv: accounts.env(session.agent, accountId),
+      prepare: () => accounts.prepare(session.agent, accountId),
+    };
   }
 
   async setConfig(sessionId: string, configId: string, value: ConfigValue): Promise<void> {
@@ -831,10 +950,97 @@ export class SessionManager {
       if (session.status !== 'stopped') this.setStatus(sessionId, 'stopped');
       return;
     }
+    await this.stopLive(live);
+  }
+
+  /** Tira o processo do mapa, marca a sessão `stopped` e espera o agente sair. Sem push: parar não é um evento de aviso. */
+  private async stopLive(live: LiveSession): Promise<void> {
     this.detach(live);
-    this.setStatus(sessionId, 'stopped');
+    this.setStatus(live.id, 'stopped');
     killAgent(live.child);
     await withTimeout(live.exited, KILL_TIMEOUT_MS, 'encerrar agente').catch(() => undefined);
+  }
+
+  /**
+   * Troca a conta da sessão (PUT /api/sessions/:id/account). `requested` é o id da conta extra ou `default` (principal).
+   * Mesma conta: nada muda. Agente trabalhando (starting, running, awaiting_permission) → `session_busy`. Senão grava a
+   * conta e o evento `account_changed`; com processo vivo, para o agente (sem push) e o retoma pelo caminho do Retomar,
+   * já na conta nova. Sessão parada ou com erro só grava: o próximo prompt retoma na conta nova.
+   */
+  async setAccount(sessionId: string, requested: string): Promise<Session> {
+    const session = this.load(sessionId);
+    if (session.kind === 'pty') throw new SessionError('not_acp', 'sessão de terminal não tem conta de agente');
+    const next = this.chooseAccount(session.agent, requested);
+    if (next === session.accountId) return session;
+    if (
+      ACCOUNT_BUSY_STATUSES.includes(session.status) ||
+      this.switching.has(sessionId) ||
+      this.resumes.has(sessionId) ||
+      this.reserved.has(sessionId)
+    ) {
+      throw new SessionError('session_busy', `sessão está ocupada (status: ${session.status}): troque a conta quando o agente terminar`);
+    }
+    const live = this.live.get(sessionId);
+    if (live?.restorable === false) {
+      // Parar o agente e não conseguir retomar perderia a conversa: com este agente a conta só troca com a sessão parada.
+      throw new SessionError('not_resumable', 'agente não permite retomar sessões: pare a sessão antes de trocar a conta');
+    }
+
+    // Both accounts are in use until the switch is over: the old agent is still being stopped, the new one is starting.
+    this.switching.set(sessionId, [
+      { agent: session.agent, accountId: session.accountId },
+      { agent: session.agent, accountId: next },
+    ]);
+    try {
+      updateSession(this.options.db, sessionId, { accountId: next }, Date.now());
+      this.appendEvent(
+        sessionId,
+        { kind: 'account_changed', accountId: next, label: this.options.accounts.labelOf(session.agent, next) },
+        { notify: false },
+      );
+      this.broadcastSession(sessionId);
+      if (live !== undefined) {
+        await this.stopLive(live);
+        try {
+          await this.resume(sessionId, { markStarting: true });
+        } catch (error) {
+          // Um prompt que chegou no meio já retomou a sessão (na conta nova): o resultado é o mesmo.
+          if (!(error instanceof SessionError && error.code === 'already_running')) throw error;
+        }
+      }
+    } finally {
+      this.switching.delete(sessionId);
+    }
+    return this.load(sessionId);
+  }
+
+  /**
+   * Is something in memory still using the account folder? A live agent process on it, a resume or a start in progress
+   * (the row may still say "stopped"), an account switch from or to it, or a usage read or resets turn running on it. The
+   * account service calls this before it deletes the folder, next to its own check of the sessions table. An idle usage
+   * process is not in use: removing the account kills it (`releaseAccount`).
+   */
+  isAccountInUse(agentId: string, accountId: string): boolean {
+    const uses = (claim: AccountClaim | undefined): boolean => claim?.agent === agentId && claim.accountId === accountId;
+    for (const live of this.live.values()) {
+      if (uses(live.claim)) return true;
+    }
+    for (const claim of this.reserved.values()) {
+      if (uses(claim)) return true;
+    }
+    for (const claims of this.switching.values()) {
+      if (claims.some(uses)) return true;
+    }
+    return this.usageProbe.isBusy(agentId, accountId);
+  }
+
+  /**
+   * A conta extra foi removida: mata o processo de uso dela e esquece o que o serviço de resets guardou. O serviço de
+   * contas chama isto antes de apagar a pasta do perfil (no Windows, um processo dentro dela impede apagar).
+   */
+  async releaseAccount(agentId: string, accountId: string): Promise<void> {
+    this.resets.dropKey(resetKeyOf(agentId, accountId));
+    await this.usageProbe.drop(agentId, accountId);
   }
 
   /**
@@ -863,6 +1069,8 @@ export class SessionManager {
   async shutdown(): Promise<void> {
     // Processos de uso são temporários e ficam em `running`: o laço abaixo também os mata e espera.
     this.usageProbe.close();
+    // O app-server do codex dos resets não passa por `running`: o serviço mata o que estiver em andamento.
+    this.resets.close();
     // Sem disparos de loop depois do shutdown: o banco pode fechar logo em seguida.
     this.loops.close();
     for (const live of [...this.live.values()]) this.detach(live);
@@ -884,6 +1092,16 @@ export class SessionManager {
     return agent;
   }
 
+  /** Conta de uma sessão nova ou da troca de conta (ver AccountLauncher.choose). Recusa vira SessionError. */
+  private chooseAccount(agentId: string, requested: string | undefined): string | null {
+    try {
+      return this.options.accounts.choose(agentId, requested);
+    } catch (error) {
+      if (error instanceof AccountSelectionError) throw new SessionError(error.code, error.message);
+      throw error;
+    }
+  }
+
   private requireFreeSlot(): void {
     if (countLiveSessions(this.options.db) + this.reserved.size >= MAX_LIVE_SESSIONS) {
       throw new SessionError('too_many_sessions', `limite de ${MAX_LIVE_SESSIONS} sessões vivas atingido`);
@@ -894,34 +1112,45 @@ export class SessionManager {
    * Linha de comando e env do processo do agente (ACP ou terminal). Emite o token da sessão: quem chama
    * revoga se o processo não subir.
    */
-  private agentLaunch(id: string, agent: AgentConfig): { command: AgentCommand; env: NodeJS.ProcessEnv } {
+  private agentLaunch(
+    id: string,
+    agent: AgentConfig,
+    accountEnv: NodeJS.ProcessEnv = {},
+  ): { command: AgentCommand; env: NodeJS.ProcessEnv } {
     const token = this.agentTokens.issue(id);
     // Launchers do phone-send e node_modules/.bin vêm antes do PATH: `claude-agent-acp` roda sem instalação global.
+    // A pasta da conta extra vem depois do env do agente (vale sobre um CLAUDE_CONFIG_DIR do config ou do daemon); a
+    // conta principal não traz nada e o agente usa a pasta dele do jeito de sempre.
     // As variáveis do daemon vêm depois do env do agente: o config não consegue sobrescrevê-las.
+    // `mergeEnv`: no Windows `Claude_Config_Dir` e `CLAUDE_CONFIG_DIR` são a mesma variável, e uma chave `undefined` (a
+    // pasta herdada de uma conta extra que a principal ignora) tira a variável do env.
     const env = withPathPrepended(
-      {
-        ...process.env,
-        ...agent.env,
-        AGENT_SESSION_ID: id,
-        NANACHI_URL: this.options.agentApiUrl(),
-        NANACHI_AGENT_TOKEN: token,
-      },
+      mergeEnv([
+        process.env,
+        agent.env,
+        accountEnv,
+        {
+          AGENT_SESSION_ID: id,
+          NANACHI_URL: this.options.agentApiUrl(),
+          NANACHI_AGENT_TOKEN: token,
+        },
+      ]),
       [phoneSendBinDir(), ...agentBinDirs()],
     );
     return { command: resolveAgentCommand(agent.command, agent.args, env), env };
   }
 
   /** Sobe o processo do agente no cwd e registra a conexão. Lança se o executável não existe. */
-  private spawnLive(id: string, cwd: string, agent: AgentConfig): LiveSession {
+  private spawnLive(id: string, cwd: string, agent: AgentConfig, account: AccountLaunch): LiveSession {
     const { log } = this.options;
     try {
-      const { command, env } = this.agentLaunch(id, agent);
+      const { command, env } = this.agentLaunch(id, agent, account.env);
       const child = spawnAgent(command, {
         cwd,
         env,
         onDiagnostic: (line) => log.debug({ sessionId: id, agent: agent.label }, line),
       });
-      return this.attach(id, child);
+      return this.attach(id, child, account.claim);
     } catch (error) {
       this.agentTokens.revoke(id);
       throw error;
@@ -1020,10 +1249,23 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Env a mais do agente da sessão: a pasta da conta extra dela, com o perfil já preparado (`prepareProfile` antes de
+   * cada processo). A conta vem da linha da sessão; conta que sumiu cai na principal (aviso no log) e não traz nada.
+   */
+  private async accountEnvOf(sessionId: string): Promise<AccountLaunch> {
+    const session = this.load(sessionId);
+    const { accounts } = this.options;
+    const accountId = accounts.effective(session.agent, session.accountId);
+    // An account that is being removed refuses the prepare: the start fails cleanly instead of bringing the folder back.
+    await accounts.prepare(session.agent, accountId);
+    return { claim: { agent: session.agent, accountId }, env: accounts.env(session.agent, accountId) };
+  }
+
   private async start(id: string, cwd: string, agent: AgentConfig, requested: Record<string, ConfigValue>): Promise<void> {
     let live: LiveSession;
     try {
-      live = this.spawnLive(id, cwd, agent);
+      live = this.spawnLive(id, cwd, agent, await this.accountEnvOf(id));
     } catch (error) {
       this.fail(id, messageOf(error));
       return;
@@ -1040,6 +1282,7 @@ export class SessionManager {
         'initialize',
       );
       live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
+      live.restorable = restoreMethodOf(initialized.agentCapabilities) !== undefined;
       const created = await withTimeout(
         connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: [] }),
         START_TIMEOUT_MS,
@@ -1091,7 +1334,7 @@ export class SessionManager {
   ): Promise<string | undefined> {
     let live: LiveSession;
     try {
-      live = this.spawnLive(id, cwd, agent);
+      live = this.spawnLive(id, cwd, agent, await this.accountEnvOf(id));
     } catch (error) {
       const failure = messageOf(error);
       this.markFailed(id, failure);
@@ -1111,6 +1354,7 @@ export class SessionManager {
         'initialize',
       );
       method = restoreMethodOf(initialized.agentCapabilities);
+      live.restorable = method !== undefined;
       live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
     } catch (error) {
       if (!this.isCurrent(live)) return undefined;
@@ -1166,7 +1410,7 @@ export class SessionManager {
   }
 
   /** Cria a conexão ACP sobre o processo e registra a sessão como viva. */
-  private attach(id: string, child: AgentChild): LiveSession {
+  private attach(id: string, child: AgentChild, claim: AccountClaim): LiveSession {
     const exited = new Promise<void>((resolve) => {
       child.once('exit', () => resolve());
       child.once('error', () => resolve());
@@ -1188,6 +1432,7 @@ export class SessionManager {
       child,
       connection,
       exited,
+      claim,
       acpSessionId: undefined,
       configOptions: [],
       usesSetMode: false,
@@ -1196,6 +1441,7 @@ export class SessionManager {
       pending: undefined,
       replaying: false,
       promptImage: false,
+      restorable: undefined,
       history: undefined,
       phoneHintPending: false,
       toolCalls: new Map(),
@@ -1273,6 +1519,7 @@ export class SessionManager {
     const agent = this.agentOf(input.agent);
     if (input.worktree === true) throw new SessionError('invalid_request', 'sessão importada não usa worktree');
     if (agent.kind === 'pty') throw new SessionError('not_resumable', 'terminal não lista sessões do agente');
+    const accountId = this.chooseAccount(input.agent, input.accountId);
 
     const link = findAcpLinks(db, input.agent).get(input.resumeAcpSessionId);
     if (link !== undefined) {
@@ -1296,6 +1543,7 @@ export class SessionManager {
       title: input.resumeTitle ?? RESUMED_TITLE,
       status: 'starting',
       createdAt: now,
+      accountId,
     });
     updateSession(db, id, { acpSessionId: input.resumeAcpSessionId }, now);
     this.announceStatus(id, 'starting');
@@ -1314,7 +1562,7 @@ export class SessionManager {
   ): Promise<void> {
     let live: LiveSession;
     try {
-      live = this.spawnLive(id, cwd, agent);
+      live = this.spawnLive(id, cwd, agent, await this.accountEnvOf(id));
     } catch (error) {
       this.markFailed(id, messageOf(error));
       return;
@@ -1332,6 +1580,7 @@ export class SessionManager {
         'initialize',
       );
       method = restoreMethodOf(initialized.agentCapabilities);
+      live.restorable = method !== undefined;
       live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
     } catch (error) {
       if (this.isCurrent(live)) this.fail(id, messageOf(error));
@@ -1513,11 +1762,16 @@ export class SessionManager {
    * Sobe um processo ACP fora do mapa de sessões, com token próprio (revogado quando o processo sai). Fica em
    * `running`, então o shutdown do daemon o alcança. Quem chama mata com `kill`.
    */
-  private spawnTemporary(agent: AgentConfig, cwd: string, handlers: AcpHandlers): AcpProcess {
+  private spawnTemporary(
+    agent: AgentConfig,
+    cwd: string,
+    handlers: AcpHandlers,
+    accountEnv: NodeJS.ProcessEnv = {},
+  ): AcpProcess {
     const id = randomUUID();
     let child: AgentChild;
     try {
-      const { command, env } = this.agentLaunch(id, agent);
+      const { command, env } = this.agentLaunch(id, agent, accountEnv);
       child = spawnAgent(command, {
         cwd,
         env,

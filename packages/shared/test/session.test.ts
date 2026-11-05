@@ -47,6 +47,7 @@ const session = {
   kind: 'acp',
   title: 'Nova sessão',
   status: 'idle',
+  accountId: null,
   worktree: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_500,
@@ -151,6 +152,24 @@ describe('SessionConfigOptionSchema', () => {
         options: [{ value: 'a', name: 'A' }],
       }).success,
     ).toBe(true);
+  });
+
+  it('aceita option de select com group (nome do grupo ACP), null ou ausente', () => {
+    const options = [
+      { value: 'a', name: 'A', group: 'openrouter' },
+      { value: 'b', name: 'B', group: null },
+      { value: 'c', name: 'C' },
+    ];
+    expect(SessionConfigOptionSchema.parse({ ...selectOption, options })).toEqual({ ...selectOption, options });
+  });
+
+  it('rejeita group vazio na option de select', () => {
+    expect(
+      SessionConfigOptionSchema.safeParse({
+        ...selectOption,
+        options: [{ value: 'a', name: 'A', group: '' }],
+      }).success,
+    ).toBe(false);
   });
 
   it('rejeita select sem options', () => {
@@ -678,5 +697,29 @@ describe('SessionEventSchema: subagentes e segundo plano (tool_call)', () => {
     ['parentToolCallId vazio', { parentToolCallId: '' }],
   ])('rejeita %s', (_label, patch) => {
     expect(SessionEventSchema.safeParse({ ...toolCall, ...patch }).success).toBe(false);
+  });
+});
+
+describe('SessionSchema.accountId e o evento account_changed', () => {
+  it('accountId ausente vira null (principal); string não vazia é aceita', () => {
+    const { accountId: _ignored, ...withoutAccount } = { ...session, accountId: null };
+    expect(SessionSchema.parse(withoutAccount).accountId).toBeNull();
+    expect(SessionSchema.parse({ ...session, accountId: 'a1' }).accountId).toBe('a1');
+  });
+
+  it('recusa accountId vazio', () => {
+    expect(SessionSchema.safeParse({ ...session, accountId: '' }).success).toBe(false);
+  });
+
+  it('account_changed aceita conta nova (id e label) e volta ao principal (id null)', () => {
+    const changed = { ...meta, kind: 'account_changed', accountId: 'a1', label: 'Trabalho' };
+    expect(SessionEventSchema.parse(changed)).toEqual(changed);
+    const principal = { ...meta, kind: 'account_changed', accountId: null, label: 'Principal' };
+    expect(SessionEventSchema.parse(principal)).toEqual(principal);
+  });
+
+  it('account_changed recusa label vazio ou campo ausente', () => {
+    expect(SessionEventSchema.safeParse({ ...meta, kind: 'account_changed', accountId: null, label: '' }).success).toBe(false);
+    expect(SessionEventSchema.safeParse({ ...meta, kind: 'account_changed', label: 'Trabalho' }).success).toBe(false);
   });
 });
