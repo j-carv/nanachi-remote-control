@@ -10,7 +10,7 @@ describe('webLinkOf', () => {
   it.each([
     'javascript:alert(1)',
     'JaVaScRiPt:alert(1)',
-    'file:///C:/Users/joao/segredo.txt',
+    'file:///C:/Users/jose/segredo.txt',
     'data:text/html,<script>alert(1)</script>',
     'ftp://exemplo.com/x',
     'blob:https://exemplo.com/uuid',

@@ -5,8 +5,8 @@ import { normalizeTypedPath, typedPathErrorText } from './folderPath.js';
 
 describe('normalizeTypedPath', () => {
   it('mantém um caminho Windows absoluto com espaços e acentos', () => {
-    expect(normalizeTypedPath('C:\\Users\\joaop\\OneDrive\\Área de Trabalho')).toBe(
-      'C:\\Users\\joaop\\OneDrive\\Área de Trabalho',
+    expect(normalizeTypedPath('C:\\Users\\user\\OneDrive\\Área de Trabalho')).toBe(
+      'C:\\Users\\user\\OneDrive\\Área de Trabalho',
     );
   });
 
@@ -15,7 +15,7 @@ describe('normalizeTypedPath', () => {
   });
 
   it('tira aspas duplas de um par nas pontas (Copiar como caminho do Explorer)', () => {
-    expect(normalizeTypedPath('"C:\\Users\\joaop\\OneDrive"')).toBe('C:\\Users\\joaop\\OneDrive');
+    expect(normalizeTypedPath('"C:\\Users\\user\\OneDrive"')).toBe('C:\\Users\\user\\OneDrive');
   });
 
   it('tira aspas simples de um par nas pontas', () => {
@@ -27,8 +27,8 @@ describe('normalizeTypedPath', () => {
   });
 
   it('aceita / como separador e converte para \\', () => {
-    expect(normalizeTypedPath('C:/Users/joaop/OneDrive/Área de Trabalho')).toBe(
-      'C:\\Users\\joaop\\OneDrive\\Área de Trabalho',
+    expect(normalizeTypedPath('C:/Users/user/OneDrive/Área de Trabalho')).toBe(
+      'C:\\Users\\user\\OneDrive\\Área de Trabalho',
     );
   });
 

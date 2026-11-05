@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSupervisorPlan } from '../src/supervisor-plan.js';
 
 const ROOT = join('C:', 'Nanachi-Remote');
-const HOME = join('C:', 'Users', 'joao', '.nanachi-remote');
+const HOME = join('C:', 'Users', 'jose', '.nanachi-remote');
 
 const plan = buildSupervisorPlan({
   root: ROOT,

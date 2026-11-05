@@ -178,7 +178,7 @@ describe('WS /ws', () => {
   });
 
   it('checagem Tailscale recusa o upgrade com 403 antes de abrir o socket', async () => {
-    const daemon = await env.start({ config: { allowedTailscaleLogins: ['joao@exemplo.com'] } });
+    const daemon = await env.start({ config: { allowedTailscaleLogins: ['jose@exemplo.com'] } });
     const token = await pairToken(daemon);
 
     await expect(daemon.app.injectWS(`/ws?token=${token}`, { headers: { host: 'localhost' } })).rejects.toThrow('403');
@@ -187,7 +187,7 @@ describe('WS /ws', () => {
     // então este caso vai por um socket TCP real em 127.0.0.1 (o que o tailscale serve faz).
     const base = (await listen(daemon)).replace(/^http/, 'ws');
     const accepted = new WebSocket(`${base}/ws?token=${token}`, {
-      headers: { 'tailscale-user-login': 'joao@exemplo.com' },
+      headers: { 'tailscale-user-login': 'jose@exemplo.com' },
     });
     await new Promise<void>((resolve, reject) => {
       accepted.once('open', () => resolve());

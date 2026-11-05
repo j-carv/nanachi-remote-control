@@ -154,13 +154,13 @@ describe('CLI', () => {
 
   it('devices lista os dispositivos sem expor hash ou token', async () => {
     const daemon = await env.start();
-    const paired = await pairWithCli(daemon, 'iPhone do João');
+    const paired = await pairWithCli(daemon, 'iPhone do José');
 
     const cli = captureIO();
     expect(await runCli(['devices'], { NANACHI_HOME: env.home }, cli.io)).toBe(0);
     const output = cli.out.join('\n');
     expect(output).toContain(paired.deviceId);
-    expect(output).toContain('iPhone do João');
+    expect(output).toContain('iPhone do José');
     expect(output).not.toMatch(/[0-9a-f]{64}/);
     expect(output).not.toContain(paired.token);
   });

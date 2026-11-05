@@ -104,10 +104,10 @@ describe('POST /api/pair', () => {
     const as = (login: string) => ({ 'tailscale-user-login': login });
 
     for (let i = 0; i < 5; i++) {
-      const res = await daemon.app.inject({ method: 'POST', url: '/api/pair', headers: as('joao@exemplo.com'), payload: { code: wrong, deviceName: 'x' } });
+      const res = await daemon.app.inject({ method: 'POST', url: '/api/pair', headers: as('jose@exemplo.com'), payload: { code: wrong, deviceName: 'x' } });
       expect(res.statusCode).toBe(401);
     }
-    const blocked = await daemon.app.inject({ method: 'POST', url: '/api/pair', headers: as('joao@exemplo.com'), payload: { code, deviceName: 'x' } });
+    const blocked = await daemon.app.inject({ method: 'POST', url: '/api/pair', headers: as('jose@exemplo.com'), payload: { code, deviceName: 'x' } });
     expect(blocked.statusCode).toBe(429);
 
     const other = await daemon.app.inject({ method: 'POST', url: '/api/pair', headers: as('maria@exemplo.com'), payload: { code, deviceName: 'x' } });
@@ -118,7 +118,7 @@ describe('POST /api/pair', () => {
 describe('GET /api/me', () => {
   it('com token válido devolve o dispositivo e a máquina', async () => {
     const daemon = await env.start();
-    const paired = await pair(daemon, issueCode(daemon), 'iPhone do João');
+    const paired = await pair(daemon, issueCode(daemon), 'iPhone do José');
 
     const res = await daemon.app.inject({
       method: 'GET',
@@ -129,7 +129,7 @@ describe('GET /api/me', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json<MeResponse>()).toEqual({
       deviceId: paired.deviceId,
-      deviceName: 'iPhone do João',
+      deviceName: 'iPhone do José',
       machineId: daemon.machine.id,
       machineName: daemon.config.machineName,
     });
@@ -198,7 +198,7 @@ describe('checagem Tailscale', () => {
   });
 
   it('lista preenchida exige o header Tailscale-User-Login de um login permitido', async () => {
-    const daemon = await env.start({ config: { allowedTailscaleLogins: ['joao@exemplo.com'] } });
+    const daemon = await env.start({ config: { allowedTailscaleLogins: ['jose@exemplo.com'] } });
 
     expect((await daemon.app.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(403);
     expect(
@@ -212,13 +212,13 @@ describe('checagem Tailscale', () => {
       (await daemon.app.inject({
         method: 'GET',
         url: '/api/health',
-        headers: { 'tailscale-user-login': 'joao@exemplo.com' },
+        headers: { 'tailscale-user-login': 'jose@exemplo.com' },
       })).statusCode,
     ).toBe(200);
   });
 
   it('também vale para /api/me e /api/pair', async () => {
-    const daemon = await env.start({ config: { allowedTailscaleLogins: ['joao@exemplo.com'] } });
+    const daemon = await env.start({ config: { allowedTailscaleLogins: ['jose@exemplo.com'] } });
     const code = issueCode(daemon);
 
     const pairRes = await daemon.app.inject({ method: 'POST', url: '/api/pair', payload: { code, deviceName: 'x' } });
@@ -228,7 +228,7 @@ describe('checagem Tailscale', () => {
   });
 
   it('não bloqueia fora de /api e /ws', async () => {
-    const daemon = await env.start({ config: { allowedTailscaleLogins: ['joao@exemplo.com'] } });
+    const daemon = await env.start({ config: { allowedTailscaleLogins: ['jose@exemplo.com'] } });
     expect((await daemon.app.inject({ method: 'GET', url: '/' })).statusCode).not.toBe(403);
   });
 });

@@ -18,7 +18,7 @@ const BASE: DaemonStatus = {
   mode: 'spawned',
   pid: 4242,
   version: '1.2.3',
-  machineName: 'PC-DO-JOAO',
+  machineName: 'PC-DO-JOSE',
   restricted: false,
   message: null,
   logTail: [],

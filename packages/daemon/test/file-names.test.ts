@@ -10,7 +10,7 @@ import {
 
 describe('sanitizeFileName', () => {
   it('fica só com o basename, com / e \\ como separadores', () => {
-    expect(sanitizeFileName('C:\\Users\\joao\\foto.png')).toBe('foto.png');
+    expect(sanitizeFileName('C:\\Users\\jose\\foto.png')).toBe('foto.png');
     expect(sanitizeFileName('../../etc/passwd')).toBe('passwd');
     expect(sanitizeFileName('pasta/relatorio.pdf')).toBe('relatorio.pdf');
   });
