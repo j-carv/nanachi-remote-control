@@ -168,7 +168,7 @@ describe('toSubscriptionRequest', () => {
 describe('device_paired (Entrar com Tailscale)', () => {
   const paired = {
     title: 'Nanachi Remote',
-    body: 'Novo aparelho entrou com Tailscale: iPhone do João',
+    body: 'Novo aparelho entrou com Tailscale: iPhone do José',
     machineId: 'm-1',
     kind: 'device_paired',
   };
@@ -177,7 +177,7 @@ describe('device_paired (Entrar com Tailscale)', () => {
     expect(notificationFromPush(paired)).toEqual({
       title: 'Nanachi Remote',
       options: {
-        body: 'Novo aparelho entrou com Tailscale: iPhone do João',
+        body: 'Novo aparelho entrou com Tailscale: iPhone do José',
         tag: 'device-paired',
         data: { machineId: 'm-1', screen: 'devices' },
       },

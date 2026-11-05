@@ -58,9 +58,9 @@ describe('HealthResponseSchema', () => {
 
 describe('PairRequestSchema', () => {
   it('aceita código de 6 dígitos e nome de dispositivo', () => {
-    expect(PairRequestSchema.parse({ code: '000123', deviceName: 'iPhone do João' })).toEqual({
+    expect(PairRequestSchema.parse({ code: '000123', deviceName: 'iPhone do José' })).toEqual({
       code: '000123',
-      deviceName: 'iPhone do João',
+      deviceName: 'iPhone do José',
     });
   });
 

@@ -100,8 +100,8 @@ async function writeLock(home: string, record: { pid: number; bootedAt: number }
 
 describe('pasta Inicializar', () => {
   it('monta a pasta a partir de APPDATA, com espaço e acento', () => {
-    expect(startupDir('C:\\Users\\João Pedro\\AppData\\Roaming')).toBe(
-      'C:\\Users\\João Pedro\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup',
+    expect(startupDir('C:\\Users\\José Pedro\\AppData\\Roaming')).toBe(
+      'C:\\Users\\José Pedro\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup',
     );
   });
 
@@ -111,8 +111,8 @@ describe('pasta Inicializar', () => {
   });
 
   it('defaultAutostartEnv usa o APPDATA recebido e recusa APPDATA ausente', () => {
-    const env = defaultAutostartEnv('C:\\home', 'C:\\Users\\João\\AppData\\Roaming');
-    expect(env.startupDir).toBe(startupDir('C:\\Users\\João\\AppData\\Roaming'));
+    const env = defaultAutostartEnv('C:\\home', 'C:\\Users\\José\\AppData\\Roaming');
+    expect(env.startupDir).toBe(startupDir('C:\\Users\\José\\AppData\\Roaming'));
     expect(() => defaultAutostartEnv('C:\\home', undefined)).toThrow(/APPDATA/);
     expect(() => defaultAutostartEnv('C:\\home', '')).toThrow(/APPDATA/);
   });
@@ -120,15 +120,15 @@ describe('pasta Inicializar', () => {
 
 describe('script do atalho (startupLauncherSource)', () => {
   it('uma linha que chama wscript.exe com o start-hidden.vbs, sem janela e sem esperar', () => {
-    const source = startupLauncherSource('C:\\Users\\João Pedro\\Nanachi Home\\start-hidden.vbs');
+    const source = startupLauncherSource('C:\\Users\\José Pedro\\Nanachi Home\\start-hidden.vbs');
 
     expect(source).toBe(
-      'CreateObject("WScript.Shell").Run "wscript.exe ""C:\\Users\\João Pedro\\Nanachi Home\\start-hidden.vbs""", 0, False\r\n',
+      'CreateObject("WScript.Shell").Run "wscript.exe ""C:\\Users\\José Pedro\\Nanachi Home\\start-hidden.vbs""", 0, False\r\n',
     );
   });
 
   it('codificação: UTF-16 LE com BOM, e o texto volta igual com acentos', () => {
-    const source = startupLauncherSource('C:\\Users\\João\\Nanachi Home ção\\start-hidden.vbs');
+    const source = startupLauncherSource('C:\\Users\\José\\Nanachi Home ção\\start-hidden.vbs');
     const bytes = encodeScript(source);
 
     expect(bytes.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]));
@@ -137,9 +137,9 @@ describe('script do atalho (startupLauncherSource)', () => {
 });
 
 describe('script start-hidden.vbs', () => {
-  const rootDir = 'C:\\Users\\João Pedro\\Área de Trabalho\\Nanachi-Remote';
+  const rootDir = 'C:\\Users\\José Pedro\\Área de Trabalho\\Nanachi-Remote';
   const supervisorMain = `${rootDir}\\packages\\daemon\\dist\\supervisor.js`;
-  const home = 'C:\\Users\\João Pedro\\.nanachi-remote';
+  const home = 'C:\\Users\\José Pedro\\.nanachi-remote';
 
   it('roda o supervisor sem janela, com cwd na raiz do projeto, NANACHI_HOME e log de início anexado', () => {
     const script = buildStartScript({
@@ -155,7 +155,7 @@ describe('script start-hidden.vbs', () => {
       `shell.CurrentDirectory = "${rootDir}"`,
       'Set env = shell.Environment("PROCESS")',
       `env("NANACHI_HOME") = "${home}"`,
-      'shell.Run "cmd /c """"C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\João Pedro\\Área de Trabalho\\Nanachi-Remote\\packages\\daemon\\dist\\supervisor.js"" >> ""C:\\Users\\João Pedro\\.nanachi-remote\\supervisor-start.log"" 2>&1""", 0, False',
+      'shell.Run "cmd /c """"C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\José Pedro\\Área de Trabalho\\Nanachi-Remote\\packages\\daemon\\dist\\supervisor.js"" >> ""C:\\Users\\José Pedro\\.nanachi-remote\\supervisor-start.log"" 2>&1""", 0, False',
       '',
     ]);
   });
@@ -170,7 +170,7 @@ describe('script start-hidden.vbs', () => {
 
     expect(bytes.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]));
     expect(bytes.subarray(2).toString('utf16le')).toBe(script);
-    expect(bytes.subarray(2).toString('utf16le')).toContain('João Pedro');
+    expect(bytes.subarray(2).toString('utf16le')).toContain('José Pedro');
   });
 });
 

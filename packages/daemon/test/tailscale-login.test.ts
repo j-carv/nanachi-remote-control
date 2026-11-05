@@ -22,11 +22,11 @@ describe('isLoopbackAddress', () => {
 
 describe('trustedTailscaleLogin', () => {
   it('devolve o login do header quando o peer é loopback', () => {
-    expect(trustedTailscaleLogin('127.0.0.1', 'joao@exemplo.com')).toBe('joao@exemplo.com');
+    expect(trustedTailscaleLogin('127.0.0.1', 'jose@exemplo.com')).toBe('jose@exemplo.com');
   });
 
   it('ignora o header quando o peer não é loopback', () => {
-    expect(trustedTailscaleLogin('10.0.0.5', 'joao@exemplo.com')).toBeUndefined();
+    expect(trustedTailscaleLogin('10.0.0.5', 'jose@exemplo.com')).toBeUndefined();
   });
 
   it('header ausente, vazio ou repetido não vale', () => {

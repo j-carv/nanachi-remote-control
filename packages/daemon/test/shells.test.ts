@@ -120,7 +120,7 @@ describe('shellEnvironment', () => {
   it('tira todas as variáveis NANACHI_* (sem tokens do daemon nem de agente), sem diferenciar maiúsculas', () => {
     const env = shellEnvironment({
       PATH: 'C:\\Windows',
-      USERPROFILE: 'C:\\Users\\joao',
+      USERPROFILE: 'C:\\Users\\jose',
       NANACHI_HOME: 'D:\\dados',
       NANACHI_AGENT_TOKEN: 'segredo',
       nanachi_url: 'http://127.0.0.1:7777',
@@ -128,7 +128,7 @@ describe('shellEnvironment', () => {
     });
     expect(env).toEqual({
       PATH: 'C:\\Windows',
-      USERPROFILE: 'C:\\Users\\joao',
+      USERPROFILE: 'C:\\Users\\jose',
       AGENT_SESSION_ID: 'sessao',
     });
   });

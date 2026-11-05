@@ -65,10 +65,10 @@ describe('createSession com shell', () => {
 
 describe('Entrar com Tailscale: GET /api/pair/tailscale', () => {
   it('disponível: devolve o login, sem token', async () => {
-    const fake = recording(() => json({ available: true, login: 'joao@example.invalid' }));
+    const fake = recording(() => json({ available: true, login: 'jose@example.invalid' }));
     await expect(pairTailscaleStatus(BASE, fake.fetchFn)).resolves.toEqual({
       available: true,
-      login: 'joao@example.invalid',
+      login: 'jose@example.invalid',
     });
     expect(fake.calls[0]?.url).toBe(`${BASE}/api/pair/tailscale`);
     expect(new Headers(fake.calls[0]?.init?.headers).has('authorization')).toBe(false);

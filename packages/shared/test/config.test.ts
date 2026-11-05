@@ -58,7 +58,7 @@ describe('ConfigSchema', () => {
       host: 'localhost',
       machineName: 'PC',
       allowedRoots: ['C:\\projetos'],
-      allowedTailscaleLogins: ['joao@example.com'],
+      allowedTailscaleLogins: ['jose@example.com'],
       corsOrigins: ['https://app.example.com'],
     });
     expect(parsed.port).toBe(8080);

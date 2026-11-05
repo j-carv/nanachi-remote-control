@@ -477,7 +477,7 @@ describe('POST /api/agent/files (agente → celular)', () => {
     ['x-forwarded-for', '100.64.0.1'],
     ['x-forwarded-host', 'pc.tailnet.ts.net'],
     ['x-forwarded-proto', 'https'],
-    ['tailscale-user-login', 'joao@exemplo.com'],
+    ['tailscale-user-login', 'jose@exemplo.com'],
   ])(
     'com o header %s (veio pelo tailscale serve) → 403, mesmo com token válido',
     async (name, value) => {
@@ -494,8 +494,8 @@ describe('POST /api/agent/files (agente → celular)', () => {
   );
 
   it('com allowedTailscaleLogins configurado, o agente (loopback, sem Tailscale) continua passando', async () => {
-    const login = { 'tailscale-user-login': 'joao@exemplo.com' };
-    const daemon = await start({ allowedTailscaleLogins: ['joao@exemplo.com'] });
+    const login = { 'tailscale-user-login': 'jose@exemplo.com' };
+    const daemon = await start({ allowedTailscaleLogins: ['jose@exemplo.com'] });
     const paired = await daemon.app.inject({
       method: 'POST',
       url: '/api/pair',

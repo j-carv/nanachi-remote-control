@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { issueCode, setupDaemonTests, type TestDaemon } from './support.js';
 
 const env = setupDaemonTests();
-const LOGIN = 'joao@exemplo.com';
+const LOGIN = 'jose@exemplo.com';
 const OTHER_LOGIN = 'outro@exemplo.com';
 /** Peer de loopback (o tailscale serve chega assim) e um peer de fora. */
 const LOOPBACK = '127.0.0.1';

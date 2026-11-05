@@ -132,6 +132,6 @@ describe('startupWarnings', () => {
   });
 
   it('sem avisos quando há login do Tailscale configurado', () => {
-    expect(startupWarnings({ ...base, allowedTailscaleLogins: ['joao@exemplo.com'] })).toEqual([]);
+    expect(startupWarnings({ ...base, allowedTailscaleLogins: ['jose@exemplo.com'] })).toEqual([]);
   });
 });

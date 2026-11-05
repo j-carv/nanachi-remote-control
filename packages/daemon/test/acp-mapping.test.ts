@@ -718,12 +718,12 @@ describe('listedUpdatedAt', () => {
 
 describe('sameWorkingDirectory', () => {
   it('ignora barra final e aceita o mesmo caminho', () => {
-    expect(sameWorkingDirectory('/home/joao/app', '/home/joao/app/')).toBe(true);
-    expect(sameWorkingDirectory('/home/joao/app', '/home/joao/app')).toBe(true);
+    expect(sameWorkingDirectory('/home/jose/app', '/home/jose/app/')).toBe(true);
+    expect(sameWorkingDirectory('/home/jose/app', '/home/jose/app')).toBe(true);
   });
 
   it('pastas diferentes não batem', () => {
-    expect(sameWorkingDirectory('/home/joao/app', '/home/joao/app2')).toBe(false);
+    expect(sameWorkingDirectory('/home/jose/app', '/home/jose/app2')).toBe(false);
   });
 
   it('no win32 a comparação ignora maiúsculas e barra final (o Windows não diferencia)', () => {

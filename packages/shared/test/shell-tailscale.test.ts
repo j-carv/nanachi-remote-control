@@ -79,9 +79,9 @@ describe('config', () => {
 describe('Entrar com Tailscale', () => {
   it('status: available é obrigatório; login só vem junto', () => {
     expect(TailscalePairStatusResponseSchema.parse({ available: false })).toEqual({ available: false });
-    expect(TailscalePairStatusResponseSchema.parse({ available: true, login: 'joao@exemplo.com' })).toEqual({
+    expect(TailscalePairStatusResponseSchema.parse({ available: true, login: 'jose@exemplo.com' })).toEqual({
       available: true,
-      login: 'joao@exemplo.com',
+      login: 'jose@exemplo.com',
     });
     expect(TailscalePairStatusResponseSchema.safeParse({ login: 'x' }).success).toBe(false);
   });
