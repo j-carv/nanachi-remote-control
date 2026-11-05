@@ -142,7 +142,8 @@ export function NewSessionSheet({
           </fieldset>
 
           {isGit && (
-            <ListGroup>
+            // shrink-0: the sheet body is a scrolling flex column, and ListGroup's overflow-hidden lets it shrink to 2px.
+            <ListGroup className="shrink-0">
               <li className={listRowClass}>
                 <label className="flex min-w-0 flex-1 flex-col gap-0.5" htmlFor="new-session-worktree">
                   <span className="text-base">Em worktree separado</span>

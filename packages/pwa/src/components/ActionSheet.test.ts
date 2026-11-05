@@ -6,7 +6,7 @@ import { ActionSheetPanel, type ActionSheetItem } from './ActionSheet.js';
 const noop = () => undefined;
 
 const render = (items: ActionSheetItem[]): string =>
-  renderToStaticMarkup(createElement(ActionSheetPanel, { title: '/model', items, onClose: noop }));
+  renderToStaticMarkup(createElement(ActionSheetPanel, { title: '/model', items, onClose: noop, onPick: noop }));
 
 describe('ActionSheetPanel', () => {
   it('mostra o título e deixa "Cancelar" num grupo à parte, depois das ações', () => {
