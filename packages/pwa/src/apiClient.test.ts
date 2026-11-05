@@ -350,3 +350,49 @@ describe('createApiClient: contas dos agentes', () => {
     expect((await errorOf(clientWith(fetchFn).agentAccounts(false))).kind).toBe('unexpected');
   });
 });
+
+describe('createApiClient: uso do agente', () => {
+  const USAGE = { agent: 'omp', text: '5 hours: 20% used', fetchedAt: 1_700_000_000_000 };
+
+  it('fetchSessionUsage faz POST em /api/sessions/:id/usage com Bearer e devolve o texto', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json(USAGE));
+    expect(await clientWith(fetchFn).fetchSessionUsage('s-1')).toEqual(USAGE);
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/usage');
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe('Bearer tok-1');
+  });
+
+  it('409 session_not_active mantém o status e o código do corpo', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'session_not_active' }, 409));
+    const error = await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'));
+    expect(error.status).toBe(409);
+    expect(error.code).toBe('session_not_active');
+  });
+
+  it('409 session_busy tem o código, e o kind segue unexpected', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'session_busy' }, 409));
+    const error = await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'));
+    expect(error.kind).toBe('unexpected');
+    expect(error.code).toBe('session_busy');
+  });
+
+  it('400 usage_unsupported vira invalid_input com o código', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'usage_unsupported' }, 400));
+    const error = await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'));
+    expect(error.kind).toBe('invalid_input');
+    expect(error.status).toBe(400);
+    expect(error.code).toBe('usage_unsupported');
+  });
+
+  it('504 agent_timeout vira agent_timeout', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'agent_timeout' }, 504));
+    const error = await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'));
+    expect(error.kind).toBe('agent_timeout');
+    expect(error.status).toBe(504);
+  });
+
+  it('resposta fora do schema vira unexpected', async () => {
+    const { fetchFn } = fakeFetch(() => json({ agent: 'omp', text: 1 }));
+    expect((await errorOf(clientWith(fetchFn).fetchSessionUsage('s-1'))).kind).toBe('unexpected');
+  });
+});

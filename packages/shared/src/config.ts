@@ -36,6 +36,16 @@ export const ConfigSchema = z.object({
   allowedRoots: z.array(z.string()).default([]),
   allowedTailscaleLogins: z.array(z.string()).default([]),
   corsOrigins: z.array(z.string()).default([]),
+  /**
+   * Entrar com Tailscale (`GET/POST /api/pair/tailscale`): sem código de pareamento, só para um login do Tailscale
+   * da allowlist que chega pelo `tailscale serve` (peer loopback). Desligado por padrão.
+   */
+  tailscaleAutoPair: z.boolean().default(false),
+  /**
+   * Terminal de workspace (`agent: "shell"`): um shell completo como o usuário do Windows. Ligado por padrão;
+   * `false` desliga a criação e esvazia `GET /api/shells`.
+   */
+  shellSessions: z.boolean().default(true),
   /** Aviso ao agente, no primeiro prompt de sessão criada pelo app, de como mandar arquivo ao celular (phone-send). */
   phoneSendHint: z.boolean().default(true),
   /** Período sem mudanças nas pastas de build antes de recarregar o daemon (só com --reload-on-build). Padrão: 60 s. */

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LoopSchema } from './loop.js';
 import {
   AvailableCommandSchema,
   ConfigValueSchema,
@@ -86,6 +87,15 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('config_options'),
     sessionId: IdSchema,
     configOptions: z.array(SessionConfigOptionSchema),
+  }),
+  /**
+   * Loop da sessão, só para quem está inscrito nela: no subscribe (sempre, null incluso, depois do replay) e a cada
+   * mudança (criar, pausar, retomar, iteração que começa ou termina, parar). Ver PLAN.md, modo Loop.
+   */
+  z.object({
+    type: z.literal('loop'),
+    sessionId: IdSchema,
+    loop: LoopSchema.nullable(),
   }),
   /** A sessão saiu do app (`DELETE /api/sessions/:id?forget=1`). O histórico no agente continua lá. */
   z.object({ type: z.literal('session_removed'), sessionId: IdSchema }),

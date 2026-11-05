@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import type { AgentSessionSummary, Session, Workspace } from '@nanachi/shared';
 import { ApiError, type ApiClient } from '../api.js';
 import {
@@ -11,7 +12,19 @@ import {
   sessionAgeText,
 } from '../resume.js';
 import { useAsync } from '../useAsync.js';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { cn } from '@/lib/utils';
 import { ErrorNotice } from './ErrorNotice.js';
+import { ListGroup, listMainClass, listRowClass } from './ListGroup.js';
 
 interface ResumeSheetProps {
   api: ApiClient;
@@ -142,90 +155,105 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
   const shownError = error ?? agents.error;
 
   return (
-    <div className="sheet-backdrop" onClick={close}>
-      <section
-        className="sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Retomar do PC"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2 className="section-title">Retomar do PC</h2>
-        <p className="muted small">{workspace.name} · sessões criadas no terminal desta pasta</p>
+    <Drawer
+      open
+      dismissible={!importing}
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+    >
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Retomar do PC</DrawerTitle>
+          <DrawerDescription>{workspace.name} · sessões criadas no terminal desta pasta</DrawerDescription>
+        </DrawerHeader>
 
-        <ErrorNotice error={shownError} />
+        <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-5 pt-4 pb-2">
+          <ErrorNotice error={shownError} />
 
-        <fieldset className="agent-picker">
-          <legend className="section-title">Agente</legend>
-          {resumable.map((agent) => (
-            <button
-              key={agent.id}
-              type="button"
-              className="agent-choice"
-              aria-pressed={agent.id === chosen}
-              disabled={importing}
-              onClick={() => setChosen(agent.id)}
-            >
-              {agent.label}
-            </button>
-          ))}
-          {agents.data !== null && resumable.length === 0 && (
-            <p className="muted small">Nenhum agente de chat configurado no daemon.</p>
+          <fieldset className="flex min-w-0 flex-col gap-2">
+            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">Agente</legend>
+            <ListGroup>
+              {resumable.map((agent) => {
+                const pressed = agent.id === chosen;
+                return (
+                  <li key={agent.id}>
+                    <button
+                      type="button"
+                      aria-pressed={pressed}
+                      disabled={importing}
+                      className={cn(
+                        listRowClass,
+                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent disabled:pointer-events-none disabled:opacity-50',
+                      )}
+                      onClick={() => setChosen(agent.id)}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{agent.label}</span>
+                      {pressed && <Check className="size-5 shrink-0" aria-hidden="true" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ListGroup>
+            {agents.data !== null && resumable.length === 0 && (
+              <p className="pl-1 text-sm text-muted-foreground">Nenhum agente de chat configurado no daemon.</p>
+            )}
+          </fieldset>
+
+          {chosen !== null && (
+            <div className="flex flex-col gap-3">
+              {importing && <p className="pl-1 text-sm text-muted-foreground">{IMPORTING_TEXT}</p>}
+              {loadingFirst && <p className="pl-1 text-sm text-muted-foreground">{listingText(chosenLabel)}</p>}
+              {listing !== null && !listing.supported && (
+                <p className="pl-1 text-sm text-muted-foreground">Este agente não lista sessões.</p>
+              )}
+              {listing !== null && listing.supported && listing.items.length === 0 && (
+                <p className="pl-1 text-sm text-muted-foreground">Nenhuma sessão deste agente nesta pasta.</p>
+              )}
+              {listing !== null && listing.items.length > 0 && (
+                <ListGroup label="Sessões do PC">
+                  {listing.items.map((item) => {
+                    const age = sessionAgeText(item.updatedAt, now);
+                    return (
+                      <li key={item.acpSessionId} className={listRowClass}>
+                        <button
+                          type="button"
+                          className={listMainClass}
+                          disabled={importing}
+                          onClick={() => void importItem(item)}
+                        >
+                          <span className="flex min-w-0 flex-1 flex-col gap-1">
+                            <span className="truncate text-base">{listedTitle(item)}</span>
+                            <span className="flex flex-wrap items-center gap-2">
+                              {item.linkedSessionId !== null && <Badge>já no app</Badge>}
+                              {age !== null && <span className="text-sm text-muted-foreground">{age}</span>}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ListGroup>
+              )}
+              {listing !== null && listing.nextCursor !== null && (
+                <Button
+                  variant="secondary"
+                  disabled={loadingMore || importing}
+                  onClick={() => void loadMore()}
+                >
+                  {loadingMore ? 'Carregando…' : 'Carregar mais'}
+                </Button>
+              )}
+            </div>
           )}
-        </fieldset>
-
-        {chosen !== null && (
-          <>
-            {importing && <p className="muted">{IMPORTING_TEXT}</p>}
-            {loadingFirst && <p className="muted">{listingText(chosenLabel)}</p>}
-            {listing !== null && !listing.supported && (
-              <p className="muted">Este agente não lista sessões.</p>
-            )}
-            {listing !== null && listing.supported && listing.items.length === 0 && (
-              <p className="muted">Nenhuma sessão deste agente nesta pasta.</p>
-            )}
-            {listing !== null && listing.items.length > 0 && (
-              <ul className="item-list">
-                {listing.items.map((item) => {
-                  const age = sessionAgeText(item.updatedAt, now);
-                  return (
-                    <li key={item.acpSessionId} className="item-row">
-                      <button
-                        type="button"
-                        className="item-main"
-                        disabled={importing}
-                        onClick={() => void importItem(item)}
-                      >
-                        <span className="item-title">{listedTitle(item)}</span>
-                        <span className="item-meta">
-                          {item.linkedSessionId !== null && <span className="chip">já no app</span>}
-                          {age !== null && <span className="muted small">{age}</span>}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {listing !== null && listing.nextCursor !== null && (
-              <button
-                type="button"
-                className="button secondary"
-                disabled={loadingMore || importing}
-                onClick={() => void loadMore()}
-              >
-                {loadingMore ? 'Carregando…' : 'Carregar mais'}
-              </button>
-            )}
-          </>
-        )}
-
-        <div className="sheet-actions">
-          <button type="button" className="button ghost" onClick={close} disabled={importing}>
-            Fechar
-          </button>
         </div>
-      </section>
-    </div>
+
+        <DrawerFooter className="flex-row">
+          <Button variant="ghost" className="flex-1" onClick={close} disabled={importing}>
+            Fechar
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }

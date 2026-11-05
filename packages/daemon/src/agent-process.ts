@@ -6,6 +6,14 @@ import type { AgentCommand } from './agent-command.js';
 
 export type AgentChild = ChildProcessByStdio<Writable, Readable, Readable>;
 
+/** Processo ACP temporário (sem entrar no mapa de sessões): a conexão, o fim do processo e como matá-lo. */
+export interface AcpProcess {
+  readonly connection: acp.ClientConnection;
+  /** Resolve quando o processo sai, por qualquer motivo. */
+  readonly exited: Promise<void>;
+  kill(): void;
+}
+
 const CLIENT_NAME = 'nanachi-remote';
 
 export interface SpawnAgentOptions {

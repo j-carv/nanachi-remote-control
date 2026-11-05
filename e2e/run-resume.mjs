@@ -5,7 +5,8 @@
  * already_running abrindo a sessão existente, 409 already_linked (sessão parada) abrindo para retomar, e título
  * "Sessão de <data e hora>" para sessão sem título, e "Remover do app" (swipe + confirmação): a sessão some da lista,
  * volta em Retomar do PC sem selo "já no app" e importar de novo cria uma sessão nova; o agente não recebe delete nem
- * close. Dirige o PWA buildado num Edge headless, viewport de iPhone 14
+ * close; e enviar mensagem numa sessão parada retoma sozinho (sem Retomar) e o agente responde.
+ * Dirige o PWA buildado num Edge headless, viewport de iPhone 14
  * (390x844). O agente é o fake (packages/daemon/test/fixtures/fake-agent.ts) com FAKE_AGENT_STORE.
  *
  * Como rodar (a partir da raiz, depois de `npm run build`):
@@ -253,12 +254,32 @@ async function until(description, check, timeout = 20_000) {
 }
 
 const button = (name) => page.getByRole('button', { name, exact: true });
-const headerTitle = (text) => page.locator('.app-title', { hasText: text });
+const headerTitle = (text) => page.locator('h1', { hasText: text });
 const hasCount = (locator) => locator.count().then((n) => n > 0);
 const sheet = () => page.getByRole('dialog', { name: 'Retomar do PC' });
-const sheetItem = (title) => sheet().locator('.item-main', { hasText: title });
-const sheetItems = () => sheet().locator('.item-main');
+const sheetItem = (title) => sheet().locator('ul[aria-label="Sessões do PC"] > li', { hasText: title }).getByRole('button');
+const sheetItems = () => sheet().locator('ul[aria-label="Sessões do PC"] > li button');
 const chatHasText = (text) => page.locator('body').innerText().then((body) => body.includes(text));
+
+/**
+ * Confere com getBoundingClientRect que o elemento inteiro está dentro da viewport. Tenta por até 2 s: a folha
+ * sobe com animação (translateY 24px → 0, 220ms), e a posição final é a que importa.
+ */
+async function assertInViewport(description, selector) {
+  const readRect = () =>
+    page.locator(selector).first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, vw: window.innerWidth, vh: window.innerHeight };
+    });
+  const inside = (rect) => rect.top >= 0 && rect.left >= 0 && rect.bottom <= rect.vh && rect.right <= rect.vw;
+  const deadline = Date.now() + 2000;
+  let rect = await readRect();
+  while (!inside(rect) && Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    rect = await readRect();
+  }
+  assert.ok(inside(rect), `${description} inteira na viewport: ${JSON.stringify(rect)}`);
+}
 
 /** Volta pelo "Voltar" até o cabeçalho com o título dado. */
 async function backTo(title) {
@@ -273,19 +294,19 @@ async function backTo(title) {
 /** Da home da máquina até a tela de sessões do workspace de teste. */
 async function openProject() {
   for (let step = 0; step < 8; step += 1) {
-    if (await hasCount(page.locator('.status-card'))) break;
+    if (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))) break;
     if (await hasCount(button('Voltar'))) await button('Voltar').click();
     await page.waitForTimeout(150);
   }
   await button('Workspaces').click();
-  await page.locator('.item-main', { hasText: WORKSPACE_NAME }).first().click();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: WORKSPACE_NAME }).getByRole('button').first().click();
   await button('Retomar do PC').waitFor();
 }
 
 async function openSheetWith(agentLabel) {
   await button('Retomar do PC').click();
   await sheet().waitFor();
-  await page.locator('.agent-choice', { hasText: agentLabel }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: agentLabel }).click();
 }
 
 // ---------- fluxo ----------
@@ -296,7 +317,7 @@ async function pairApp() {
   assert.deepEqual(size, { w: 390, h: 844 }, 'viewport precisa ser 390x844');
   await page.fill('input[placeholder="000000"]', issuePairCode());
   await button('Parear').click();
-  await until('status online na home', () => hasCount(page.locator('.status-card.status-online')));
+  await until('status online na home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
   token = await page.evaluate(() => JSON.parse(localStorage.getItem('nanachi.machines') ?? '[]')[0]?.token ?? '');
   assert.ok(token.length > 0, 'token do PC salvo no PWA');
 }
@@ -317,12 +338,12 @@ async function stepListing() {
   await openSheetWith('Sem listagem');
   await until('agente sem listagem avisa', () => hasCount(sheet().getByText('Este agente não lista sessões.')));
 
-  await page.locator('.agent-choice', { hasText: 'Fake' }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: 'Fake' }).click();
   await until('primeira página com 2 sessões', async () => (await sheetItems().count()) === 2);
   assert.equal(await sheetItem(TITLED_A).count(), 1, 'sessão com título aparece com o título');
   const untitled = sheetItem(untitledLabel);
   assert.equal(await untitled.count(), 1, `sessão sem título aparece como "${untitledLabel}"`);
-  assert.equal(await sheet().locator('.chip', { hasText: 'já no app' }).count(), 0, 'nada "já no app" antes de importar');
+  assert.equal(await sheet().getByText('já no app', { exact: true }).count(), 0, 'nada "já no app" antes de importar');
   await shot('01-folha-lista');
 
   await button('Carregar mais').click();
@@ -356,9 +377,9 @@ async function stepAlreadyInApp() {
   await backTo(WORKSPACE_NAME);
   await openSheetWith('Fake');
   await until('sessão importada com selo "já no app"', () =>
-    hasCount(sheetItem(TITLED_A).locator('.chip', { hasText: 'já no app' })),
+    hasCount(sheetItem(TITLED_A).getByText('já no app', { exact: true })),
   );
-  assert.equal(await sheetItem(untitledLabel).locator('.chip').count(), 0, 'sessão não importada sem selo');
+  assert.equal(await sheetItem(untitledLabel).getByText('já no app', { exact: true }).count(), 0, 'sessão não importada sem selo');
   await shot('04-ja-no-app');
   log('listagem de novo: selo "já no app" na sessão importada');
 }
@@ -406,22 +427,45 @@ async function stepRemoveAndReimport() {
   const removed = await sessionTitled(TITLED_A);
   await backTo(WORKSPACE_NAME);
 
-  const row = page.locator('.swipe-row', { has: page.locator('.item-main', { hasText: TITLED_A }) });
-  const track = row.locator('.swipe-track');
+  const row = page.locator('[data-slot="swipe-row"]', { has: page.locator('button', { hasText: TITLED_A }) });
+  const track = row.locator('[data-slot="swipe-track"]');
   await track.waitFor();
+  // A lista tem 3 sessões e não rola: empurra a lista para baixo e rola a página até a linha ficar no fim da
+  // tela (o caso do bug: a linha embaixo, a folha precisa caber mesmo assim).
+  await page.evaluate(() => {
+    document.querySelector('main').style.minHeight = '1600px';
+    document.querySelector('ul[aria-label="Sessões"]').style.marginTop = '700px';
+  });
+  await row.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + rect.bottom - (window.innerHeight - 16));
+  });
+  await until('lista rolada com a linha no fim da tela', async () => {
+    const rowBottom = await row.evaluate((el) => el.getBoundingClientRect().bottom);
+    return (await page.evaluate(() => window.scrollY)) > 0 && rowBottom > 760 && rowBottom <= 844;
+  });
   const box = await track.boundingBox();
   assert.ok(box !== null, 'linha da sessão visível');
-  await row.locator('button[aria-haspopup="menu"]').click();
-  const listMenu = page.getByRole('menu', { name: /Mais ações de/ });
-  await listMenu.waitFor();
-  const menuBox = await listMenu.boundingBox();
-  assert.ok(
-    menuBox !== null && menuBox.x >= 0 && menuBox.y >= 0 && menuBox.x + menuBox.width <= 390 && menuBox.y + menuBox.height <= 844,
-    'menu "…" da lista aparece dentro da tela',
-  );
-  await shot('10-menu-da-lista');
+
+  // Folha de ações com a lista rolada: inteira dentro da viewport, "Remover do app" visível, lista por trás travada.
+  await row.locator('button[aria-haspopup="dialog"]').click();
+  const listSheet = page.getByRole('dialog', { name: /Mais ações de/ });
+  await listSheet.waitFor();
+  await assertInViewport('folha de ações da lista', '[data-slot="drawer-content"]');
+  await assertInViewport('Remover do app na folha da lista', '[data-slot="action-sheet-item"][data-tone="danger"]');
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 400);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.scrollY), scrollBefore, 'lista por trás travada com a folha aberta');
+  await shot('10-folha-da-lista');
+  await page.goBack(); // voltar do navegador fecha só a folha
+  await listSheet.waitFor({ state: 'detached' });
+  await headerTitle(WORKSPACE_NAME).waitFor();
+
+  await row.locator('button[aria-haspopup="dialog"]').click();
+  await listSheet.waitFor();
   await page.keyboard.press('Escape');
-  await until('menu da lista fecha com Esc', async () => (await page.getByRole('menu').count()) === 0);
+  await until('folha da lista fecha com Esc', async () => (await listSheet.count()) === 0);
 
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width - 24, y);
@@ -431,7 +475,7 @@ async function stepRemoveAndReimport() {
   await until('linha deslizada revela a ação', async () => (await track.getAttribute('style')) === 'transform: translateX(-96px);');
   await shot('06-swipe-remover-do-app');
 
-  await row.locator('.swipe-action', { hasText: 'Remover do app' }).click();
+  await row.locator('[data-slot="swipe-action"]', { hasText: 'Remover do app' }).click();
   const dialog = page.getByRole('dialog', { name: 'Remover do app' });
   await dialog.waitFor();
   assert.equal(await dialog.getByText(removalText('Fake'), { exact: true }).count(), 1, 'texto da confirmação');
@@ -440,7 +484,7 @@ async function stepRemoveAndReimport() {
 
   await dialog.getByRole('button', { name: 'Remover', exact: true }).click();
   await until('folha de confirmação fecha', async () => (await dialog.count()) === 0);
-  await until('sessão sumiu da lista sem recarregar', async () => (await page.locator('.item-main', { hasText: TITLED_A }).count()) === 0);
+  await until('sessão sumiu da lista sem recarregar', async () => (await page.locator('ul[aria-label="Sessões"] > li', { hasText: TITLED_A }).count()) === 0);
   assert.equal((await sessionsApi()).some((session) => session.id === removed.id), false, 'sessão apagada do daemon');
   const methods = existsSync(join(pidsDir, `${removed.id}.methods.jsonl`))
     ? readFileSync(join(pidsDir, `${removed.id}.methods.jsonl`), 'utf8')
@@ -450,7 +494,7 @@ async function stepRemoveAndReimport() {
 
   await openSheetWith('Fake');
   await until('sessão removida volta em Retomar do PC', () => hasCount(sheetItem(TITLED_A)));
-  assert.equal(await sheetItem(TITLED_A).locator('.chip', { hasText: 'já no app' }).count(), 0, 'sem selo "já no app"');
+  assert.equal(await sheetItem(TITLED_A).getByText('já no app', { exact: true }).count(), 0, 'sem selo "já no app"');
   await shot('08-retomar-sem-selo');
 
   await sheetItem(TITLED_A).click();
@@ -460,11 +504,14 @@ async function stepRemoveAndReimport() {
   assert.notEqual(again.id, removed.id, 'importar de novo cria uma sessão nova');
   assert.equal(again.status, 'idle', 'sessão reimportada fica pronta');
 
-  await page.getByRole('button', { name: 'Mais ações da sessão' }).click();
-  await until('menu da sessão tem Remover do app', () => hasCount(page.getByRole('menuitem', { name: 'Remover do app' })));
-  await shot('09-menu-da-sessao');
+  await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
+  const chatSheet = page.getByRole('dialog', { name: 'Mais ações da sessão', exact: true });
+  await chatSheet.waitFor();
+  await assertInViewport('folha de ações do chat', '[data-slot="drawer-content"]');
+  await assertInViewport('Remover do app na folha do chat', '[data-slot="action-sheet-item"][data-tone="danger"]');
+  await shot('09-folha-da-sessao');
   await page.keyboard.press('Escape');
-  await until('menu fecha com Esc', async () => (await page.getByRole('menu').count()) === 0);
+  await until('folha do chat fecha com Esc', async () => (await chatSheet.count()) === 0);
   log('remover do app: swipe, confirmação, sumiu da lista, volta em Retomar do PC sem selo e importa de novo');
 }
 
@@ -478,6 +525,42 @@ async function stepUntitled() {
   assert.equal(session.title, untitledLabel, 'título da sessão importada = texto da lista');
   await shot('05-chat-sem-titulo');
   log(`sessão sem título importada como "${untitledLabel}"`);
+}
+
+/**
+ * Enviar sem Retomar: a sessão (ainda a sem título, aberta no chat) é parada pela API; o composer segue aberto,
+ * a mensagem sai, o daemon retoma sozinho e o agente responde. Sem clicar em Retomar. Prova: um único
+ * session/load depois da importação (a retomada automática), e o turno termina com status idle.
+ */
+async function stepPromptResumesStopped() {
+  const session = await sessionTitled(untitledLabel);
+  const methodsFile = join(pidsDir, `${session.id}.methods.jsonl`);
+  const loadsBefore = countLoads(methodsFile);
+  assert.equal(loadsBefore, 1, 'a importação fez um session/load');
+
+  const res = await apiFetch(`/api/sessions/${session.id}`, { method: 'DELETE' });
+  assert.equal(res.status, 204, 'parar a sessão pela API');
+  await until('sessão parada no chat (Retomar aparece)', () => hasCount(button('Retomar')));
+
+  const composer = page.locator('textarea[data-slot="chat-textarea"]');
+  await until('composer aberto numa sessão parada', () => composer.isEnabled());
+  await composer.fill('Continua de onde parou');
+  await until('Enviar habilitado com texto numa sessão parada', () => button('Enviar').isEnabled());
+  await shot('12-composer-parada');
+  await button('Enviar').click();
+
+  await until('resposta do agente depois da retomada automática', () => chatHasText('Eco: Continua de onde parou'));
+  await until('sessão idle de novo, sem Retomar', async () => (await hasCount(button('Retomar'))) === false);
+  assert.equal((await sessionTitled(untitledLabel)).status, 'idle', 'sessão volta a idle');
+  assert.equal(countLoads(methodsFile), 2, 'uma retomada automática (um session/load a mais), nenhuma duplicada');
+  await shot('13-resposta-depois-de-retomar');
+  log('prompt em sessão parada: retomou sozinho, respondeu e voltou a idle');
+}
+
+/** Quantos `session/load` o daemon mandou ao agente desta sessão (o fake grava cada método recebido). */
+function countLoads(methodsFile) {
+  if (!existsSync(methodsFile)) return 0;
+  return readFileSync(methodsFile, 'utf8').split('\n').filter((line) => line === '"session/load"').length;
 }
 
 /** Depois de tudo: só as duas sessões importadas existem no daemon (nenhum 409 criou duplicata). */
@@ -545,6 +628,7 @@ async function main() {
   await stepConflictStopped();
   await stepRemoveAndReimport();
   await stepUntitled();
+  await stepPromptResumesStopped();
   await checkNoDuplicates();
 
   assert.equal(httpErrors.length, 0, `sem resposta de erro fora dos 409 esperados: ${httpErrors.join(' | ')}`);

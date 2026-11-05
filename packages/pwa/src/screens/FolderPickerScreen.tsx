@@ -1,11 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Folder } from '@phosphor-icons/react';
+import { ArrowRight, ChevronRight, CornerLeftUp, Folder, Check } from 'lucide-react';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { normalizeTypedPath, typedPathErrorText } from '../folderPath.js';
 import type { Navigator } from '../navigation.js';
 import { useAsync } from '../useAsync.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface FolderPickerScreenProps {
   api: ApiClient;
@@ -85,17 +90,18 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
   }
 
   return (
-    <main className="screen">
+    <Screen className="pb-0">
       <ScreenHeader
         title="Escolher pasta"
         subtitle={data?.path ?? 'Pastas permitidas no PC'}
         onBack={() => nav.back()}
       />
 
-      <form className="card form" onSubmit={(event) => void goToTyped(event)}>
-        <label className="field">
-          <span>Digitar caminho</span>
-          <input
+      <form className="flex flex-col gap-2" onSubmit={(event) => void goToTyped(event)}>
+        <Label htmlFor="folder-typed-path">Digitar caminho</Label>
+        <div className="flex gap-2">
+          <Input
+            id="folder-typed-path"
             type="text"
             inputMode="text"
             autoCapitalize="off"
@@ -103,71 +109,78 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
             spellCheck={false}
             enterKeyHint="go"
             placeholder="C:\Users\..."
+            className="font-mono text-[15px]"
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
           />
-        </label>
-        <button
-          type="submit"
-          className="button secondary"
-          disabled={checking || normalizeTypedPath(typed) === ''}
-        >
-          {checking ? 'Verificando…' : 'Ir'}
-        </button>
+          <Button
+            type="submit"
+            variant="secondary"
+            size="icon"
+            aria-label={checking ? 'Verificando caminho' : 'Ir para o caminho digitado'}
+            disabled={checking || normalizeTypedPath(typed) === ''}
+          >
+            <ArrowRight aria-hidden="true" />
+          </Button>
+        </div>
       </form>
 
       {typedError !== null && (
-        <div className="error" role="alert">
-          <p>{typedPathErrorText(typedError)}</p>
-        </div>
+        <p role="alert" className="pl-1 text-sm text-destructive">
+          {typedPathErrorText(typedError)}
+        </p>
       )}
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
       {data !== null && data.path !== null && (
-        <button
-          type="button"
-          className="button secondary"
+        <Button
+          variant="ghost"
+          className="self-start px-2"
           disabled={listing.loading}
           onClick={() => setCurrent(data.parent)}
         >
-          {data.parent === null ? '↑ Raízes' : '↑ Pasta acima'}
-        </button>
+          <CornerLeftUp aria-hidden="true" />
+          {data.parent === null ? 'Raízes' : 'Pasta acima'}
+        </Button>
       )}
 
-      {data === null && error === null && <p className="muted">Carregando…</p>}
-      {data !== null && data.dirs.length === 0 && <p className="muted">Nenhuma subpasta aqui.</p>}
+      {data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
+      {data !== null && data.dirs.length === 0 && <p className="pl-1 text-muted-foreground">Nenhuma subpasta aqui.</p>}
 
-      <ul className="item-list">
-        {data?.dirs.map((dir) => (
-          <li key={dir.path}>
-            <button
-              type="button"
-              className="item-main"
-              disabled={listing.loading}
-              onClick={() => setCurrent(dir.path)}
-            >
-              <span className="item-title folder-title">
-                <Folder size={20} weight="regular" aria-hidden="true" />
-                {dir.name}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {data !== null && data.dirs.length > 0 && (
+        <ListGroup label="Pastas">
+          {data.dirs.map((dir) => (
+            <li key={dir.path}>
+              <button
+                type="button"
+                className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:pointer-events-none disabled:opacity-50`}
+                disabled={listing.loading}
+                onClick={() => setCurrent(dir.path)}
+              >
+                <Folder className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate text-base">{dir.name}</span>
+                <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ListGroup>
+      )}
 
       {data !== null && data.path !== null && (
-        <button
-          type="button"
-          className="button primary sticky-action"
-          disabled={!pickable}
-          onClick={() => {
-            if (data.path !== null) void useFolder(data.path);
-          }}
-        >
-          {creating ? 'Adicionando…' : 'Usar esta pasta'}
-        </button>
+        <div className="sticky bottom-0 -mx-4 mt-auto border-t border-border bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+          <Button
+            size="wide"
+            disabled={!pickable}
+            onClick={() => {
+              if (data.path !== null) void useFolder(data.path);
+            }}
+          >
+            <Check aria-hidden="true" />
+            {creating ? 'Adicionando…' : 'Usar esta pasta'}
+          </Button>
+        </div>
       )}
-    </main>
+    </Screen>
   );
 }

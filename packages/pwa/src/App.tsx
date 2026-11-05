@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PairResponse } from '@nanachi/shared';
 import { createApiClient } from './api.js';
 import { getBrowserStorage } from './browserStorage.js';
+import { ErrorNotice } from './components/ErrorNotice.js';
 import {
   planRestore,
   readLastRoute,
@@ -10,17 +11,28 @@ import {
   type PersistedRoute,
 } from './lastRoute.js';
 import { MachineRoutes } from './MachineRoutes.js';
-import { parseOpenSessionMessage, parseSessionSearch, targetRoute, type SessionTarget } from './push/notificationRoute.js';
+import {
+  parseDevicesSearch,
+  parseOpenDevicesMessage,
+  parseOpenSessionMessage,
+  parseSessionSearch,
+  targetRoute,
+  type DevicesTarget,
+  type SessionTarget,
+} from './push/notificationRoute.js';
 import {
   readMachines,
   readSelectedId,
+  readStoredMachines,
   removeMachine,
   resolveSelected,
   upsertMachine,
   writeMachines,
   writeSelectedId,
   type Machine,
+  type StorageLike,
 } from './machines.js';
+import { requestPersistentStorageOnce } from './persistStorage.js';
 import {
   activeRoute,
   depthOf,
@@ -30,19 +42,39 @@ import {
   replaceNav,
   type Navigator,
   type NavState,
+  type Route,
 } from './navigation.js';
 import { DevicesScreen } from './screens/DevicesScreen.js';
 import { MainScreen } from './screens/MainScreen.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { useConnectionPool } from './useConnectionPool.js';
+import { UpdateBar } from './updates/UpdateBar.js';
 
-export function App() {
+export const SAVE_FAILED_TEXT = 'Não foi possível salvar o acesso neste aparelho';
+export const READ_FAILED_TEXT = 'Não foi possível ler os acessos salvos neste aparelho. Pareie de novo para continuar.';
+
+/** Pedido de persistência do storage (token), só se o navegador tiver `navigator.storage.persist`. */
+function persistRequest(storage: StorageLike) {
+  const manager: StorageManager | undefined = typeof navigator === 'undefined' ? undefined : navigator.storage;
+  const persist = manager?.persist;
+  return {
+    storage,
+    persist: typeof persist === 'function' && manager !== undefined ? () => manager.persist() : undefined,
+    log: (line: string) => console.info(`nanachi: ${line}`),
+  };
+}
+
+function AppRoutes() {
   const storage = useMemo(() => getBrowserStorage(), []);
+  const [initialStored] = useState(() => readStoredMachines(storage));
   const [machines, setMachines] = useState<Machine[]>(() => readMachines(storage));
+  const [accessNotice, setAccessNotice] = useState<string | null>(() =>
+    initialStored.status === 'unreadable' ? READ_FAILED_TEXT : null,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(() => readSelectedId(storage));
   const [nav, setNav] = useState<NavState>(() =>
-    initialNav(readMachines(storage).length > 0 ? { kind: 'home' } : { kind: 'pair', baseUrl: null }),
+    initialNav(machines.length > 0 ? { kind: 'home' } : { kind: 'pair', baseUrl: null }),
   );
   const { pool, statuses } = useConnectionPool(machines);
   const selected = resolveSelected(machines, selectedId);
@@ -103,9 +135,29 @@ export function App() {
     showSaved(machine, targetRoute(target), true, () => true, () => select(machine.id));
   }
 
+  /** Aviso de aparelho novo (Entrar com Tailscale): Configurações → Dispositivos da máquina. */
+  function openDevices(target: DevicesTarget): void {
+    const machine = machines.find((item) => item.id === target.machineId);
+    if (machine === undefined) return;
+    const stack: Route[] = [{ kind: 'home' }, { kind: 'settings' }, { kind: 'devices' }];
+    for (let depth = 1; depth < stack.length; depth++) {
+      window.history.pushState({ depth }, '');
+    }
+    select(machine.id);
+    markNavigated();
+    setNav({ routes: stack, index: stack.length - 1 });
+  }
+
   // Reabre onde parou. Se o app abriu por uma notificação (?machine=&workspace=&session=), o destino
   // vence a rota salva, e a query sai da URL para não reabrir ao recarregar.
   useEffect(() => {
+    const devices = parseDevicesSearch(window.location.search);
+    if (devices !== null) {
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+      openDevices(devices);
+      return;
+    }
+
     const target = parseSessionSearch(window.location.search);
     if (target !== null) {
       window.history.replaceState(window.history.state, '', window.location.pathname);
@@ -136,6 +188,8 @@ export function App() {
     const onMessage = (event: MessageEvent) => {
       const target = parseOpenSessionMessage(event.data);
       if (target !== null) openNotification(target);
+      const devices = parseOpenDevicesMessage(event.data);
+      if (devices !== null) openDevices(devices);
     };
     container.addEventListener('message', onMessage);
     return () => container.removeEventListener('message', onMessage);
@@ -166,8 +220,10 @@ export function App() {
     },
   };
 
+  /** Grava a lista. Se o storage recusar, o aviso aparece e a lista segue só nesta sessão. */
   function commitMachines(next: Machine[]): void {
-    writeMachines(storage, next);
+    const saved = writeMachines(storage, next);
+    setAccessNotice(saved ? null : SAVE_FAILED_TEXT);
     setMachines(next);
   }
 
@@ -185,6 +241,8 @@ export function App() {
     };
     commitMachines(upsertMachine(machines, machine));
     select(machine.id);
+    // O token está salvo: pede ao navegador que não apague o storage sob pressão (uma vez por aparelho).
+    void requestPersistentStorageOnce(persistRequest(storage));
     if (nav.index > 0) router.back();
     else router.replace({ kind: 'home' });
   }
@@ -210,60 +268,89 @@ export function App() {
 
   const route = activeRoute(nav);
 
-  if (route.kind === 'pair' || selected === undefined) {
-    return (
-      <PairScreen
-        initialBaseUrl={
-          route.kind === 'pair' && route.baseUrl !== null ? route.baseUrl : window.location.origin
-        }
-        canCancel={machines.length > 0}
-        onCancel={() => router.back()}
-        onPaired={handlePaired}
-      />
-    );
-  }
+  function renderScreen(current: Route): ReactNode {
+    if (current.kind === 'pair' || selected === undefined) {
+      return (
+        <PairScreen
+          initialBaseUrl={
+            current.kind === 'pair' && current.baseUrl !== null ? current.baseUrl : window.location.origin
+          }
+          canCancel={machines.length > 0}
+          onCancel={() => router.back()}
+          onPaired={handlePaired}
+        />
+      );
+    }
 
-  if (route.kind === 'home') {
-    return (
-      <MainScreen
-        machines={machines}
-        selected={selected}
-        statuses={statuses}
-        onSelect={select}
-        onAdd={() => router.push({ kind: 'pair', baseUrl: null })}
-        onRemove={handleRemove}
-        onRepair={(machine) => router.push({ kind: 'pair', baseUrl: machine.baseUrl })}
-        onOpenWorkspaces={() => router.push({ kind: 'workspaces' })}
-        onOpenSettings={() => router.push({ kind: 'settings' })}
-      />
-    );
-  }
+    if (current.kind === 'home') {
+      return (
+        <MainScreen
+          machines={machines}
+          selected={selected}
+          statuses={statuses}
+          onSelect={select}
+          onAdd={() => router.push({ kind: 'pair', baseUrl: null })}
+          onRemove={handleRemove}
+          onRepair={(machine) => router.push({ kind: 'pair', baseUrl: machine.baseUrl })}
+          onOpenWorkspaces={() => router.push({ kind: 'workspaces' })}
+          onOpenSettings={() => router.push({ kind: 'settings' })}
+          onOpenSession={openNotification}
+        />
+      );
+    }
 
-  if (route.kind === 'settings') {
-    return <SettingsScreen machines={machines} selected={selected} nav={router} />;
-  }
+    if (current.kind === 'settings') {
+      return <SettingsScreen machines={machines} selected={selected} nav={router} />;
+    }
 
-  if (route.kind === 'devices') {
+    if (current.kind === 'devices') {
+      return (
+        <DevicesScreen
+          machine={selected}
+          nav={router}
+          onRevokedSelf={() => {
+            // Revogou este aparelho: a máquina sai daqui e o app vai para o pareamento dela.
+            forgetMachine(selected);
+            router.replace({ kind: 'pair', baseUrl: selected.baseUrl });
+          }}
+        />
+      );
+    }
+
     return (
-      <DevicesScreen
+      <MachineRoutes
         machine={selected}
+        route={current}
         nav={router}
-        onRevokedSelf={() => {
-          // Revogou este aparelho: a máquina sai daqui e o app vai para o pareamento dela.
-          forgetMachine(selected);
-          router.replace({ kind: 'pair', baseUrl: selected.baseUrl });
-        }}
+        connection={pool.get(selected.id)}
+        storage={storage}
       />
     );
   }
 
   return (
-    <MachineRoutes
-      machine={selected}
-      route={route}
-      nav={router}
-      connection={pool.get(selected.id)}
-      storage={storage}
-    />
+    <>
+      {accessNotice !== null && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+8px)]">
+          <div className="pointer-events-auto w-full max-w-[560px]">
+            <ErrorNotice
+              message={accessNotice}
+              action={{ label: 'Entendi', onClick: () => setAccessNotice(null) }}
+            />
+          </div>
+        </div>
+      )}
+      {renderScreen(route)}
+    </>
+  );
+}
+
+/** Root of the app: the screens, plus the update bar, which is shown above every screen. */
+export function App() {
+  return (
+    <>
+      <AppRoutes />
+      <UpdateBar />
+    </>
   );
 }

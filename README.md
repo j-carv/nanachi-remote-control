@@ -21,6 +21,17 @@
 
 ---
 
+## Why Nanachi?
+
+Nanachi, from *Made in Abyss*, is a guide who is always on the move, keeps watch over the people in her care from wherever she is, and lives quietly in a hideout in the depths. Nanachi Remote borrows those traits:
+
+- **Always on the move, always watching.** Nanachi keeps watch from anywhere; the app lets you watch your agents from your phone.
+- **Sees what others cannot.** Nanachi can sense the Abyss's force field, which others cannot see; the app shows what your agents are doing on your PC.
+- **A caretaker for explorers.** Nanachi is a resourceful guide who looks after the explorers she travels with; the app looks after your sessions and tells you when you are needed.
+- **Quiet and hidden.** Nanachi makes a home in a hideout far from the surface; the daemon runs quietly on your PC.
+
+---
+
 ## The idea
 
 Leave an agent working on Windows and continue the conversation from your phone. Nanachi is the bridge: it organizes projects and sessions, displays chat and terminal output, accepts attachments, and lets you know when you are needed.
@@ -214,6 +225,14 @@ When ending a session, the app can remove the worktree. If it contains uncommitt
 Antigravity sessions open a terminal with keys such as Esc, Tab, Ctrl+C, arrows, and Enter. Complete the first login and accept folder trust in your PC's terminal before using it from your phone.
 
 ## Keep it ready when you need it
+
+### Windows launcher
+
+Double-click `Nanachi.bat` in the project root (or run `.\Nanachi.bat` in PowerShell). It checks Node.js 22+ and npm, installs dependencies or builds when they are missing, installs the sign-in shortcut if needed, starts the supervisor, waits for the daemon on `127.0.0.1:7777`, makes sure Tailscale serves it over HTTPS (`tailscale serve --bg`, never Funnel), and shows a pairing code valid for 5 minutes. Each step prints `[ OK ]`, `[AVISO]` (warning) or `[ERRO]`. Running it again when everything is already up only prints the `OK` lines and a new code.
+
+The window stays open until you press **R** (new pairing code) or **Esc** (close). Errors also wait for **Esc**, so the message stays on screen. `Nanachi.bat --check` is a read-only dry run: it reports what would change, starts nothing and generates no code. The launcher uses the same `npm run autostart` and `npm run pair` commands described below; the first run still needs the Tailscale and `config.json` setup above.
+
+The launcher does not build while the supervisor is running, because the supervisor's watch build already does that.
 
 After the first build, you can install automatic startup and start the supervisor immediately:
 

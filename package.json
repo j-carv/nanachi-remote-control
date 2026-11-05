@@ -20,7 +20,13 @@
     "e2e:resume": "node e2e/run-resume.mjs",
     "e2e:images": "node e2e/run-images.mjs",
     "e2e:commands": "node e2e/run-commands.mjs",
-    "e2e:chatperf": "node e2e/run-chat-perf.mjs"
+    "e2e:chatperf": "node e2e/run-chat-perf.mjs",
+    "e2e:workspace": "node e2e/run-workspace.mjs",
+    "e2e:background": "node e2e/run-background.mjs",
+    "e2e:terminal": "node e2e/run-terminal.mjs",
+    "e2e:tailscale": "node e2e/run-tailscale-pair.mjs",
+    "e2e:loop": "node e2e/run-loop.mjs",
+    "e2e:force-update": "node e2e/run-force-update.mjs"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2",

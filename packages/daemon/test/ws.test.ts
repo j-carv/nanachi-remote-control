@@ -3,6 +3,7 @@ import type { PairResponse } from '@nanachi/shared';
 import { WebSocket } from 'ws';
 import { describe, expect, it } from 'vitest';
 import { revokeDevice } from '../src/repository.js';
+import { listen } from './agent-support.js';
 import { setupDaemonTests, issueCode, type TestDaemon } from './support.js';
 
 const env = setupDaemonTests();
@@ -182,8 +183,15 @@ describe('WS /ws', () => {
 
     await expect(daemon.app.injectWS(`/ws?token=${token}`, { headers: { host: 'localhost' } })).rejects.toThrow('403');
 
-    const accepted = await daemon.app.injectWS(`/ws?token=${token}`, {
-      headers: { host: 'localhost', 'tailscale-user-login': 'joao@exemplo.com' },
+    // Com o header de um login permitido, o peer tem de ser loopback de verdade: o injectWS não tem endereço de peer,
+    // então este caso vai por um socket TCP real em 127.0.0.1 (o que o tailscale serve faz).
+    const base = (await listen(daemon)).replace(/^http/, 'ws');
+    const accepted = new WebSocket(`${base}/ws?token=${token}`, {
+      headers: { 'tailscale-user-login': 'joao@exemplo.com' },
+    });
+    await new Promise<void>((resolve, reject) => {
+      accepted.once('open', () => resolve());
+      accepted.once('error', reject);
     });
     accepted.close();
   });

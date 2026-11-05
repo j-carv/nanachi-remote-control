@@ -8,8 +8,11 @@ import {
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DevicesResponseSchema,
+  ErrorResponseSchema,
   EventsResponseSchema,
   FsListResponseSchema,
+  GitBranchesResponseSchema,
+  GitCheckoutRequestSchema,
   HealthResponseSchema,
   MeResponseSchema,
   PairRequestSchema,
@@ -21,7 +24,14 @@ import {
   SessionDiffResponseSchema,
   SessionsResponseSchema,
   UpdateWorkspaceRequestSchema,
+  UsageResponseSchema,
+  WorkspaceEntriesResponseSchema,
+  WorkspaceFileResponseSchema,
+  WorkspaceFileWriteRequestSchema,
+  WorkspaceFileWriteResponseSchema,
   WorkspaceInfoResponseSchema,
+  WorkspaceMkdirRequestSchema,
+  WorkspaceRenameRequestSchema,
   WorkspacesResponseSchema,
 } from '../src/index.js';
 
@@ -654,5 +664,160 @@ describe('CreateSessionRequestSchema com retomada do PC', () => {
         resumeTitle: '',
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('UsageResponseSchema', () => {
+  const body = { agent: 'claude', text: '## Usage\n5-hour limit 10%', fetchedAt: 1_700_000_000_000 };
+
+  it('aceita a resposta de /usage com o texto cru (ANSI incluso)', () => {
+    const raw = { ...body, text: '\u001b[38;2;156;163;176m██\u001b[39m 62%' };
+    expect(UsageResponseSchema.parse(raw)).toEqual(raw);
+  });
+
+  it('aceita texto vazio', () => {
+    expect(UsageResponseSchema.safeParse({ ...body, text: '' }).success).toBe(true);
+  });
+
+  it('rejeita agente vazio', () => {
+    expect(UsageResponseSchema.safeParse({ ...body, agent: '' }).success).toBe(false);
+  });
+
+  it('rejeita fetchedAt fracionado ou negativo', () => {
+    expect(UsageResponseSchema.safeParse({ ...body, fetchedAt: 1.5 }).success).toBe(false);
+    expect(UsageResponseSchema.safeParse({ ...body, fetchedAt: -1 }).success).toBe(false);
+  });
+
+  it('rejeita campo ausente', () => {
+    const { text: _text, ...withoutText } = body;
+    expect(UsageResponseSchema.safeParse(withoutText).success).toBe(false);
+  });
+
+  it('aceita cached: true (resposta do cache) e omitido (leitura nova)', () => {
+    expect(UsageResponseSchema.parse({ ...body, cached: true })).toEqual({ ...body, cached: true });
+    expect(UsageResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejeita cached com outro valor', () => {
+    expect(UsageResponseSchema.safeParse({ ...body, cached: false }).success).toBe(false);
+  });
+});
+
+describe('ErrorResponseSchema', () => {
+  it('aceita só o código de erro', () => {
+    expect(ErrorResponseSchema.parse({ error: 'not_found' })).toEqual({ error: 'not_found' });
+  });
+
+  it('aceita details com dados extras (ex.: arquivos sujos)', () => {
+    const body = { error: 'dirty_worktree', details: { dirty: ['a.txt'] } };
+    expect(ErrorResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejeita código vazio', () => {
+    expect(ErrorResponseSchema.safeParse({ error: '' }).success).toBe(false);
+  });
+});
+
+describe('GitBranchesResponseSchema', () => {
+  const branch = { name: 'main', current: true, upstream: 'origin/main', lastCommitAt: 1_700_000_000_000 };
+
+  it('aceita branch atual, lista e alterações', () => {
+    const body = { isRepo: true, current: 'main', detachedAt: null, branches: [branch], dirty: ['a.txt'] };
+    expect(GitBranchesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('aceita HEAD destacado (current null, detachedAt com o commit)', () => {
+    const body = { isRepo: true, current: null, detachedAt: 'abc1234', branches: [], dirty: [] };
+    expect(GitBranchesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('pasta que não é repositório: { isRepo: false } sem campos de branch', () => {
+    expect(GitBranchesResponseSchema.parse({ isRepo: false })).toEqual({ isRepo: false });
+  });
+
+  it('isRepo é obrigatório e vem como booleano (sem ele, a resposta não casa com nenhum caso)', () => {
+    expect(GitBranchesResponseSchema.safeParse({ current: 'main', detachedAt: null, branches: [], dirty: [] }).success).toBe(false);
+    expect(GitBranchesResponseSchema.safeParse({ isRepo: 'sim' }).success).toBe(false);
+  });
+
+  it('aceita upstream null', () => {
+    expect(GitBranchesResponseSchema.safeParse({ isRepo: true, current: 'x', detachedAt: null, branches: [{ ...branch, upstream: null }], dirty: [] }).success).toBe(true);
+  });
+
+  it('rejeita mais de 200 alterações', () => {
+    const dirty = Array.from({ length: 201 }, (_, i) => `f${i}.txt`);
+    expect(GitBranchesResponseSchema.safeParse({ isRepo: true, current: 'x', detachedAt: null, branches: [], dirty }).success).toBe(false);
+  });
+
+  it('rejeita lastCommitAt negativo', () => {
+    expect(GitBranchesResponseSchema.safeParse({ isRepo: true, current: 'x', detachedAt: null, branches: [{ ...branch, lastCommitAt: -1 }], dirty: [] }).success).toBe(false);
+  });
+});
+
+describe('GitCheckoutRequestSchema', () => {
+  it('aceita só o nome da branch', () => {
+    expect(GitCheckoutRequestSchema.parse({ branch: 'feature/x' })).toEqual({ branch: 'feature/x' });
+  });
+
+  it('aceita create true', () => {
+    expect(GitCheckoutRequestSchema.parse({ branch: 'nova', create: true })).toEqual({ branch: 'nova', create: true });
+  });
+
+  it('rejeita nome vazio', () => {
+    expect(GitCheckoutRequestSchema.safeParse({ branch: '' }).success).toBe(false);
+  });
+
+  it('rejeita nome que começa com hífen (opção do git)', () => {
+    expect(GitCheckoutRequestSchema.safeParse({ branch: '--force' }).success).toBe(false);
+  });
+
+  it('rejeita @{ (expansão do git, ex.: @{-1})', () => {
+    expect(GitCheckoutRequestSchema.safeParse({ branch: '@{-1}' }).success).toBe(false);
+  });
+
+  it('rejeita create que não é booleano', () => {
+    expect(GitCheckoutRequestSchema.safeParse({ branch: 'x', create: 'sim' }).success).toBe(false);
+  });
+});
+
+describe('workspace files schemas', () => {
+  const entry = { name: 'src', type: 'dir', size: 0, mtimeMs: 1_700_000_000_000.5, ignored: false };
+
+  it('WorkspaceEntriesResponseSchema aceita entradas de todos os tipos', () => {
+    const body = {
+      entries: [entry, { ...entry, name: 'a.ts', type: 'file', size: 12, ignored: true }, { ...entry, name: 'l', type: 'symlink' }],
+    };
+    expect(WorkspaceEntriesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('WorkspaceEntriesResponseSchema rejeita tipo desconhecido e ignored ausente', () => {
+    expect(WorkspaceEntriesResponseSchema.safeParse({ entries: [{ ...entry, type: 'socket' }] }).success).toBe(false);
+    const { ignored: _ignored, ...withoutIgnored } = entry;
+    expect(WorkspaceEntriesResponseSchema.safeParse({ entries: [withoutIgnored] }).success).toBe(false);
+  });
+
+  it('WorkspaceFileResponseSchema aceita o arquivo lido e rejeita encoding diferente de utf8', () => {
+    const file = { path: 'a.txt', content: 'oi\r\n', encoding: 'utf8', size: 4, mtimeMs: 1, etag: 'abc' };
+    expect(WorkspaceFileResponseSchema.parse(file)).toEqual(file);
+    expect(WorkspaceFileResponseSchema.safeParse({ ...file, encoding: 'latin1' }).success).toBe(false);
+  });
+
+  it('WorkspaceFileWriteRequestSchema exige baseEtag (null para criar)', () => {
+    expect(WorkspaceFileWriteRequestSchema.parse({ path: 'a.txt', content: '', baseEtag: null }).baseEtag).toBeNull();
+    expect(WorkspaceFileWriteRequestSchema.parse({ path: 'a.txt', content: '', baseEtag: 'e1' }).baseEtag).toBe('e1');
+    expect(WorkspaceFileWriteRequestSchema.safeParse({ path: 'a.txt', content: '' }).success).toBe(false);
+    expect(WorkspaceFileWriteRequestSchema.safeParse({ path: 'a.txt', content: '', baseEtag: '' }).success).toBe(false);
+  });
+
+  it('WorkspaceFileWriteResponseSchema, mkdir e rename aceitam o formato do daemon', () => {
+    expect(WorkspaceFileWriteResponseSchema.parse({ path: 'a.txt', size: 3, mtimeMs: 2, etag: 'e2' })).toEqual({
+      path: 'a.txt',
+      size: 3,
+      mtimeMs: 2,
+      etag: 'e2',
+    });
+    expect(WorkspaceMkdirRequestSchema.parse({ path: 'pasta' })).toEqual({ path: 'pasta' });
+    expect(WorkspaceRenameRequestSchema.parse({ from: 'a', to: 'b' })).toEqual({ from: 'a', to: 'b' });
+    expect(WorkspaceRenameRequestSchema.safeParse({ from: 'a' }).success).toBe(false);
   });
 });

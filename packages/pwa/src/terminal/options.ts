@@ -7,7 +7,7 @@ export const TERMINAL_SCROLLBACK = 5000;
 /** Mesma pilha monoespaçada do bloco de código do chat (fonte do sistema, sem download). */
 export const TERMINAL_FONT_FAMILY = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
 
-/** Paleta escura do app (--bg, --text, --accent) com cores ANSI legíveis em fundo escuro. */
+/** Fixed dark palette, the same in light and dark mode, with ANSI colours readable on the dark background. */
 const THEME: ITheme = {
   background: '#0b0d12',
   foreground: '#eef1f8',

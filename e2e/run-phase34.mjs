@@ -227,11 +227,11 @@ async function until(description, check, timeout = 20_000) {
 }
 
 const button = (name) => page.getByRole('button', { name, exact: true });
-const headerTitle = (text) => page.locator('.app-title', { hasText: text });
+const headerTitle = (text) => page.locator('h1', { hasText: text });
 const countOf = (locator) => locator.count();
 const hasCount = (locator) => countOf(locator).then((n) => n > 0);
-const statusIs = (status) => hasCount(page.locator(`.pill-${status}`));
-const terminalText = () => page.locator('.terminal-view').innerText().catch(() => '');
+const statusIs = (status) => hasCount(page.locator(`[data-status="${status}"]`));
+const terminalText = () => page.locator('[data-slot="terminal-view"]').innerText().catch(() => '');
 const occurrences = (text, needle) => text.split(needle).length - 1;
 
 /** Volta pelo botão "Voltar" até a lista de workspaces (ou usa "Workspaces" da home). */
@@ -253,27 +253,27 @@ async function goToWorkspaces() {
 /** Volta pelo "Voltar" até a home da máquina (cartão de status). */
 async function goHome() {
   for (let step = 0; step < 6; step += 1) {
-    if (await hasCount(page.locator('.status-card'))) return;
+    if (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))) return;
     if (await hasCount(page.getByRole('button', { name: 'Voltar', exact: true }))) {
       await button('Voltar').click();
     }
     await page.waitForTimeout(150);
   }
-  await until('home', () => hasCount(page.locator('.status-card')));
+  await until('home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' })));
 }
 
 /** Abre a sessões do workspace proj a partir da lista de workspaces. */
 async function openProjSessions() {
   await goToWorkspaces();
-  await page.locator('.item-main', { hasText: 'proj' }).first().click();
-  await page.getByRole('button', { name: '+ Nova sessão', exact: true }).waitFor();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().click();
+  await page.getByRole('button', { name: 'Nova sessão', exact: true }).waitFor();
 }
 
 async function newSession(agentLabel) {
   await openProjSessions();
-  await button('+ Nova sessão').click();
+  await button('Nova sessão').click();
   await page.getByRole('dialog', { name: 'Nova sessão' }).waitFor();
-  await page.locator('.agent-choice', { hasText: agentLabel }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: agentLabel }).click();
   await button('Criar sessão').click();
 }
 
@@ -285,7 +285,7 @@ async function pairAndWorkspace() {
   assert.deepEqual(size, { w: 390, h: 844}, 'viewport precisa ser 390x844');
   await page.fill('input[placeholder="000000"]', issuePairCode());
   await button('Parear').click();
-  await until('status online na home', () => hasCount(page.locator('.status-card.status-online')));
+  await until('status online na home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
   daemonToken = await page.evaluate(() => {
     const machines = JSON.parse(localStorage.getItem('nanachi.machines') ?? '[]');
     return machines[0]?.token ?? '';
@@ -294,12 +294,12 @@ async function pairAndWorkspace() {
 
   await button('Workspaces').click();
   await headerTitle('Workspaces').waitFor();
-  await button('+ Workspace').click();
+  await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();
-  await page.locator('.item-title', { hasText: 'proj' }).click();
-  await page.locator('.app-header .muted', { hasText: 'proj' }).waitFor();
+  await page.locator('ul[aria-label="Pastas"] > li button', { hasText: 'proj' }).click();
+  await page.locator('h1 + p', { hasText: 'proj' }).waitFor();
   await button('Usar esta pasta').click();
-  await page.locator('.item-main', { hasText: 'proj' }).first().waitFor();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().waitFor();
   await shot('00-workspace-proj');
 }
 
@@ -312,24 +312,24 @@ async function stepAttachment() {
   const png = join(home, 'anexo-teste.png');
   writeFileSync(png, makePng(96, 64));
   await page.locator('input[type="file"]').setInputFiles(png);
-  await until('miniatura na prévia', () => hasCount(page.locator('.draft-list .draft-thumb')));
+  await until('miniatura na prévia', () => hasCount(page.locator('[data-slot="draft-list"] [data-slot="draft-thumb"]')));
   await until('miniatura carregou', () =>
-    page.locator('.draft-thumb').evaluate((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0),
+    page.locator('[data-slot="draft-thumb"]').evaluate((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0),
   );
   await shot('02-anexo-na-previa');
 
-  await page.locator('.chat-textarea').fill('Veja a imagem anexada');
+  await page.locator('[data-slot="chat-textarea"]').fill('Veja a imagem anexada');
   await button('Enviar').click();
-  await until('prévia limpa após envio', async () => !(await hasCount(page.locator('.draft-list .draft-thumb'))));
-  await until('mensagem do usuário com anexo', () => hasCount(page.locator('.bubble-user .file-thumb img')), 20_000);
+  await until('prévia limpa após envio', async () => !(await hasCount(page.locator('[data-slot="draft-list"] [data-slot="draft-thumb"]'))));
+  await until('mensagem do usuário com anexo', () => hasCount(page.locator('[data-slot="bubble-user"] [data-slot="file-thumb"] img')), 20_000);
   await until('miniatura da mensagem carregou', () =>
-    page.locator('.bubble-user .file-thumb img').evaluate((img) => img.complete && img.naturalWidth > 0),
+    page.locator('[data-slot="bubble-user"] [data-slot="file-thumb"] img').evaluate((img) => img.complete && img.naturalWidth > 0),
   );
   await until('turno termina (volta a Pronta)', () => statusIs('idle'), 60_000);
   await page.waitForTimeout(300);
   await shot('03-mensagem-com-anexo');
 
-  const bubble = await page.locator('.bubble-user').first().innerText();
+  const bubble = await page.locator('[data-slot="bubble-user"]').first().innerText();
   assert.ok(bubble.includes('Veja a imagem anexada'), 'texto da mensagem aparece na bolha');
 
   const session = await latestSession('fake');
@@ -371,44 +371,46 @@ async function stepPhoneSend() {
   assert.match(shotOut, /enviado: captura-.*\.png/);
   log(`phone-send: ${textOut.trim()} | ${shotOut.trim()}`);
 
-  await until('cartão do arquivo de texto', () => hasCount(page.locator('.file-card')), 20_000);
-  // A captura é a figura com a legenda "Print da tela" (o anexo do passo 1 também é um .file-attachment).
-  const capture = page.locator('figure.file-attachment', { hasText: 'Print da tela' });
-  await until('miniatura da captura', () => hasCount(capture.locator('.file-thumb img')), 20_000);
+  await until('cartão do arquivo de texto', () => hasCount(page.locator('[data-slot="file-card"]')), 20_000);
+  // A captura é a figura com a legenda "Print da tela" (o anexo do passo 1 também é um [data-slot="file-attachment"]).
+  const capture = page.locator('figure[data-slot="file-attachment"]', { hasText: 'Print da tela' });
+  await until('miniatura da captura', () => hasCount(capture.locator('[data-slot="file-thumb"] img')), 20_000);
   await until('captura carregou (blob)', () =>
-    capture.locator('.file-thumb img').evaluate((img) => img.complete && img.naturalWidth > 0),
+    capture.locator('[data-slot="file-thumb"] img').evaluate((img) => img.complete && img.naturalWidth > 0),
   );
-  const src = await capture.locator('.file-thumb img').getAttribute('src');
+  const src = await capture.locator('[data-slot="file-thumb"] img').getAttribute('src');
   assert.ok(src?.startsWith('blob:'), 'miniatura vem de um blob: (fetch com Bearer)');
 
-  const card = page.locator('.file-card').first();
-  assert.equal(await card.locator('.file-name').innerText(), 'relatorio.txt');
-  const sizeText = await card.locator('.file-card-text .muted').innerText();
+  const card = page.locator('[data-slot="file-card"]').first();
+  assert.equal(await card.locator('[data-slot="file-name"]').innerText(), 'relatorio.txt');
+  const sizeText = await card.locator('[data-slot="file-size"]').innerText();
   log(`cartão do arquivo: relatorio.txt, ${sizeText}`);
   assert.ok(/KB|B$/.test(sizeText), 'tamanho do arquivo aparece no cartão');
-  assert.equal(await page.locator('.file-caption', { hasText: 'Resultado do teste' }).count(), 1, 'legenda do arquivo');
-  assert.equal(await capture.locator('.file-caption', { hasText: 'Print da tela' }).count(), 1, 'legenda da captura');
+  assert.equal(await page.locator('[data-slot="file-caption"]', { hasText: 'Resultado do teste' }).count(), 1, 'legenda do arquivo');
+  assert.equal(await capture.locator('[data-slot="file-caption"]', { hasText: 'Print da tela' }).count(), 1, 'legenda da captura');
   await shot('04-arquivos-do-pc-no-chat');
 
-  await capture.locator('.file-thumb').click();
-  await page.locator('.viewer').waitFor();
+  await capture.locator('[data-slot="file-thumb"]').click();
+  await page.locator('[data-slot="file-viewer"]').waitFor();
   await until('imagem em tela cheia carregou', () =>
-    page.locator('.viewer-image').evaluate((img) => img.complete && img.naturalWidth > 0),
+    page.locator('[data-slot="file-viewer-image"]').evaluate((img) => img.complete && img.naturalWidth > 0),
   );
   await shot('05-captura-tela-cheia');
-  await page.locator('.viewer-bar button', { hasText: '×' }).click();
-  await page.locator('.viewer').waitFor({ state: 'detached' });
+  // Fecha pelo voltar do navegador: só o visualizador sai, o chat continua na tela.
+  await page.goBack();
+  await page.locator('[data-slot="file-viewer"]').waitFor({ state: 'detached' });
+  await page.locator('[data-slot="chat-timeline"]').waitFor();
 }
 
 /** Passo 3: terminal PTY (powershell.exe). Entrada, teclas, Ctrl+C, exit, reload sem duplicar. */
 async function stepTerminal() {
   await newSession('Shell');
-  await page.locator('.terminal-view .xterm').waitFor({ timeout: 20_000 });
+  await page.locator('[data-slot="terminal-view"] .xterm').waitFor({ timeout: 20_000 });
   await until('terminal pronto (running)', () => statusIs('running'), 20_000);
   await until('shell mostra prompt', async () => (await terminalText()).includes('PS '), 30_000);
   await shot('06-terminal-aberto');
 
-  const line = page.locator('.terminal-line');
+  const line = page.locator('[data-slot="terminal-line"]');
   await line.fill('echo nanachi-ok');
   await button('Enviar').click();
   await until('saída do echo', async () => occurrences(await terminalText(), 'nanachi-ok') >= 2, 20_000);
@@ -424,7 +426,10 @@ async function stepTerminal() {
   await button('Enviar').click();
   await page.waitForTimeout(1500);
   const promptsBefore = occurrences(await terminalText(), 'PS ');
-  await page.getByRole('button', { name: 'Ctrl+C, interromper', exact: true }).click();
+  // A barra não tem mais Ctrl+C fixo: a trava Ctrl vale para a próxima tecla (como em run-terminal.mjs).
+  await page.getByRole('button', { name: 'Ctrl, a próxima tecla vira controle', exact: true }).click();
+  await page.locator('[data-slot="terminal-view"]').click();
+  await page.keyboard.press('c');
   // Espera o prompt voltar: digitar antes disso perde a linha (o PowerShell descarta a entrada ao interromper).
   await until('prompt volta após Ctrl+C', async () => occurrences(await terminalText(), 'PS ') > promptsBefore, 20_000);
   await line.fill('echo depois-ctrlc');
@@ -434,9 +439,9 @@ async function stepTerminal() {
 
   await line.fill('exit');
   await button('Enviar').click();
-  await page.locator('.terminal-exit').waitFor({ timeout: 20_000 });
-  const exitLine = await page.locator('.terminal-exit').innerText();
-  assert.match(exitLine, /Processo encerrado/);
+  await page.locator('[data-slot="terminal-closed"]').waitFor({ timeout: 20_000 });
+  const exitLine = await page.locator('[data-slot="terminal-closed"]').innerText();
+  assert.match(exitLine, /Terminal encerrado/);
   await until('pill de status encerrada', () => statusIs('stopped'), 10_000);
   assert.equal(await line.isDisabled(), true, 'linha de texto desabilitada após o exit');
   await shot('10-terminal-encerrado');
@@ -447,23 +452,23 @@ async function stepTerminal() {
   await page.reload({ waitUntil: 'networkidle' });
   // O app restaura a última rota (a sessão de terminal) ou volta para a home; os dois caminhos valem.
   await until('terminal ou home após reload', async () =>
-    (await hasCount(page.locator('.terminal-view .xterm'))) || (await hasCount(page.locator('.status-card'))),
+    (await hasCount(page.locator('[data-slot="terminal-view"] .xterm'))) || (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))),
   );
-  if (!(await hasCount(page.locator('.terminal-view .xterm')))) {
-    await until('home online após reload', () => hasCount(page.locator('.status-card.status-online')));
+  if (!(await hasCount(page.locator('[data-slot="terminal-view"] .xterm')))) {
+    await until('home online após reload', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
     await openProjSessions();
-    await page.locator('.item-main', { hasText: 'Nova sessão' }).first().click();
+    await page.locator('ul[aria-label="Sessões"] > li', { hasText: 'Nova sessão' }).getByRole('button').first().click();
   }
-  await page.locator('.terminal-view .xterm').waitFor({ timeout: 20_000 });
+  await page.locator('[data-slot="terminal-view"] .xterm').waitFor({ timeout: 20_000 });
   await until('replay do terminal', async () => occurrences(await terminalText(), 'nanachi-ok') >= countBefore, 20_000);
   await page.waitForTimeout(800);
   const after = await terminalText();
   const countAfter = occurrences(after, 'nanachi-ok');
   assert.equal(countAfter, countBefore, 'saída não duplica após reload');
-  assert.equal(await page.locator('.notice').count(), 0, 'reload do terminal encerrado não mostra aviso de erro');
+  assert.equal(await page.locator('[data-slot="terminal-notice"]').count(), 0, 'reload do terminal encerrado não mostra aviso de erro');
   // A faixa é um <p> irmão do terminal (não está no innerText do xterm).
-  assert.equal(await page.locator('.terminal-exit').count(), 1, 'faixa de encerramento aparece uma vez');
-  assert.match(await page.locator('.terminal-exit').innerText(), /Processo encerrado/);
+  assert.equal(await page.locator('[data-slot="terminal-closed"]').count(), 1, 'faixa de encerramento aparece uma vez');
+  assert.match(await page.locator('[data-slot="terminal-closed"]').innerText(), /Terminal encerrado/);
   await shot('11-terminal-apos-reload');
   log(`terminal após reload: nanachi-ok x${countAfter} (igual), faixa de encerramento OK`);
 }
@@ -471,7 +476,7 @@ async function stepTerminal() {
 /** Passo 4: silenciar workspace persiste após reload; Ajustes renderiza o estado das notificações. */
 async function stepMuteAndSettings() {
   await openProjSessions();
-  const toggle = page.locator('.workspace-mute input[type="checkbox"]');
+  const toggle = page.locator('#workspace-mute');
   assert.equal(await toggle.isChecked(), false, 'workspace começa sem silenciar');
   await toggle.click();
   await until('silenciar confirmado pela API', async () => {
@@ -482,29 +487,29 @@ async function stepMuteAndSettings() {
 
   await page.reload({ waitUntil: 'networkidle' });
   await until('app recarregado', async () =>
-    (await hasCount(page.locator('.status-card'))) || (await hasCount(page.locator('.app-title'))),
+    (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))) || (await hasCount(page.locator('h1'))),
   );
   await openProjSessions();
   await until('toggle mantém silenciado após reload', () =>
-    page.locator('.workspace-mute input[type="checkbox"]').isChecked(),
+    page.locator('#workspace-mute').isChecked(),
   );
   log('silenciar: persiste após reload (UI e API)');
 
-  await page.locator('.workspace-mute input[type="checkbox"]').click();
+  await page.locator('#workspace-mute').click();
   await until('desmutar confirmado pela API', async () => {
     const { workspaces } = await apiGet('/api/workspaces');
     return workspaces.find((workspace) => workspace.path.endsWith('proj'))?.muted === false;
   });
   await page.reload({ waitUntil: 'networkidle' });
   await openProjSessions();
-  assert.equal(await page.locator('.workspace-mute input[type="checkbox"]').isChecked(), false, 'desmutar persiste');
+  assert.equal(await page.locator('#workspace-mute').isChecked(), false, 'desmutar persiste');
   await shot('13-workspace-sem-silencio');
 
   await goHome();
-  await until('home online para Ajustes', () => hasCount(page.locator('.status-card.status-online')));
+  await until('home online para Ajustes', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
   await button('Ajustes').click();
   await headerTitle('Ajustes').waitFor();
-  const notes = page.locator('.card', { hasText: 'Notificações' });
+  const notes = page.getByRole('region', { name: 'Notificações' });
   await notes.waitFor();
   await until('estado de notificações renderizado', async () =>
     (await notes.innerText()).match(/Desativadas|Ativas|não estão disponíveis/) !== null,

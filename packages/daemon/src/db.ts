@@ -78,6 +78,24 @@ const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE sessions ADD COLUMN commands TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  CREATE TABLE loops (
+    session_id     TEXT PRIMARY KEY,
+    prompt         TEXT NOT NULL,
+    mode           TEXT NOT NULL CHECK (mode IN ('interval', 'dynamic')),
+    interval_ms    INTEGER NULL,
+    max_iterations INTEGER NULL,
+    iterations     INTEGER NOT NULL DEFAULT 0,
+    state          TEXT NOT NULL CHECK (state IN ('active', 'paused', 'stopped')),
+    next_run_at    INTEGER NULL,
+    last_run_at    INTEGER NULL,
+    last_error     TEXT NULL,
+    created_at     INTEGER NOT NULL
+  );
+  `,
+  `
+  ALTER TABLE devices ADD COLUMN pair_method TEXT NOT NULL DEFAULT 'code' CHECK (pair_method IN ('code', 'tailscale'));
+  `,
 ];
 
 /** Abre (criando a pasta se preciso) o SQLite do daemon e aplica as migrações pendentes. */

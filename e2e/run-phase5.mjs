@@ -257,9 +257,9 @@ async function until(description, check, timeout = 20_000) {
 }
 
 const button = (name) => page.getByRole('button', { name, exact: true });
-const headerTitle = (text) => page.locator('.app-title', { hasText: text });
+const headerTitle = (text) => page.locator('h1', { hasText: text });
 const hasCount = (locator) => locator.count().then((n) => n > 0);
-const statusIs = (status) => hasCount(page.locator(`.pill-${status}`));
+const statusIs = (status) => hasCount(page.locator(`[data-status="${status}"]`));
 
 async function goToWorkspaces() {
   for (let step = 0; step < 6; step += 1) {
@@ -279,39 +279,39 @@ async function goToWorkspaces() {
 /** Volta pelo "Voltar" até a home da máquina (cartão de status). */
 async function goHome() {
   for (let step = 0; step < 8; step += 1) {
-    if (await hasCount(page.locator('.status-card'))) return;
+    if (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))) return;
     if (await hasCount(button('Voltar'))) await button('Voltar').click();
     await page.waitForTimeout(150);
   }
-  await until('home', () => hasCount(page.locator('.status-card')));
+  await until('home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' })));
 }
 
 async function openWorkspace(name) {
   await goToWorkspaces();
-  await page.locator('.item-main', { hasText: name }).first().click();
-  await button('+ Nova sessão').waitFor();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: name }).getByRole('button').first().click();
+  await button('Nova sessão').waitFor();
 }
 
 async function newSession(agentLabel, workspaceName) {
   await openWorkspace(workspaceName);
-  await button('+ Nova sessão').click();
+  await button('Nova sessão').click();
   await page.getByRole('dialog', { name: 'Nova sessão' }).waitFor();
-  await page.locator('.agent-choice', { hasText: agentLabel }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: agentLabel }).click();
   await button('Criar sessão').click();
 }
 
 /** Escolhe a pasta no seletor: entra na raiz permitida (se preciso) e depois na subpasta `name`. */
 async function pickFolder(name, rootName) {
   await headerTitle('Escolher pasta').waitFor();
-  const target = page.locator('.item-title', { hasText: name }).first();
+  const target = page.locator('ul[aria-label="Pastas"] > li button', { hasText: name }).first();
   if (!(await hasCount(target))) {
-    await page.locator('.item-title', { hasText: rootName }).first().click();
+    await page.locator('ul[aria-label="Pastas"] > li button', { hasText: rootName }).first().click();
     await target.waitFor();
   }
   await target.click();
-  await page.locator('.app-header .muted', { hasText: name }).waitFor();
+  await page.locator('h1 + p', { hasText: name }).waitFor();
   await button('Usar esta pasta').click();
-  await page.locator('.item-main', { hasText: name }).first().waitFor();
+  await page.locator('ul[aria-label="Workspaces"] > li', { hasText: name }).getByRole('button').first().waitFor();
 }
 
 /** Token que o PWA guardou para a máquina com esta baseUrl. */
@@ -324,9 +324,9 @@ async function machineToken(baseUrl) {
 
 async function switchMachine(name) {
   await goHome();
-  await page.locator('.switcher-trigger').click();
-  await page.locator('.switcher-item', { hasText: name }).click();
-  await until(`home de ${name}`, async () => (await page.locator('.machine-name').innerText()) === name);
+  await page.locator('h1 button').click();
+  await page.getByRole('menuitemradio', { name }).click();
+  await until(`home de ${name}`, async () => (await page.locator('h1').innerText()) === name);
 }
 
 // ---------- fluxo ----------
@@ -337,7 +337,7 @@ async function pairAppA() {
   assert.deepEqual(size, { w: 390, h: 844 }, 'viewport precisa ser 390x844');
   await page.fill('input[placeholder="000000"]', issuePairCode(homeA));
   await button('Parear').click();
-  await until('status online na home (PC principal)', () => hasCount(page.locator('.status-card.status-online')));
+  await until('status online na home (PC principal)', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
   tokenA = await machineToken(urlA);
   assert.ok(tokenA.length > 0, 'token do PC principal salvo no PWA');
 }
@@ -346,35 +346,43 @@ async function addWorkspace(name, rootName) {
   await goHome();
   await button('Workspaces').click();
   await headerTitle('Workspaces').waitFor();
-  await button('+ Workspace').click();
+  await button('Adicionar workspace').click();
   await pickFolder(name, rootName);
 }
 
 async function stepWorkspaceInfo() {
   await addWorkspace('proj', 'raiz-a');
   await openWorkspace('proj');
-  const info = page.locator('.chip-row[aria-label="Estado do workspace"]');
+  const info = page.locator('ul[aria-label="Estado do workspace"]');
   await until('chips de estado do workspace', () => hasCount(info));
   const text = await info.innerText();
-  assert.match(text, /main/, 'chip com o branch');
+  // O branch sai no chip do cabeçalho (BranchSwitcher); a barra de info não repete o branch nesta tela.
+  assert.ok(await hasCount(page.getByRole('button', { name: /^Branch main\./ })), 'chip do cabeçalho com o branch main');
   assert.match(text, /2 alterações/, 'chip com o número de alterações');
   assert.match(text, /CLAUDE\.md/, 'chip de instrução CLAUDE.md');
-  assert.equal(await page.locator('.chip-instruction', { hasText: 'AGENTS.md' }).count(), 0, 'sem chip para AGENTS.md');
+  assert.equal(await page.locator('ul[aria-label="Estado do workspace"] li', { hasText: 'AGENTS.md' }).count(), 0, 'sem chip para AGENTS.md');
   await shot('00-workspace-info');
 }
 
 async function stepChanges() {
   await newSession('Fake', 'proj');
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
-  await page.getByRole('button', { name: 'Alterações' }).first().click();
+  // Cabeçalho compacto (390 px): "Alterações" sai do cabeçalho e fica em "Mais ações da sessão".
+  const changesButton = page.getByRole('button', { name: 'Alterações', exact: true });
+  if ((await changesButton.count()) === 0) {
+    await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
+    await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  } else {
+    await changesButton.first().click();
+  }
   await headerTitle('Alterações').waitFor();
-  await until('duas alterações listadas', async () => (await page.locator('.change-row').count()) === 2);
+  await until('duas alterações listadas', async () => (await page.locator('[data-slot="change-row"]').count()) === 2);
   await shot('01-alteracoes-lista');
 
-  const readme = page.locator('.change-row', { hasText: 'README.md' });
-  await readme.locator('.item-main').click();
-  const added = readme.locator('.diff-line.diff-add');
-  const removed = readme.locator('.diff-line.diff-del');
+  const readme = page.locator('[data-slot="change-row"]', { hasText: 'README.md' });
+  await readme.locator('[data-slot="change-toggle"]').click();
+  const added = readme.locator('[data-slot="diff-line"][data-kind="add"]');
+  const removed = readme.locator('[data-slot="diff-line"][data-kind="del"]');
   await until('patch do README com linhas coloridas', async () => (await added.count()) >= 1 && (await removed.count()) >= 1);
   const colors = await Promise.all([
     added.first().evaluate((el) => getComputedStyle(el).backgroundColor),
@@ -386,21 +394,21 @@ async function stepChanges() {
   assert.match(await readme.innerText(), /\+2/, 'contagem de adições do README');
   await shot('02-alteracoes-patch');
 
-  const notas = page.locator('.change-row', { hasText: 'notas.txt' });
-  await notas.locator('.item-main').click();
-  await until('patch do arquivo não rastreado', async () => (await notas.locator('.diff-line.diff-add').count()) >= 1);
+  const notas = page.locator('[data-slot="change-row"]', { hasText: 'notas.txt' });
+  await notas.locator('[data-slot="change-toggle"]').click();
+  await until('patch do arquivo não rastreado', async () => (await notas.locator('[data-slot="diff-line"][data-kind="add"]').count()) >= 1);
   assert.match(await notas.innerText(), /Novo/, 'arquivo não rastreado aparece como novo');
   log('alterações: lista e patch coloridos (README e notas.txt)');
 }
 
 async function stepWorktree() {
   await openWorkspace('proj');
-  await button('+ Nova sessão').click();
+  await button('Nova sessão').click();
   await page.getByRole('dialog', { name: 'Nova sessão' }).waitFor();
-  await page.locator('.agent-choice', { hasText: 'Fake' }).click();
-  await page.locator('label.config-toggle', { hasText: 'Em worktree separado' }).click();
+  await page.locator('[role="dialog"] button[aria-pressed]', { hasText: 'Fake' }).click();
+  await page.locator('label[data-slot="config-toggle"]', { hasText: 'Em worktree separado' }).click();
   await button('Criar sessão').click();
-  await until('chip do branch no chat', () => hasCount(page.locator('.chip-branch', { hasText: 'nanachi/' })), 20_000);
+  await until('chip do branch no chat', () => hasCount(page.locator('[data-slot="session-place"]', { hasText: 'nanachi/' })), 20_000);
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
 
   const session = (await sessionsNamed(urlA, tokenA, 'proj')).find((item) => item.worktree !== null);
@@ -409,7 +417,7 @@ async function stepWorktree() {
   assert.match(branch, /^nanachi\//, 'branch do worktree');
   assert.ok(existsSync(worktreePath), 'pasta do worktree existe');
   assert.equal(git(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']), branch, 'worktree está no branch informado');
-  assert.equal(await page.locator('.chip-branch', { hasText: branch }).count(), 1, 'chip do branch no chat');
+  assert.equal(await page.locator('[data-slot="session-place"]', { hasText: branch }).count(), 1, 'chip do branch no chat');
 
   await until('fake gravou o env', () => existsSync(join(pidsA, `${session.id}.env.json`)));
   const env = readAgentEnv(pidsA, session.id);
@@ -422,11 +430,11 @@ async function stepWorktree() {
 
 async function stepEndWorktree({ branch, worktreePath }) {
   await button('Voltar').click();
-  await button('+ Nova sessão').waitFor();
-  const row = page.locator('.item-row', { has: page.locator('.chip-branch', { hasText: branch }) });
-  await row.getByRole('button', { name: 'Encerrar', exact: true }).click();
+  await button('Nova sessão').waitFor();
+  const row = page.locator(`${SESSIONS}`, { hasText: branch });
+  await row.getByRole('button', { name: /^Encerrar / }).click();
   await until('pasta do worktree removida', async () => !existsSync(worktreePath), 20_000);
-  await until('sessão encerrada na lista', () => hasCount(row.locator('.pill-stopped')), 20_000);
+  await until('sessão encerrada na lista', () => hasCount(row.locator('[data-status="stopped"]')), 20_000);
   await until('branch do worktree apagado (mergeado)', () => git(repoA, ['branch', '--list', branch]) === '', 20_000);
   assert.ok(dialogs.includes('Remover o worktree também?'), 'pergunta "Remover o worktree também?"');
   await shot('04-worktree-removido');
@@ -434,10 +442,10 @@ async function stepEndWorktree({ branch, worktreePath }) {
 
 async function stepTerminal() {
   await newSession('Shell', 'proj');
-  await page.locator('.terminal-view .xterm').waitFor({ timeout: 20_000 });
-  await until('pill "Em execução" no terminal', () => hasCount(page.locator('.pill-running', { hasText: 'Em execução' })), 20_000);
+  await page.locator('[data-slot="terminal-view"] .xterm').waitFor({ timeout: 20_000 });
+  await until('pill "Em execução" no terminal', () => hasCount(page.locator('[data-status="running"]', { hasText: 'Em execução' })), 20_000);
 
-  const keys = page.locator('.terminal-key');
+  const keys = page.locator('[data-slot="terminal-key"]');
   const count = await keys.count();
   assert.equal(count, 9, 'nove teclas na barra');
   const boxes = [];
@@ -475,15 +483,15 @@ async function stepDevices() {
   await goHome();
   await button('Ajustes').click();
   await headerTitle('Ajustes').waitFor();
-  await button('Dispositivos desta máquina').click();
+  await page.getByRole('button', { name: /^Dispositivos desta máquina/ }).click();
   await headerTitle('Dispositivos desta máquina').waitFor();
   await until('dois dispositivos na tela', async () => (await page.locator('.device-main').count()) === 2);
-  const list = await page.locator('.item-list').innerText();
+  const list = await page.locator('ul[aria-label="Dispositivos"]').innerText();
   assert.match(list, /Celular de teste/, 'tela mostra o 2º device');
   assert.match(list, /este aparelho/, 'tela marca este aparelho');
   await shot('06-dispositivos-dois');
 
-  await page.locator('.item-row', { hasText: 'Celular de teste' }).getByRole('button', { name: 'Revogar', exact: true }).click();
+  await page.locator('ul[aria-label="Dispositivos"] > li', { hasText: 'Celular de teste' }).getByRole('button', { name: /^Revogar/ }).click();
   await until('2º device some da lista', async () => (await page.locator('.device-main', { hasText: 'Celular de teste' }).count()) === 0);
   assert.equal((await apiFetch(urlA, second.token, '/api/workspaces')).status, 401, 'token revogado não entra mais');
   assert.equal((await apiJson(urlA, tokenA, '/api/devices')).devices.length, 1, 'API lista só este device');
@@ -574,7 +582,7 @@ async function stepMultiPc() {
   await page.getByLabel('Nome deste dispositivo').fill('Celular (PC secundário)');
   await button('Parear').click();
   await until('home do PC secundário online', async () =>
-    (await hasCount(page.locator('.status-card.status-online'))) && (await page.locator('.machine-name').innerText()) === NAME_B,
+    (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true }))) && (await page.locator('h1').innerText()) === NAME_B,
   30_000);
   tokenB = await machineToken(urlB);
   assert.ok(tokenB.length > 0, 'token do PC secundário salvo no PWA');
@@ -584,9 +592,9 @@ async function stepMultiPc() {
   await addWorkspace('proj-b', 'raiz-b');
   await newSession('Fake', 'proj-b');
   await until('sessão fake do PC secundário ociosa', () => statusIs('idle'), 60_000);
-  await page.locator('.chat-textarea').fill('Olá do segundo PC');
+  await page.locator('[data-slot="chat-textarea"]').fill('Olá do segundo PC');
   await button('Enviar').click();
-  await until('bolha do prompt no chat', () => hasCount(page.locator('.bubble-user', { hasText: 'Olá do segundo PC' })), 20_000);
+  await until('bolha do prompt no chat', () => hasCount(page.locator('[data-slot="bubble-user"]', { hasText: 'Olá do segundo PC' })), 20_000);
   const sessionB = (await sessionsNamed(urlB, tokenB, 'proj-b'))[0];
   assert.ok(sessionB, 'sessão criada no PC secundário');
   await until('fake do PC secundário recebeu o prompt', () =>
@@ -597,12 +605,12 @@ async function stepMultiPc() {
   log('vários PCs: workspace e sessão no PC secundário, prompt entregue ao fake');
 
   await goHome();
-  await page.locator('.switcher-trigger').click();
-  await until('os dois PCs aparecem Online no seletor', async () => (await page.locator('.switcher-item .dot-online').count()) === 2);
+  await page.locator('h1 button').click();
+  await until('os dois PCs aparecem Online no seletor', async () => (await page.locator('[role="menuitemradio"] .bg-success').count()) === 2);
   await shot('08-seletor-dois-pcs');
-  await page.locator('.switcher-item', { hasText: NAME_A }).click();
+  await page.getByRole('menuitemradio', { name: NAME_A }).click();
   await until('voltou ao PC principal, online', async () =>
-    (await page.locator('.machine-name').innerText()) === NAME_A && (await hasCount(page.locator('.status-card.status-online'))),
+    (await page.locator('h1').innerText()) === NAME_A && (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true }))),
   );
   await shot('10-volta-pc-principal');
   log('vários PCs: os dois mostram Online no seletor; voltou ao PC principal');
@@ -611,16 +619,16 @@ async function stepMultiPc() {
 /** Remove o PC secundário da app e revoga o próprio device: a app tem que voltar ao pareamento. */
 async function stepRevokeSelf() {
   await switchMachine(NAME_B);
-  await button('Remover').click();
-  await until('PC secundário removido, PC principal selecionado', async () => (await page.locator('.machine-name').innerText()) === NAME_A);
+  await button('Remover máquina').click();
+  await until('PC secundário removido, PC principal selecionado', async () => (await page.locator('h1').innerText()) === NAME_A);
 
   await goHome();
   await button('Ajustes').click();
   await headerTitle('Ajustes').waitFor();
-  await button('Dispositivos desta máquina').click();
+  await page.getByRole('button', { name: /^Dispositivos desta máquina/ }).click();
   await headerTitle('Dispositivos desta máquina').waitFor();
-  const own = page.locator('.item-row', { hasText: 'este aparelho' });
-  await own.getByRole('button', { name: 'Revogar', exact: true }).click();
+  const own = page.locator('ul[aria-label="Dispositivos"] > li', { hasText: 'este aparelho' });
+  await own.getByRole('button', { name: /^Revogar/ }).click();
   revokedSelf = true;
   await page.getByRole('heading', { name: 'Parear máquina' }).waitFor({ timeout: 20_000 });
   assert.match(dialogs.at(-1) ?? '', /Este é este aparelho/, 'confirmação avisa que é este aparelho');

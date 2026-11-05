@@ -63,3 +63,41 @@ export function parseSessionTarget(data: unknown): SessionTarget | null {
   const parsed = TargetSchema.safeParse(data);
   return parsed.success ? parsed.data : null;
 }
+
+/** Aviso de Dispositivos (pareamento novo): leva a Configurações → Dispositivos da máquina. */
+export interface DevicesTarget {
+  machineId: string;
+}
+
+/** Mensagem `open-devices` do service worker, no clique do aviso quando o app já está aberto. */
+export const DEVICES_MESSAGE = 'open-devices';
+
+const DevicesTargetSchema = z.object({
+  machineId: z.string().min(1),
+});
+
+/** Alvo guardado em `notification.data` do aviso de Dispositivos. Sessões não têm `screen`, então não se confundem. */
+export function parseDevicesTarget(data: unknown): DevicesTarget | null {
+  const parsed = z.object({ machineId: z.string().min(1), screen: z.literal('devices') }).safeParse(data);
+  return parsed.success ? { machineId: parsed.data.machineId } : null;
+}
+
+/** URL do app que abre Dispositivos: `/?machine=..&screen=devices`. */
+export function buildDevicesUrl(target: DevicesTarget): string {
+  const params = new URLSearchParams({ machine: target.machineId, screen: 'devices' });
+  return `/?${params.toString()}`;
+}
+
+/** Lê o alvo de Dispositivos da query de abertura; `screen` tem de ser `devices`. */
+export function parseDevicesSearch(search: string): DevicesTarget | null {
+  const params = new URLSearchParams(search);
+  if (params.get('screen') !== 'devices') return null;
+  const parsed = DevicesTargetSchema.safeParse({ machineId: params.get('machine') });
+  return parsed.success ? parsed.data : null;
+}
+
+/** Mensagem `open-devices` do service worker, ou null se for outra coisa. */
+export function parseOpenDevicesMessage(data: unknown): DevicesTarget | null {
+  const parsed = DevicesTargetSchema.extend({ type: z.literal(DEVICES_MESSAGE) }).safeParse(data);
+  return parsed.success ? { machineId: parsed.data.machineId } : null;
+}

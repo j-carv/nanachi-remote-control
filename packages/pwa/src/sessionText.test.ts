@@ -15,11 +15,17 @@ describe('sessionStatusText', () => {
     ['starting', 'Iniciando'],
     ['idle', 'Pronta'],
     ['awaiting_permission', 'Aguarda permissão'],
-    ['stopped', 'Encerrada'],
     ['error', 'Erro'],
   ])('%s tem o mesmo texto nos dois tipos', (status, text) => {
     expect(sessionStatusText(status, 'acp')).toBe(text);
     expect(sessionStatusText(status, 'pty')).toBe(text);
+  });
+});
+
+describe('sessionStatusText, sessão encerrada', () => {
+  it('terminal encerrado diz "Encerrado"; sessão ACP segue "Encerrada"', () => {
+    expect(sessionStatusText('stopped', 'pty')).toBe('Encerrado');
+    expect(sessionStatusText('stopped', 'acp')).toBe('Encerrada');
   });
 });
 

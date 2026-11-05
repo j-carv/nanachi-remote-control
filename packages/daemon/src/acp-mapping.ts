@@ -9,6 +9,13 @@ import {
   type SessionEvent,
   type ToolContent,
 } from '@nanachi/shared';
+import {
+  rememberToolCall,
+  trackToolCall,
+  type ToolCallMemory,
+  type ToolFacts,
+  type ToolStatus,
+} from './tool-background.js';
 
 /** Distribui Omit sobre a união: remove campos comuns de cada variante de SessionEvent. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -130,12 +137,38 @@ export function modeConfigOption(modes: acp.SessionModeState): SessionConfigOpti
   return parsed.success ? parsed.data : undefined;
 }
 
+/** Texto dos blocos de texto de um tool call (o que a derivação de background lê). Imagens e diffs ficam de fora. */
+function textsOfContent(content: readonly acp.ToolCallContent[] | null | undefined): string[] {
+  const texts: string[] = [];
+  for (const item of content ?? []) {
+    if (item.type === 'content' && item.content.type === 'text') texts.push(item.content.text);
+  }
+  return texts;
+}
+
+/** Fatos de um update de tool call para a derivação (ver tool-background.ts). `rawInput`/`rawOutput` não são guardados. */
+function toolFactsOf(update: acp.ToolCall | acp.ToolCallUpdate, status: ToolStatus | undefined): ToolFacts {
+  return {
+    meta: update._meta,
+    title: update.title,
+    status,
+    rawInput: update.rawInput,
+    rawOutput: update.rawOutput,
+    texts: textsOfContent(update.content),
+  };
+}
+
 /**
  * Traduz um `session/update` para o evento gravado. Devolve undefined para o que não vira evento
  * (chunks sem texto nem imagem, updates de config/modo, e os que o protocolo tem mas o PWA não usa).
  * `images` grava as imagens que o agente manda; sem ele, imagens são ignoradas.
+ * `memory` é o que a sessão lembra de tool calls com background (`trackToolCall`); esta função o atualiza.
  */
-export function sessionUpdateToDraft(update: acp.SessionUpdate, images: ImageSink = NO_IMAGES): EventDraft | undefined {
+export function sessionUpdateToDraft(
+  update: acp.SessionUpdate,
+  images: ImageSink = NO_IMAGES,
+  memory: ToolCallMemory = new Map(),
+): EventDraft | undefined {
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
       return chunkDraft('agent_message_chunk', update.content, images);
@@ -143,6 +176,8 @@ export function sessionUpdateToDraft(update: acp.SessionUpdate, images: ImageSin
       return chunkDraft('agent_thought_chunk', update.content, images);
     case 'tool_call': {
       const status = knownStatus(update.status);
+      const tracking = trackToolCall(toolFactsOf(update, status), memory.get(update.toolCallId));
+      rememberToolCall(memory, update.toolCallId, tracking);
       return {
         kind: 'tool_call',
         toolCallId: update.toolCallId,
@@ -151,16 +186,20 @@ export function sessionUpdateToDraft(update: acp.SessionUpdate, images: ImageSin
         locations: (update.locations ?? []).map((location) => location.path),
         ...(update.kind !== undefined ? { toolKind: update.kind } : {}),
         ...(status !== undefined ? { status } : {}),
+        ...tracking,
       };
     }
     case 'tool_call_update': {
       const status = knownStatus(update.status);
+      const tracking = trackToolCall(toolFactsOf(update, status), memory.get(update.toolCallId));
+      rememberToolCall(memory, update.toolCallId, tracking);
       return {
         kind: 'tool_call_update',
         toolCallId: update.toolCallId,
         ...(update.title != null ? { title: update.title } : {}),
         ...(status !== undefined ? { status } : {}),
         ...(update.content != null ? { content: toolContentOf(update.content, images) } : {}),
+        ...tracking,
       };
     }
     case 'plan':

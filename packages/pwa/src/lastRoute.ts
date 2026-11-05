@@ -53,6 +53,8 @@ export function toPersistedRoute(machineId: string, route: Route): PersistedRout
     case 'settings':
     case 'devices':
     case 'changes':
+    case 'files':
+    case 'editor':
       return null;
   }
 }

@@ -1,8 +1,12 @@
 import { useState } from 'react';
+import { ChevronRight, Folder, Plus, Trash } from 'lucide-react';
 import type { Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
+import { Button } from '@/components/ui/button';
 import type { Navigator } from '../navigation.js';
 import { useAsync } from '../useAsync.js';
 
@@ -32,42 +36,52 @@ export function WorkspacesScreen({ machineName, api, nav, onRepair }: Workspaces
   const workspaces = list.data;
 
   return (
-    <main className="screen">
+    <Screen>
       <ScreenHeader
         title="Workspaces"
         subtitle={machineName}
         onBack={() => nav.back()}
         actions={
-          <button type="button" className="button primary" onClick={() => nav.push({ kind: 'folders' })}>
-            + Workspace
-          </button>
+          <Button variant="ghost" size="icon" aria-label="Adicionar workspace" onClick={() => nav.push({ kind: 'folders' })}>
+            <Plus aria-hidden="true" />
+          </Button>
         }
       />
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {workspaces === null && error === null && <p className="muted">Carregando…</p>}
+      {workspaces === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
       {workspaces !== null && workspaces.length === 0 && (
-        <p className="muted">Nenhum workspace ainda. Escolha uma pasta do PC com “+ Workspace”.</p>
+        <p className="pl-1 text-muted-foreground">
+          Nenhum workspace ainda. Toque em + para escolher uma pasta do PC.
+        </p>
       )}
 
-      <ul className="item-list">
-        {workspaces?.map((workspace) => (
-          <li key={workspace.id} className="item-row">
-            <button
-              type="button"
-              className="item-main"
-              onClick={() => nav.push({ kind: 'sessions', workspace })}
-            >
-              <span className="item-title">{workspace.name}</span>
-              <span className="muted small path">{workspace.path}</span>
-            </button>
-            <button type="button" className="button ghost danger" onClick={() => remove(workspace)}>
-              Remover
-            </button>
-          </li>
-        ))}
-      </ul>
-    </main>
+      {workspaces !== null && workspaces.length > 0 && (
+        <ListGroup label="Workspaces">
+          {workspaces.map((workspace) => (
+            <li key={workspace.id} className={listRowClass}>
+              <button type="button" className={listMainClass} onClick={() => nav.push({ kind: 'sessions', workspace })}>
+                <Folder className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-base font-medium">{workspace.name}</span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">{workspace.path}</span>
+                </span>
+                <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive"
+                aria-label={`Remover ${workspace.name}`}
+                onClick={() => void remove(workspace)}
+              >
+                <Trash aria-hidden="true" />
+              </Button>
+            </li>
+          ))}
+        </ListGroup>
+      )}
+    </Screen>
   );
 }

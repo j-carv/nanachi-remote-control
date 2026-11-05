@@ -100,3 +100,35 @@ export async function pruneWorktrees(repo: string): Promise<void> {
 export async function deleteMergedBranch(repo: string, branch: string): Promise<void> {
   await runGit(['branch', '-d', branch], { cwd: repo });
 }
+
+/** stderr text of a failed git command (empty when the error carries no stderr). */
+export function stderrOf(error: unknown): string {
+  if (typeof error !== 'object' || error === null || !('stderr' in error)) return '';
+  return typeof error.stderr === 'string' ? error.stderr : '';
+}
+
+/**
+ * Which of the paths (relative to `cwd`) git ignores, in one call: `git check-ignore --stdin -z`.
+ * Exit code 1 means "none matched" and is not an error. A tracked file does not count as ignored.
+ */
+export function checkIgnored(cwd: string, paths: readonly string[]): Promise<Set<string>> {
+  if (paths.length === 0) return Promise.resolve(new Set());
+  return new Promise((resolve, reject) => {
+    // No --literal-pathspecs: check-ignore rejects that mode (stdin already carries names, not pathspecs).
+    const child = execFile(
+      'git',
+      ['check-ignore', '--stdin', '-z'],
+      { cwd, windowsHide: true, maxBuffer: GIT_MAX_BUFFER, encoding: 'utf8' },
+      (error, stdout) => {
+        if (error !== null && error.code !== 1) {
+          reject(error);
+          return;
+        }
+        resolve(new Set(stdout.split('\0').filter((path) => path.length > 0)));
+      },
+    );
+    // If git exits before reading all of stdin, the write fails with EPIPE. The callback reports the failure; it must not crash the daemon.
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(`${paths.join('\0')}\0`);
+  });
+}

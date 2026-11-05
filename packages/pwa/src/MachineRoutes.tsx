@@ -2,7 +2,9 @@ import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { createApiClient } from './api.js';
 import type { Connection } from './connection.js';
 import type { Machine, StorageLike } from './machines.js';
+import { Screen } from './components/Screen.js';
 import type { Navigator, Route } from './navigation.js';
+import { FilesScreen } from './screens/FilesScreen.js';
 import { FolderPickerScreen } from './screens/FolderPickerScreen.js';
 import { SessionsScreen } from './screens/SessionsScreen.js';
 import { WorkspacesScreen } from './screens/WorkspacesScreen.js';
@@ -18,6 +20,10 @@ const TerminalScreen = lazy(() =>
 const ChangesScreen = lazy(() =>
   import('./screens/ChangesScreen.js').then((module) => ({ default: module.ChangesScreen })),
 );
+// O editor traz o CodeMirror (e os parsers de linguagem): fica fora do bundle principal até abrir um arquivo.
+const EditorScreen = lazy(() =>
+  import('./screens/EditorScreen.js').then((module) => ({ default: module.EditorScreen })),
+);
 
 interface MachineRoutesProps {
   machine: Machine;
@@ -29,9 +35,9 @@ interface MachineRoutesProps {
 
 function LazyFallback() {
   return (
-    <main className="screen">
-      <p className="muted">Carregando…</p>
-    </main>
+    <Screen>
+      <p className="text-muted-foreground">Carregando…</p>
+    </Screen>
   );
 }
 
@@ -111,6 +117,32 @@ export function MachineRoutes({ machine, route, nav, connection, storage }: Mach
             machineName={machine.name}
             workspace={route.workspace}
             session={route.session}
+            api={api}
+            nav={nav}
+            onRepair={onRepair}
+          />
+        </Lazy>
+      );
+
+    case 'files':
+      return (
+        <FilesScreen
+          key={route.path}
+          workspace={route.workspace}
+          path={route.path}
+          api={api}
+          nav={nav}
+          onRepair={onRepair}
+        />
+      );
+
+    case 'editor':
+      return (
+        <Lazy>
+          <EditorScreen
+            key={route.path}
+            workspace={route.workspace}
+            path={route.path}
             api={api}
             nav={nav}
             onRepair={onRepair}

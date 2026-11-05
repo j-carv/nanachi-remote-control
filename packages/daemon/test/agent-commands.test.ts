@@ -34,9 +34,15 @@ import { removeTempDir } from './temp.js';
 
 const ANNOUNCED: AvailableCommand[] = [
   { name: 'loop', description: 'Repete um prompt em intervalo', hint: '[intervalo] [prompt]' },
-  { name: 'mcp', description: 'Mostra os servidores MCP', hint: null },
+  { name: 'mcp', description: 'Mostra os servidores MCP', hint: '[reconnect|enable|disable [<server>|all]]' },
   { name: 'skill:brainstorming', description: 'Use antes de criar algo novo', hint: 'argumentos' },
   { name: 'eco', description: 'Devolve o texto informado', hint: 'texto' },
+  { name: 'model', description: 'Troca o modelo da sessão', hint: null },
+  {
+    name: 'usage',
+    description: 'Mostra o uso da conta',
+    hint: '[show|reset [provider/credential-id|provider/active]]',
+  },
 ];
 
 let base: string;

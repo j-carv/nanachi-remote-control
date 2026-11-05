@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema } from './config.js';
+import { ShellIdSchema } from './shell.js';
 import {
   AgentSessionSummarySchema,
   AvailableCommandSchema,
@@ -134,6 +135,7 @@ export type SessionsResponse = z.infer<typeof SessionsResponseSchema>;
 /**
  * POST /api/sessions (Bearer token). `config` é aplicado logo após `session/new`.
  * `worktree: true` cria um worktree git separado (só para workspace git).
+ * `agent: "shell"` abre um terminal na pasta do workspace (ver PLAN.md, terminal no workspace); `shell` escolhe o programa.
  * `resumeAcpSessionId` (sessão listada em `agent-sessions`) importa uma sessão criada fora do app: o histórico
  * reenviado pelo agente vira eventos, e `resumeTitle` (título da listagem) dá o título. Sem `worktree`.
  */
@@ -144,6 +146,8 @@ export const CreateSessionRequestSchema = z.object({
   worktree: z.boolean().optional(),
   resumeAcpSessionId: z.string().min(1).optional(),
   resumeTitle: z.string().min(1).optional(),
+  /** Só com `agent: "shell"`: qual shell abrir. Ausente = o padrão do PC (pwsh, senão powershell). */
+  shell: ShellIdSchema.optional(),
 });
 
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
@@ -264,3 +268,155 @@ export const DevicesResponseSchema = z.object({
 });
 
 export type DevicesResponse = z.infer<typeof DevicesResponseSchema>;
+
+/**
+ * POST /api/sessions/:id/usage (Bearer token): saída do comando de uso do agente (`/usage` ou `/status`), como
+ * veio: ANSI incluso, o PWA remove. Não grava nada na sessão. `fetchedAt` é quando o agente respondeu de verdade.
+ * `cached: true` só aparece quando a resposta veio do cache do daemon (leitura de até 30 s atrás).
+ */
+export const UsageResponseSchema = z.object({
+  agent: z.string().min(1),
+  text: z.string(),
+  fetchedAt: z.number().int().nonnegative(),
+  cached: z.literal(true).optional(),
+});
+
+export type UsageResponse = z.infer<typeof UsageResponseSchema>;
+
+/**
+ * Error body for any API route: `error` is the stable code (e.g. `file_changed`); `details` carries extra data when
+ * the client needs it (e.g. `dirty` for `dirty_worktree`, the current `etag` for `file_changed`).
+ */
+export const ErrorResponseSchema = z.object({
+  error: z.string().min(1),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+
+/** Maximum number of changed paths listed by GET branches and by the 409 `dirty_worktree`. */
+export const GIT_DIRTY_LIST_MAX = 200;
+
+/**
+ * Repositório git: branches locais; `dirty` lista os caminhos do `git status`. `isRepo` é o discriminante: uma pasta
+ * que não é repositório responde `{ isRepo: false }` (GitBranchesNotRepoSchema), sem erro.
+ */
+export const GitBranchesRepoSchema = z.object({
+  isRepo: z.literal(true),
+  /** Current branch name; null when HEAD is detached. */
+  current: z.string().min(1).nullable(),
+  /** Abbreviated commit HEAD points to when detached; null when there is a current branch. */
+  detachedAt: z.string().min(1).nullable(),
+  branches: z.array(
+    z.object({
+      name: z.string().min(1),
+      current: z.boolean(),
+      upstream: z.string().min(1).nullable(),
+      /** Committer date of the branch's last commit, in epoch milliseconds. */
+      lastCommitAt: z.number().int().nonnegative(),
+    }),
+  ),
+  dirty: z.array(z.string().min(1)).max(GIT_DIRTY_LIST_MAX),
+});
+
+export type GitBranchesRepo = z.infer<typeof GitBranchesRepoSchema>;
+
+/** A pasta do workspace não é um repositório git. A troca de branch continua respondendo 400 `not_a_git_repo`. */
+export const GitBranchesNotRepoSchema = z.object({
+  isRepo: z.literal(false),
+});
+
+/** GET /api/workspaces/:id/git/branches (Bearer token). Não é erro quando a pasta não é git: vem `isRepo: false`. */
+export const GitBranchesResponseSchema = z.discriminatedUnion('isRepo', [GitBranchesRepoSchema, GitBranchesNotRepoSchema]);
+
+export type GitBranchesResponse = z.infer<typeof GitBranchesResponseSchema>;
+
+/**
+ * POST /api/workspaces/:id/git/checkout (Bearer token). `create: true` creates the branch (`git switch -c`); without
+ * it, only switches to an existing local branch. The daemon validates the full name with `git check-ref-format`.
+ */
+export const GitCheckoutRequestSchema = z.object({
+  branch: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((name) => !name.startsWith('-') && !name.includes('@{'), 'invalid branch name'),
+  create: z.boolean().optional(),
+});
+
+export type GitCheckoutRequest = z.infer<typeof GitCheckoutRequestSchema>;
+
+/** Entry type in a file listing. A link (symlink or junction) is never followed while listing. */
+export const WorkspaceEntryTypeSchema = z.enum(['dir', 'file', 'symlink']);
+
+export type WorkspaceEntryType = z.infer<typeof WorkspaceEntryTypeSchema>;
+
+/**
+ * GET /api/workspaces/:id/fs/list?path=<rel> (Bearer token). Folders first, then by name; `.git` is left out.
+ * `ignored` is true when `git check-ignore` matches the entry (always false outside a git repository).
+ */
+export const WorkspaceEntriesResponseSchema = z.object({
+  entries: z.array(
+    z.object({
+      name: z.string().min(1),
+      type: WorkspaceEntryTypeSchema,
+      size: z.number().int().nonnegative(),
+      mtimeMs: z.number().nonnegative(),
+      ignored: z.boolean(),
+    }),
+  ),
+});
+
+export type WorkspaceEntriesResponse = z.infer<typeof WorkspaceEntriesResponseSchema>;
+
+/**
+ * GET /api/workspaces/:id/fs/file?path=<rel> (Bearer token). UTF-8 text as stored (line endings and BOM included).
+ * `etag` is the SHA-256 of the content in hex; the next write sends it back as `baseEtag`.
+ */
+export const WorkspaceFileResponseSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  encoding: z.literal('utf8'),
+  size: z.number().int().nonnegative(),
+  mtimeMs: z.number().nonnegative(),
+  etag: z.string().min(1),
+});
+
+export type WorkspaceFileResponse = z.infer<typeof WorkspaceFileResponseSchema>;
+
+/**
+ * PUT /api/workspaces/:id/fs/file (Bearer token). `baseEtag: null` creates the file (409 `file_exists` if it already
+ * exists); an etag updates it, and only while the file still has that content (otherwise 409 `file_changed`).
+ */
+export const WorkspaceFileWriteRequestSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  baseEtag: z.string().min(1).nullable(),
+});
+
+export type WorkspaceFileWriteRequest = z.infer<typeof WorkspaceFileWriteRequestSchema>;
+
+/** PUT response: the state that was written (the new etag for the next write). */
+export const WorkspaceFileWriteResponseSchema = z.object({
+  path: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  mtimeMs: z.number().nonnegative(),
+  etag: z.string().min(1),
+});
+
+export type WorkspaceFileWriteResponse = z.infer<typeof WorkspaceFileWriteResponseSchema>;
+
+/** POST /api/workspaces/:id/fs/mkdir (Bearer token). Does not create missing parent folders (not recursive). */
+export const WorkspaceMkdirRequestSchema = z.object({
+  path: z.string().min(1),
+});
+
+export type WorkspaceMkdirRequest = z.infer<typeof WorkspaceMkdirRequestSchema>;
+
+/** POST /api/workspaces/:id/fs/rename (Bearer token). */
+export const WorkspaceRenameRequestSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+});
+
+export type WorkspaceRenameRequest = z.infer<typeof WorkspaceRenameRequestSchema>;

@@ -52,27 +52,49 @@ const MachineSchema = z.object({
 
 export type Machine = z.infer<typeof MachineSchema>;
 
-/** Lê a lista do localStorage. Qualquer lixo vira entradas descartadas, nunca exceção. */
-export function parseMachines(raw: string | null): Machine[] {
-  if (raw === null) return [];
+/**
+ * What the stored list says. `ok` with an empty list means nothing is saved (a new device). `unreadable` means
+ * something is saved but it cannot be read, so the app must say so instead of acting as if nothing was paired.
+ */
+export type StoredMachines =
+  | { readonly status: 'ok'; readonly machines: Machine[] }
+  | { readonly status: 'unreadable' };
+
+/**
+ * Parses the stored list. Entries that do not match the schema, or repeat an id, are dropped and counted in a
+ * console warning; the rest are kept. Invalid JSON or a value that is not a list is `unreadable`.
+ */
+export function parseStoredMachines(raw: string | null): StoredMachines {
+  if (raw === null) return { status: 'ok', machines: [] };
 
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return [];
+    return { status: 'unreadable' };
   }
-  if (!Array.isArray(json)) return [];
+  if (!Array.isArray(json)) return { status: 'unreadable' };
 
   const seen = new Set<string>();
   const machines: Machine[] = [];
+  let dropped = 0;
   for (const item of json) {
     const parsed = MachineSchema.safeParse(item);
-    if (!parsed.success || seen.has(parsed.data.id)) continue;
+    if (!parsed.success || seen.has(parsed.data.id)) {
+      dropped += 1;
+      continue;
+    }
     seen.add(parsed.data.id);
     machines.push(parsed.data);
   }
-  return machines;
+  if (dropped > 0) console.warn(`nanachi: ${dropped} acesso(s) salvo(s) inválido(s) descartado(s).`);
+  return { status: 'ok', machines };
+}
+
+/** Lista de máquinas do JSON salvo; ilegível vira lista vazia (use parseStoredMachines para distinguir). */
+export function parseMachines(raw: string | null): Machine[] {
+  const stored = parseStoredMachines(raw);
+  return stored.status === 'ok' ? stored.machines : [];
 }
 
 /** Adiciona a máquina, ou substitui a existente com o mesmo id (mantendo a posição). */
@@ -94,12 +116,20 @@ export function resolveSelected(
   return machines.find((machine) => machine.id === selectedId) ?? machines[0];
 }
 
-export function readMachines(storage: StorageLike): Machine[] {
+/** Lê a lista salva. Storage que lança na leitura é `unreadable` (não é o mesmo que vazio). */
+export function readStoredMachines(storage: StorageLike): StoredMachines {
+  let raw: string | null;
   try {
-    return parseMachines(storage.getItem(MACHINES_KEY));
+    raw = storage.getItem(MACHINES_KEY);
   } catch {
-    return [];
+    return { status: 'unreadable' };
   }
+  return parseStoredMachines(raw);
+}
+
+export function readMachines(storage: StorageLike): Machine[] {
+  const stored = readStoredMachines(storage);
+  return stored.status === 'ok' ? stored.machines : [];
 }
 
 /** Retorna `false` se o storage recusou a escrita (modo privado, cota cheia). */

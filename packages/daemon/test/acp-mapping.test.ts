@@ -17,6 +17,7 @@ import {
   titleFromPrompt,
   type ImageSink,
 } from '../src/acp-mapping.js';
+import type { ToolCallMemory } from '../src/tool-background.js';
 
 function validate(draft: Record<string, unknown>) {
   return SessionEventSchema.safeParse({ ...draft, seq: 1, sessionId: 's', ts: 1 });
@@ -384,6 +385,257 @@ describe('promptBlocks', () => {
     expect(blocks).toEqual([{ type: 'text', text: 'x\n\n[Arquivo anexado: /a]\n\n[Arquivo anexado: /b]' }]);
   });
 });
+
+describe('sessionUpdateToDraft: subagentes e segundo plano', () => {
+  // Fixtures sintéticos com a forma descrita no PLAN.md; nenhum id, caminho ou texto é real.
+  it('tool_call comum, sem _meta nem sinais novos, sai igual ao de antes (nada novo no evento)', () => {
+    const draft = sessionUpdateToDraft({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'call-1',
+      title: 'Ler a.txt',
+      kind: 'read',
+      status: 'completed',
+      rawInput: { path: 'C:\\proj\\a.txt' },
+      content: [{ type: 'content', content: { type: 'text', text: 'conteúdo' } }],
+      locations: [{ path: 'C:\\proj\\a.txt' }],
+    });
+    expect(draft).toEqual({
+      kind: 'tool_call',
+      toolCallId: 'call-1',
+      title: 'Ler a.txt',
+      toolKind: 'read',
+      status: 'completed',
+      content: [{ type: 'text', text: 'conteúdo' }],
+      locations: ['C:\\proj\\a.txt'],
+    });
+  });
+
+  it('Claude: tool_call Agent vira subagent running; rawInput e prompt não são guardados', () => {
+    const memory: ToolCallMemory = new Map();
+    const draft = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'agent-1',
+        title: 'Agent',
+        kind: 'think',
+        status: 'pending',
+        rawInput: { description: 'Revisar o parser', subagent_type: 'Explore', run_in_background: false, prompt: 'PROMPT-SECRETO' },
+        content: [],
+        locations: [],
+        _meta: { claudeCode: { toolName: 'Agent' } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+
+    expect(draft).toMatchObject({
+      kind: 'tool_call',
+      toolName: 'Agent',
+      background: { kind: 'subagent', state: 'running', label: 'Revisar o parser', agentType: 'Explore' },
+    });
+    expect(draft).not.toHaveProperty('rawInput');
+    expect(JSON.stringify(draft)).not.toContain('PROMPT-SECRETO');
+    expect(validate(draft as Record<string, unknown>).success).toBe(true);
+    expect(memory.get('agent-1')?.background?.state).toBe('running');
+  });
+
+  it('Claude: filho com _meta.parentToolUseId leva o pai; ferramenta comum filha não tem background', () => {
+    const draft = sessionUpdateToDraft({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'read-9',
+      title: 'Read x.ts',
+      status: 'pending',
+      content: [],
+      locations: [],
+      _meta: { claudeCode: { toolName: 'Read', parentToolUseId: 'agent-1' } },
+    });
+    expect(draft).toEqual({
+      kind: 'tool_call',
+      toolCallId: 'read-9',
+      title: 'Read x.ts',
+      status: 'pending',
+      content: [],
+      locations: [],
+      toolName: 'Read',
+      parentToolCallId: 'agent-1',
+    });
+  });
+
+  it('Claude: a conclusão do Agent usa a memória do tool_call (label e agentType) e fecha como completed', () => {
+    const memory: ToolCallMemory = new Map();
+    sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'agent-1',
+        title: 'Agent',
+        status: 'pending',
+        rawInput: { description: 'Revisar', subagent_type: 'Explore' },
+        content: [],
+        locations: [],
+        _meta: { claudeCode: { toolName: 'Agent' } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    const draft = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'agent-1',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'Relatório pronto.' } }],
+        _meta: { claudeCode: { toolName: 'Agent' } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(draft).toEqual({
+      kind: 'tool_call_update',
+      toolCallId: 'agent-1',
+      status: 'completed',
+      content: [{ type: 'text', text: 'Relatório pronto.' }],
+      toolName: 'Agent',
+      background: { kind: 'subagent', state: 'completed', label: 'Revisar', agentType: 'Explore' },
+    });
+    expect(validate(draft as Record<string, unknown>).success).toBe(true);
+  });
+
+  it('Claude: Agent assíncrono segue running depois do completed', () => {
+    const memory: ToolCallMemory = new Map();
+    const draft = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'agent-2',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'Async agent launched successfully. agentId: a-2' } }],
+        _meta: { claudeCode: { toolName: 'Task' } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(draft).toMatchObject({ background: { kind: 'subagent', state: 'running' } });
+  });
+
+  it('Claude: Bash com run_in_background vira shell; o update com o texto de background mantém o label', () => {
+    const memory: ToolCallMemory = new Map();
+    const start = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'bash-1',
+        title: 'Bash',
+        status: 'pending',
+        rawInput: { command: 'npm run dev', description: 'Servidor de dev', run_in_background: true },
+        content: [],
+        locations: [],
+        _meta: { claudeCode: { toolName: 'Bash' } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(start).toMatchObject({ toolName: 'Bash', background: { kind: 'shell', state: 'running', label: 'Servidor de dev' } });
+
+    const done = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'bash-1',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'Command running in background with ID: bg-1' } }],
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(done).toEqual({
+      kind: 'tool_call_update',
+      toolCallId: 'bash-1',
+      status: 'completed',
+      content: [{ type: 'text', text: 'Command running in background with ID: bg-1' }],
+      toolName: 'Bash',
+      background: { kind: 'shell', state: 'running', label: 'Servidor de dev' },
+    });
+  });
+
+  it('Codex: spawnAgent vira subagent com um job por receiver; a chave de rawInput não entra no evento', () => {
+    const draft = sessionUpdateToDraft({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'codex-1',
+      title: 'spawnAgent',
+      kind: 'other',
+      status: 'pending',
+      rawInput: { receiverThreadIds: ['thread-1'], agentsStates: { 'thread-1': { status: 'pendingInit' } }, message: 'MENSAGEM-LONGA' },
+      content: [],
+      locations: [],
+    });
+    expect(draft).toMatchObject({
+      background: { kind: 'subagent', state: 'running', label: 'spawnAgent', jobs: [{ id: 'thread-1', status: 'pendingInit' }] },
+    });
+    expect(JSON.stringify(draft)).not.toContain('MENSAGEM-LONGA');
+    expect(validate(draft as Record<string, unknown>).success).toBe(true);
+  });
+
+  it('Codex: wait completed com um receiver errored vira failed', () => {
+    const draft = sessionUpdateToDraft({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'codex-2',
+      status: 'completed',
+      rawInput: { receiverThreadIds: ['t1', 't2'], agentsStates: { t1: { status: 'completed' }, t2: { status: 'errored' } } },
+    });
+    expect(draft).toMatchObject({ background: { kind: 'subagent', state: 'failed' } });
+  });
+
+  it('omp: task com details.progress vira job; wait com details.jobs atualiza o status (sem resultText)', () => {
+    const memory: ToolCallMemory = new Map();
+    sessionUpdateToDraft(
+      { sessionUpdate: 'tool_call', toolCallId: 'omp-task-1', title: 'task', status: 'pending', rawInput: { tasks: [] }, content: [], locations: [] },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    const task = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'omp-task-1',
+        status: 'completed',
+        rawOutput: {
+          details: {
+            progress: [
+              { id: 'job-a', agent: 'explore', status: 'running', task: 'Ler o parser', toolCount: 3, tokens: 900, durationMs: 1200 },
+            ],
+          },
+        },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(task).toMatchObject({
+      background: { kind: 'job', state: 'running', label: 'task', jobs: [{ id: 'job-a', label: 'Ler o parser', status: 'running' }] },
+    });
+
+    const wait = sessionUpdateToDraft(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'omp-wait-1',
+        title: 'wait',
+        status: 'completed',
+        rawOutput: { details: { jobs: [{ id: 'job-a', status: 'completed', resultText: 'RESULTADO-LONGO' }] } },
+      },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(wait).toMatchObject({ background: { kind: 'job', state: 'completed', jobs: [{ id: 'job-a', status: 'completed' }] } });
+    expect(JSON.stringify(wait)).not.toContain('RESULTADO-LONGO');
+    expect(validate(wait as Record<string, unknown>).success).toBe(true);
+  });
+
+  it('memória só guarda chamadas com background', () => {
+    const memory: ToolCallMemory = new Map();
+    sessionUpdateToDraft(
+      { sessionUpdate: 'tool_call', toolCallId: 'read-1', title: 'Read', status: 'completed', content: [], locations: [] },
+      NO_IMAGES_SINK,
+      memory,
+    );
+    expect(memory.size).toBe(0);
+  });
+});
+
+const NO_IMAGES_SINK: ImageSink = () => undefined;
 
 describe('listedUpdatedAt', () => {
   it('converte o ISO 8601 do session/list para ms', () => {

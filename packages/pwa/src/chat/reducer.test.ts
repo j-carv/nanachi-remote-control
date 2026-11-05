@@ -24,7 +24,21 @@ const TOOL_DIFF = { type: 'diff', path: 'a.ts', oldText: 'a', newText: 'b' } as 
 describe('createChatState', () => {
   it('começa vazio, com seq 0 e o status dado', () => {
     const state = createChatState('starting');
-    expect(state).toEqual({ lastSeq: 0, items: [], permissions: [], status: 'starting' });
+    expect(state).toEqual({ lastSeq: 0, items: [], permissions: [], status: 'starting', turnEnds: 0 });
+  });
+});
+
+describe('user_message de iteração de loop', () => {
+  it('leva o número da rodada do loop para o item', () => {
+    const state = run([ev(1, { kind: 'user_message', text: 'revise', loop: true, loopIteration: 2 })]);
+    expect(state.items).toEqual([
+      { id: 'user-1', kind: 'user_message', text: 'revise', loopIteration: 2 },
+    ]);
+  });
+
+  it('mensagem comum não ganha campo de loop', () => {
+    const state = run([ev(1, { kind: 'user_message', text: 'oi' })]);
+    expect(state.items[0]).not.toHaveProperty('loopIteration');
   });
 });
 
@@ -351,6 +365,157 @@ describe('arquivos', () => {
   it('user_message sem anexos não ganha a chave attachments', () => {
     const state = run([ev(1, { kind: 'user_message', text: 'oi' })]);
     expect(state.items[0]).not.toHaveProperty('attachments');
+  });
+});
+
+describe('nesting and background work on tool items', () => {
+  const TS = (seq: number) => 1_700_000_000_000 + seq;
+
+  it('keeps parentToolCallId and toolName from the event', () => {
+    const state = run([
+      ev(1, {
+        kind: 'tool_call',
+        toolCallId: 'child',
+        title: 'Ler parser.ts',
+        parentToolCallId: 'parent',
+        toolName: 'Read',
+        content: [],
+        locations: [],
+      }),
+    ]);
+    expect(state.items[0]).toMatchObject({ parentToolCallId: 'parent', toolName: 'Read' });
+  });
+
+  it('an update without lineage fields keeps the ones already known', () => {
+    const state = run([
+      ev(1, {
+        kind: 'tool_call',
+        toolCallId: 'child',
+        title: 'Ler',
+        parentToolCallId: 'parent',
+        toolName: 'Read',
+        content: [],
+        locations: [],
+      }),
+      ev(2, { kind: 'tool_call_update', toolCallId: 'child', status: 'completed' }),
+    ]);
+    expect(state.items[0]).toMatchObject({ parentToolCallId: 'parent', toolName: 'Read', status: 'completed' });
+  });
+
+  it('a later background replaces the earlier one', () => {
+    const state = run([
+      ev(1, {
+        kind: 'tool_call',
+        toolCallId: 'sub',
+        title: 'Agent',
+        background: { kind: 'subagent', state: 'running', label: 'Antes' },
+        content: [],
+        locations: [],
+      }),
+      ev(2, {
+        kind: 'tool_call_update',
+        toolCallId: 'sub',
+        background: { kind: 'subagent', state: 'completed', label: 'Depois', agentType: 'Explore' },
+      }),
+    ]);
+    expect(state.items[0]).toMatchObject({
+      background: { kind: 'subagent', state: 'completed', label: 'Depois', agentType: 'Explore' },
+    });
+  });
+
+  it('jobs merge by id: a newer status wins, a label survives when the newer job has none', () => {
+    const state = run([
+      ev(1, {
+        kind: 'tool_call',
+        toolCallId: 'task',
+        title: 'Compilar e testar',
+        background: {
+          kind: 'job',
+          state: 'running',
+          jobs: [
+            { id: 'j1', label: 'Compilar', status: 'running' },
+            { id: 'j2', label: 'Testes', status: 'running' },
+          ],
+        },
+        content: [],
+        locations: [],
+      }),
+      ev(2, {
+        kind: 'tool_call_update',
+        toolCallId: 'task',
+        background: {
+          kind: 'job',
+          state: 'running',
+          jobs: [
+            { id: 'j1', status: 'completed' },
+            { id: 'j3', label: 'Lint', status: 'running' },
+          ],
+        },
+      }),
+    ]);
+    expect(state.items[0]).toMatchObject({
+      background: {
+        jobs: [
+          { id: 'j1', label: 'Compilar', status: 'completed' },
+          { id: 'j2', label: 'Testes', status: 'running' },
+          { id: 'j3', label: 'Lint', status: 'running' },
+        ],
+      },
+    });
+  });
+
+  it('an update whose background has no jobs keeps the jobs already known', () => {
+    const state = run([
+      ev(1, {
+        kind: 'tool_call',
+        toolCallId: 'task',
+        title: 'task',
+        background: { kind: 'job', state: 'running', jobs: [{ id: 'j1', status: 'running' }] },
+        content: [],
+        locations: [],
+      }),
+      ev(2, {
+        kind: 'tool_call_update',
+        toolCallId: 'task',
+        background: { kind: 'job', state: 'completed' },
+      }),
+    ]);
+    expect(state.items[0]).toMatchObject({
+      background: { state: 'completed', jobs: [{ id: 'j1', status: 'running' }] },
+    });
+  });
+
+  it('records when the background started and when the tool call last changed', () => {
+    const state = run([
+      ev(1, { kind: 'tool_call', toolCallId: 'bash', title: 'Bash', content: [], locations: [] }),
+      ev(2, {
+        kind: 'tool_call_update',
+        toolCallId: 'bash',
+        background: { kind: 'shell', state: 'running' },
+      }),
+      ev(5, { kind: 'tool_call_update', toolCallId: 'bash', title: 'Bash · npm test' }),
+    ]);
+    expect(state.items[0]).toMatchObject({
+      timing: { startedAt: TS(2), updatedAt: TS(5), startEnds: 0, seenEnds: 0 },
+    });
+  });
+
+  it('a tool call without background has no timing and no background keys', () => {
+    const state = run([ev(1, { kind: 'tool_call', toolCallId: 'plain', title: 'Ler', content: [], locations: [] })]);
+    expect(state.items[0]).not.toHaveProperty('timing');
+    expect(state.items[0]).not.toHaveProperty('background');
+    expect(state.items[0]).not.toHaveProperty('parentToolCallId');
+  });
+
+  it('each turn_end counts one turn end, and later updates record the count they saw', () => {
+    const state = run([
+      ev(1, { kind: 'tool_call', toolCallId: 'bash', title: 'Bash', background: { kind: 'shell', state: 'running' }, content: [], locations: [] }),
+      ev(2, { kind: 'turn_end', stopReason: 'end_turn' }),
+      ev(3, { kind: 'turn_end', stopReason: 'end_turn' }),
+      ev(4, { kind: 'tool_call_update', toolCallId: 'bash', title: 'Bash' }),
+    ]);
+    expect(state.turnEnds).toBe(2);
+    expect(state.items[0]).toMatchObject({ timing: { startEnds: 0, seenEnds: 2 } });
   });
 });
 

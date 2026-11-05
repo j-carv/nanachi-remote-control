@@ -14,10 +14,14 @@ import * as acp from '@agentclientprotocol/sdk';
  *  - "slow": trabalha até receber session/cancel
  *  - "config": emite config_option_update (thought_level vira "high")
  *  - "die": encerra o processo no meio do turno
+ *  - "LOOP-NEXT=<duração>" / "LOOP-STOP" / "LOOP-FAIL" (modo Loop): marcador de tempo, marcador de parada, ou
+ *    prompt rejeitado (erro do turno). Maiúsculas de propósito: a instrução do loop não as usa.
  *  - "img-inline": manda um PNG inline em agent_message_chunk e em tool_call + tool_call_update (mesmo conteúdo);
  *    FAKE_AGENT_INLINE_IMAGE=<arquivo> usa esse arquivo no lugar do PNG de 1x1
  *  - "img-arquivo": manda resource_link file:// de FAKE_AGENT_IMAGE_FILE (dentro) e de FAKE_AGENT_IMAGE_OUTSIDE (fora)
  *    em tool calls call-link e call-outside
+ *  - "/subagentes": subagente Claude (Agent, com filhos e um neto), Bash em segundo plano e task do omp com
+ *    details.progress; espera session/cancel (ver subagentDemo). Usado por e2e/run-background.mjs.
  *  - "flood": conversa pesada para medir o chat (e2e/run-chat-perf.mjs): pensamento, plano, 40 passos com
  *    ~60 chunks de markdown cada, tool call com diff e saída longa, bloco de código largo e um final com
  *    ~600 chunks. Um chunk por evento, em lotes curtos (FLOOD_TICK chunks por pausa de 10 ms).
@@ -41,10 +45,18 @@ import * as acp from '@agentclientprotocol/sdk';
  *  - FAKE_AGENT_COMMANDS=1: anuncia comandos (available_commands_update) logo depois de session/new e session/load.
  *    Prompt "/eco <texto>" responde só com o texto (agent_message_chunk), sem o eco padrão.
  *    Prompt "/trocar-comandos" anuncia outra lista (só "novo") e encerra o turno.
+ *    /mcp has an alternation hint and /usage (hint with choices) answers with raw ANSI SGR escapes, like omp's /usage.
+ *    /model is the native picker (the model option of configOptions); "/usage ..." replies in a code block.
+ *  - Prompts "/usage..." e "/status..." (comandos de uso, POST /api/sessions/:id/usage) respondem com o texto
+ *    de USAGE_REPLY; FAKE_AGENT_USAGE=hang não responde até session/cancel.
+ *  - FAKE_AGENT_LOAD_DELAY_MS=<ms>: session/load espera esse tempo antes de responder (retomada em curso nos testes).
+ *  - FAKE_AGENT_LOAD_FAIL=1: session/load responde erro (falha da retomada).
  */
 
 const style = process.env.FAKE_AGENT_STYLE === 'modes' ? 'modes' : 'options';
 const resume = process.env.FAKE_AGENT_RESUME ?? 'load';
+const loadDelayMs = Number(process.env.FAKE_AGENT_LOAD_DELAY_MS ?? 0);
+const loadFails = process.env.FAKE_AGENT_LOAD_FAIL === '1';
 const ACP_SESSION_ID = 'acp-session-1';
 const DEADLINE_MS = 15_000;
 /** PNG de 1x1 em base64 (só o mime importa para o daemon). FAKE_AGENT_INLINE_IMAGE=<arquivo> troca pelo arquivo. */
@@ -246,10 +258,43 @@ function chunk(text: string): acp.SessionUpdate {
 /** Comandos anunciados com FAKE_AGENT_COMMANDS=1 (nomes e formas que os agentes reais usam: /loop, /mcp, skill:x). */
 const FAKE_COMMANDS: acp.AvailableCommand[] = [
   { name: 'loop', description: 'Repete um prompt em intervalo', input: { hint: '[intervalo] [prompt]' } },
-  { name: 'mcp', description: 'Mostra os servidores MCP' },
+  {
+    name: 'mcp',
+    description: 'Mostra os servidores MCP',
+    input: { hint: '[reconnect|enable|disable [<server>|all]]' },
+  },
   { name: 'skill:brainstorming', description: 'Use antes de criar algo novo', input: { hint: 'argumentos' } },
   { name: 'eco', description: 'Devolve o texto informado', input: { hint: 'texto' } },
+  { name: 'model', description: 'Troca o modelo da sessão' },
+  {
+    name: 'usage',
+    description: 'Mostra o uso da conta',
+    input: { hint: '[show|reset [provider/credential-id|provider/active]]' },
+  },
 ];
+
+/**
+ * Reply shaped like omp's `/usage`: a code block with raw SGR escapes in the bars, one block per window. The PWA
+ * must show the cards (62% and 21%) and no escape codes. The account is synthetic.
+ */
+const USAGE_REPLY = [
+  '```',
+  'Usage (1s ago)',
+  '',
+  'Openai Codex',
+  '  Models with usage data',
+  '    openai-codex/gpt-5.6-sol',
+  '- 5 hours',
+  '  fake@example.com · plan: plus: 62.00% used (38.0% left)  ← in use by this session',
+  '  [\u001b[38;2;0;180;255m██████████████\u001b[39m░░░░░░░░░░] 62%',
+  '  resets in 2h',
+  '- 7 days',
+  '  fake@example.com · plan: plus: 21.00% used (79.0% left)',
+  '  [\u001b[38;2;52;211;153m█████\u001b[39m░░░░░░░░░░░░░░░░░░░] 21%',
+  '  resets in 5d',
+  '```',
+  '',
+].join('\n');
 
 async function announce(notify: (update: acp.SessionUpdate) => Promise<void>): Promise<void> {
   if (!announceCommands) return;
@@ -258,6 +303,112 @@ async function announce(notify: (update: acp.SessionUpdate) => Promise<void>): P
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * `/subagentes` (see the header): the tool calls a Claude subagent, a background Bash and an omp task leave in the
+ * chat. Everything is sent at once, then the turn waits for session/cancel, so the running state can be seen; the
+ * subagent completes when the turn ends. Claude's lineage and tool name travel in `_meta.claudeCode`.
+ */
+async function subagentDemo(notify: (update: acp.SessionUpdate) => Promise<void>): Promise<void> {
+  const claude = (toolName: string, parentToolUseId?: string) => ({
+    claudeCode: parentToolUseId === undefined ? { toolName } : { toolName, parentToolUseId },
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'sub-agent',
+    title: 'Agent',
+    kind: 'think',
+    status: 'in_progress',
+    rawInput: { description: 'Revisar o parser', subagent_type: 'Explore' },
+    _meta: claude('Agent'),
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'sub-read',
+    title: 'Ler parser.ts',
+    kind: 'read',
+    status: 'completed',
+    locations: [{ path: 'src/parser.ts' }],
+    _meta: claude('Read', 'sub-agent'),
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'sub-nested',
+    title: 'Agent',
+    kind: 'think',
+    status: 'in_progress',
+    rawInput: { description: 'Conferir os tipos', subagent_type: 'general-purpose' },
+    _meta: claude('Agent', 'sub-agent'),
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'sub-nested-read',
+    title: 'Ler types.ts',
+    kind: 'read',
+    status: 'completed',
+    _meta: claude('Read', 'sub-nested'),
+  });
+  await notify({ sessionUpdate: 'tool_call_update', toolCallId: 'sub-nested', status: 'completed' });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'sub-tests',
+    title: 'Ler testes',
+    kind: 'read',
+    status: 'completed',
+    _meta: claude('Read', 'sub-agent'),
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'bash-bg',
+    title: 'Bash',
+    kind: 'execute',
+    status: 'in_progress',
+    rawInput: { command: 'npm test', description: 'Testes em segundo plano', run_in_background: true },
+    _meta: claude('Bash'),
+  });
+  await notify({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'omp-task',
+    title: 'Compilar e testar',
+    kind: 'other',
+    status: 'in_progress',
+    rawInput: { tasks: [{ task: 'Compilar pacote' }, { task: 'Testes unitários' }] },
+  });
+  await notify({
+    sessionUpdate: 'tool_call_update',
+    toolCallId: 'omp-task',
+    rawOutput: {
+      details: {
+        progress: [
+          { id: 'job-1', task: 'Compilar pacote', status: 'running' },
+          { id: 'job-2', task: 'Testes unitários', status: 'running' },
+        ],
+      },
+    },
+  });
+  await notify({
+    sessionUpdate: 'tool_call_update',
+    toolCallId: 'omp-task',
+    rawOutput: {
+      details: {
+        progress: [
+          { id: 'job-1', task: 'Compilar pacote', status: 'completed' },
+          { id: 'job-2', task: 'Testes unitários', status: 'running' },
+        ],
+      },
+    },
+  });
+  await notify(chunk('Subagentes disparados.'));
+
+  const deadline = Date.now() + DEADLINE_MS;
+  while (!cancelRequested && Date.now() < deadline) await sleep(20);
+  await notify({
+    sessionUpdate: 'tool_call_update',
+    toolCallId: 'sub-agent',
+    status: 'completed',
+    content: [{ type: 'content', content: { type: 'text', text: 'Análise pronta' } }],
+  });
 }
 
 const FLOOD_STEPS = 40;
@@ -370,6 +521,8 @@ acp.agent()
     return listPage(params.cursor);
   })
   .onRequest(acp.methods.agent.session.load, async ({ params, client }) => {
+    if (loadFails) throw acp.RequestError.invalidParams(undefined, 'falha simulada no session/load');
+    if (loadDelayMs > 0) await sleep(loadDelayMs);
     // Histórico antigo reenviado durante o load: o daemon não pode gravar nem repassar isto (no resume normal).
     const items: acp.SessionUpdate[] =
       storePath === undefined
@@ -412,12 +565,42 @@ acp.agent()
       await notify(chunk(text.slice('/eco '.length)));
       return { stopReason: 'end_turn' };
     }
+    // Loop (modo dynamic): palavras em maiúsculas no prompt do usuário. A instrução do loop não as contém, então
+    // o eco não dispara nada. LOOP-NEXT=<duração> responde com esse marcador; LOOP-STOP com o de parada;
+    // LOOP-FAIL rejeita o prompt, como um agente que quebra no turno.
+    // Os blocos de texto são concatenados sem separador: a duração para em qualquer coisa que não seja letra ou dígito.
+    const nextMarker = /LOOP-NEXT=([0-9a-z]+)/.exec(text);
+    if (nextMarker !== null) {
+      await notify(chunk(`Passo feito. [[nanachi-loop-next: ${nextMarker[1] ?? ''}]]`));
+      return { stopReason: 'end_turn' };
+    }
+    if (text.includes('LOOP-STOP')) {
+      await notify(chunk('Tudo pronto. [[nanachi-loop-stop]]'));
+      return { stopReason: 'end_turn' };
+    }
+    if (text.includes('LOOP-FAIL')) {
+      throw acp.RequestError.internalError(undefined, 'falha simulada do turno');
+    }
+    if (text.startsWith('/usage') || text.startsWith('/status')) {
+      // FAKE_AGENT_USAGE=hang: não responde ao comando de uso até receber session/cancel (testa o timeout).
+      if (process.env.FAKE_AGENT_USAGE === 'hang') {
+        const deadline = Date.now() + DEADLINE_MS;
+        while (!cancelRequested && Date.now() < deadline) await sleep(20);
+        return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
+      }
+      await notify(chunk(USAGE_REPLY));
+      return { stopReason: 'end_turn' };
+    }
     if (text === '/trocar-comandos') {
       await notify({
         sessionUpdate: 'available_commands_update',
         availableCommands: [{ name: 'novo', description: 'Lista trocada' }],
       });
       return { stopReason: 'end_turn' };
+    }
+    if (text.startsWith('/subagentes')) {
+      await subagentDemo(notify);
+      return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
     }
     if (text.includes('flood')) {
       await flood(notify);

@@ -9,3 +9,11 @@ export function isResumable(status: SessionStatus): boolean {
 export function isInputEnabled(status: SessionStatus): boolean {
   return status === 'idle' || status === 'running';
 }
+
+/**
+ * Pode mandar um prompt agora: sessão pronta, ou parada/com erro (o daemon retoma antes do turno).
+ * `running` fica de fora: o daemon responde session_busy.
+ */
+export function acceptsPrompt(status: SessionStatus): boolean {
+  return status === 'idle' || isResumable(status);
+}

@@ -21,19 +21,23 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
- * Compartilhar pela folha nativa quando dá (iOS "Salvar em Arquivos", "Salvar Imagem" etc.);
+ * Compartilhar um arquivo pela folha nativa quando dá (iOS "Salvar em Arquivos", "Salvar Imagem" etc.);
  * senão, link de download. Fechar a folha sem escolher não é erro.
  */
-export async function shareOrDownload(blob: Blob, file: FileInfo): Promise<void> {
-  // O tipo do Blob já vem seguro de fetchFileBlob (blobTypeOf); o File herda dele, não do mime do remetente.
-  const data = new File([blob], file.name, { type: blob.type });
+export async function shareOrSaveFile(data: File): Promise<void> {
   if (!canShareFiles(navigator, data)) {
-    downloadBlob(blob, file.name);
+    downloadBlob(data, data.name);
     return;
   }
   try {
-    await navigator.share({ files: [data], title: file.name });
+    await navigator.share({ files: [data], title: data.name });
   } catch (error) {
     if (!isAbortError(error)) throw error;
   }
+}
+
+/** Mesmo que shareOrSaveFile, para um arquivo do PC: o nome vem de FileInfo e o tipo do Blob. */
+export function shareOrDownload(blob: Blob, file: FileInfo): Promise<void> {
+  // O tipo do Blob já vem seguro de fetchFileBlob (blobTypeOf); o File herda dele, não do mime do remetente.
+  return shareOrSaveFile(new File([blob], file.name, { type: blob.type }));
 }

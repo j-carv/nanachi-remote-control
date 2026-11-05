@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FileInfo } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
+import { Button } from '@/components/ui/button';
 import { describeError } from '../errorMessages.js';
 import { shareOrDownload } from '../files/save.js';
 import { isInlineImageMime } from '../files/blobType.js';
@@ -16,14 +17,16 @@ interface FileAttachmentProps {
 /** Arquivo trocado com o celular: miniatura para imagem, cartão com nome e tamanho para o resto. */
 export function FileAttachment({ api, file, caption }: FileAttachmentProps) {
   return (
-    <figure className="file-attachment">
+    <figure data-slot="file-attachment" className="m-0 flex max-w-full flex-col gap-1.5">
       {isInlineImageMime(file.mime) ? (
         <ImageThumb api={api} file={file} />
       ) : (
         <FileCard api={api} file={file} />
       )}
       {caption !== undefined && caption !== null && caption !== '' && (
-        <figcaption className="file-caption pre-wrap">{caption}</figcaption>
+        <figcaption data-slot="file-caption" className="text-sm whitespace-pre-wrap text-muted-foreground">
+          {caption}
+        </figcaption>
       )}
     </figure>
   );
@@ -46,15 +49,15 @@ function FileCard({ api, file }: { api: ApiClient; file: FileInfo }) {
   }
 
   return (
-    <div className="file-card">
-      <div className="file-card-text">
-        <span className="file-name">{file.name}</span>
-        <span className="muted small">{formatBytes(file.size)}</span>
+    <div data-slot="file-card" className="flex max-w-full flex-wrap items-center gap-2.5 rounded-xl border border-border bg-card p-3">
+      <div className="flex min-w-0 flex-1 basis-[140px] flex-col">
+        <span data-slot="file-name" className="font-semibold [overflow-wrap:anywhere]">{file.name}</span>
+        <span data-slot="file-size" className="text-sm text-muted-foreground">{formatBytes(file.size)}</span>
       </div>
-      <button type="button" className="button secondary" disabled={busy} onClick={() => void download()}>
+      <Button variant="secondary" disabled={busy} onClick={() => void download()}>
         {busy ? 'Baixando…' : 'Baixar'}
-      </button>
-      {error !== null && <p className="chat-error">{describeError(error)}</p>}
+      </Button>
+      {error !== null && <p className="w-full text-sm text-destructive [overflow-wrap:anywhere]">{describeError(error)}</p>}
     </div>
   );
 }

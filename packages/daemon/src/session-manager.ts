@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import * as acp from '@agentclientprotocol/sdk';
 import {
+  SHELL_AGENT_ID,
   SessionEventSchema,
   type AgentConfig,
   type AgentSessionsResponse,
@@ -9,11 +10,14 @@ import {
   type ConfigValue,
   type CreateSessionRequest,
   type FileInfo,
+  type Loop,
+  type LoopRequest,
   type ServerMessage,
   type Session,
   type SessionConfigOption,
   type SessionEvent,
   type SessionStatus,
+  type UsageResponse,
   type Workspace,
 } from '@nanachi/shared';
 import type Database from 'better-sqlite3';
@@ -42,14 +46,19 @@ import {
   type PromptAttachment,
   type RestoreMethod,
 } from './acp-mapping.js';
+import type { ToolCallMemory } from './tool-background.js';
 import { AgentImages } from './agent-images.js';
 import { agentBinDirs, phoneSendBinDir, withPathPrepended } from './agent-path.js';
+import { USAGE_CACHE_MS, USAGE_CANCEL_GRACE_MS, USAGE_IDLE_MS, USAGE_TIMEOUT_MS, usageCommandOf } from './agent-usage.js';
 import { AgentTokens } from './agent-tokens.js';
 import { resolveAgentCommand, type AgentCommand } from './agent-command.js';
-import { connectAcp, killAgent, spawnAgent, type AgentChild } from './agent-process.js';
+import { PathError, resolveInsideRoots } from './roots.js';
+import { chooseShell, localShells, shellEnvironment, type ShellOption } from './shells.js';
+import { connectAcp, killAgent, spawnAgent, type AcpHandlers, type AcpProcess, type AgentChild } from './agent-process.js';
 import type { LoadedConfig } from './config.js';
 import { toFileInfo } from './files.js';
 import { addWorktree, deleteMergedBranch, hasCommits, isGitRepo, isWorktreeDirty, pruneWorktrees, removeWorktree } from './git.js';
+import { LOOP_SELF_PACE_INSTRUCTION, LoopBusyError, LoopError, LoopRunner, type LoopTurn } from './loop-runner.js';
 import { notifyOf, type NotifyHandler } from './notify.js';
 import { spawnTerminal as spawnPty, type TerminalProcess } from './pty-process.js';
 import {
@@ -70,6 +79,7 @@ import {
   type Worktree,
 } from './repository.js';
 import { OutputBatcher, TERMINAL_RETENTION_BYTES } from './terminal-output.js';
+import { UsageProbe, UsageProbeError } from './usage-probe.js';
 
 export const DEFAULT_TITLE = 'Nova sessão';
 /** Teto de sessões vivas (não stopped/error) por daemon: cada uma é um processo (agente ACP ou terminal). */
@@ -83,6 +93,19 @@ const TERMINAL_ROWS = 24;
 const TERMINAL_GONE = 'terminal não está mais ativo';
 /** Status sem processo: a sessão está parada ou com erro, e pode ser retomada. */
 const TERMINAL_STATUSES: readonly SessionStatus[] = ['stopped', 'error'];
+/** Erro do prompt numa sessão que não pode ser retomada (PTY, sem acp_session_id, agente sem loadSession/resume). */
+const NOT_RESUMABLE_PROMPT_MESSAGE = 'sessão encerrada e não pode ser retomada; crie uma nova';
+
+export interface ResumeOptions {
+  /** Grava `starting` enquanto o agente carrega a sessão (reload e prompt; o Retomar manual não grava). */
+  markStarting?: boolean;
+}
+
+/** Resultado de uma retomada: a sessão como ficou e, se o agente subiu e falhou, a mensagem da falha. */
+interface ResumeOutcome {
+  session: Session;
+  failure: string | undefined;
+}
 /** Título de sessão importada quando o cliente não manda o da listagem. */
 export const RESUMED_TITLE = 'Sessão retomada';
 /** Eventos do histórico reenviado que a importação grava; o resto é descartado com um aviso `error`. */
@@ -109,7 +132,15 @@ export type SessionErrorCode =
   | 'not_git'
   | 'no_commits'
   | 'worktree_failed'
-  | 'worktree_dirty';
+  | 'worktree_dirty'
+  | 'session_not_active'
+  | 'usage_unsupported'
+  | 'loop_not_found'
+  | 'loop_finished'
+  | 'loop_busy'
+  | 'shell_disabled'
+  | 'shell_unavailable'
+  | 'outside_roots';
 
 /** Erro esperado de comando (vira 4xx/5xx no HTTP e `error` no WS). Outros erros são bugs. */
 export class SessionError extends Error {
@@ -133,6 +164,8 @@ export interface SessionListener {
   event(event: SessionEvent): void;
   commands(commands: AvailableCommand[]): void;
   configOptions(configOptions: SessionConfigOption[]): void;
+  /** Loop da sessão mudou (null = sem loop). Ver PLAN.md, modo Loop. */
+  loop(loop: Loop | null): void;
 }
 
 export interface SessionManagerOptions {
@@ -151,6 +184,14 @@ export interface SessionManagerOptions {
   filesRoot: string;
   /** Teto da listagem de sessões do agente. Padrão: 30 s. Testes usam valor curto. */
   agentListTimeoutMs?: number | undefined;
+  /** Teto da leitura de uso (`usage`). Padrão: 30 s. Testes usam valor curto. */
+  usageTimeoutMs?: number | undefined;
+  /** Cache da leitura de uso. Padrão: 30 s. Testes usam 0 (sem cache) ou valor curto. */
+  usageCacheMs?: number | undefined;
+  /** Ociosidade até o processo de uso morrer. Padrão: 2 min. Testes usam valor curto. */
+  usageIdleMs?: number | undefined;
+  /** `<NANACHI_HOME>/usage-probe`: pasta de trabalho dos processos de uso, fora dos projetos. */
+  usageProbeRoot: string;
 }
 
 /** Pedido de importação: `CreateSessionRequest` com a sessão do agente a retomar. */
@@ -209,6 +250,8 @@ interface LiveSession {
   history: HistoryRecord | undefined;
   /** Sessão criada pelo app e ainda sem primeiro prompt: esse prompt leva o aviso do phone-send. */
   phoneHintPending: boolean;
+  /** Tool calls com background já vistos nesta sessão (PLAN.md, subagentes e segundo plano). Some ao recarregar o daemon. */
+  toolCalls: ToolCallMemory;
 }
 
 function messageOf(error: unknown): string {
@@ -247,14 +290,47 @@ export class SessionManager {
    * mas já contam para o teto de sessões.
    */
   private readonly reserved = new Set<string>();
+  /** Retomadas em curso, por sessão: quem chega enquanto uma roda espera a mesma (ver resumeOnce). */
+  private readonly resumes = new Map<string, Promise<ResumeOutcome>>();
   private readonly agentTokens = new AgentTokens();
   /** Agentes com uma listagem em andamento (no máximo uma por agente). */
   private readonly listing = new Set<string>();
   private readonly agentListTimeoutMs: number;
+  private readonly usageProbe: UsageProbe;
   private readonly agentImages: AgentImages;
+  private readonly loops: LoopRunner;
 
   constructor(private readonly options: SessionManagerOptions) {
     this.agentListTimeoutMs = options.agentListTimeoutMs ?? LIST_TIMEOUT_MS;
+    this.loops = new LoopRunner(options.db, {
+      statusOf: (sessionId) => findSessionById(options.db, sessionId)?.status,
+      send: async (sessionId, text, turn) => {
+        try {
+          await this.prompt(sessionId, text, [], turn);
+        } catch (error) {
+          // Ocupada antes do envio: o loop espera, sem contar a iteração nem pausar.
+          if (error instanceof SessionError && error.code === 'session_busy') throw new LoopBusyError(error.message);
+          throw error;
+        }
+      },
+      changed: (sessionId, loop) => this.emitLoop(sessionId, loop),
+      failed: (sessionId, message) => this.notifyLoopFailure(sessionId, message),
+      warn: (message) => options.log.warn(message),
+    });
+    this.loops.restore();
+    this.usageProbe = new UsageProbe({
+      root: options.usageProbeRoot,
+      launch: (agent, cwd, onUpdate) =>
+        this.spawnTemporary(agent, cwd, {
+          onSessionUpdate: onUpdate,
+          onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
+        }),
+      log: options.log,
+      timeoutMs: options.usageTimeoutMs ?? USAGE_TIMEOUT_MS,
+      cacheMs: options.usageCacheMs ?? USAGE_CACHE_MS,
+      idleMs: options.usageIdleMs ?? USAGE_IDLE_MS,
+      cancelGraceMs: USAGE_CANCEL_GRACE_MS,
+    });
     this.agentImages = new AgentImages({
       db: options.db,
       filesRoot: options.filesRoot,
@@ -264,6 +340,8 @@ export class SessionManager {
   }
 
   async create(input: CreateSessionRequest): Promise<Session> {
+    if (input.agent === SHELL_AGENT_ID) return this.createShell(input);
+    if (input.shell !== undefined) throw new SessionError('invalid_request', 'shell só vale com agent "shell"');
     if (input.resumeAcpSessionId !== undefined) {
       return this.importSession({ ...input, resumeAcpSessionId: input.resumeAcpSessionId });
     }
@@ -299,6 +377,74 @@ export class SessionManager {
     if (agent.kind === 'pty') this.startTerminal(id, cwd, agent);
     else await this.start(id, cwd, agent, input.config ?? {});
     return this.load(id);
+  }
+
+  /**
+   * Terminal de workspace (`agent: "shell"`, PLAN.md, "terminal no workspace"): um PTY com o shell escolhido (ou o
+   * padrão), na pasta do workspace (ou no worktree, se pedido). Mesmo caminho do terminal `agy`, sem agente nem token.
+   * A pasta do workspace precisa estar dentro de `allowedRoots` agora, não só quando foi cadastrada.
+   */
+  private async createShell(input: CreateSessionRequest): Promise<Session> {
+    const { db, config } = this.options;
+    if (!config.shellSessions) {
+      throw new SessionError('shell_disabled', 'terminal de workspace desligado (shellSessions no config.json)');
+    }
+    if (input.resumeAcpSessionId !== undefined) {
+      throw new SessionError('invalid_request', 'terminal não importa sessão do agente');
+    }
+    const workspace = findWorkspaceById(db, input.workspaceId);
+    if (workspace === undefined) throw new SessionError('not_found', 'workspace não encontrado');
+    try {
+      resolveInsideRoots(workspace.path, config.allowedRoots);
+    } catch (error) {
+      if (error instanceof PathError && error.code === 'outside_roots') {
+        throw new SessionError('outside_roots', 'pasta do workspace está fora das pastas permitidas');
+      }
+      throw new SessionError('not_found', 'pasta do workspace não existe mais');
+    }
+    const shell = chooseShell(localShells(), input.shell);
+    if (shell === undefined) {
+      const detail = input.shell === undefined ? 'nenhum shell encontrado neste PC' : `shell ${input.shell} não encontrado neste PC`;
+      throw new SessionError('shell_unavailable', detail);
+    }
+    this.requireFreeSlot();
+
+    const id = randomUUID();
+    this.reserved.add(id);
+    let worktree: Worktree | null;
+    try {
+      worktree = input.worktree === true ? await this.createWorktree(workspace, id) : null;
+      insertSession(db, {
+        id,
+        workspaceId: workspace.id,
+        agent: SHELL_AGENT_ID,
+        kind: 'pty',
+        title: `Terminal · ${shell.id}`,
+        status: 'starting',
+        createdAt: Date.now(),
+        worktree,
+      });
+    } finally {
+      this.reserved.delete(id);
+    }
+    this.announceStatus(id, 'starting');
+    this.startShellTerminal(id, worktree?.path ?? workspace.path, shell);
+    return this.load(id);
+  }
+
+  /**
+   * Antes do reload: cada shell vivo grava `terminal_exit` com `reason: "reload"` (sem Web Push), vira `stopped` e o
+   * PTY morre. Chamado pelo caminho de reload do main, antes de fechar os WS e o servidor.
+   */
+  closeShellsForReload(): void {
+    for (const terminal of [...this.terminals.values()]) {
+      if (this.load(terminal.id).agent !== SHELL_AGENT_ID) continue;
+      terminal.batcher.end();
+      this.appendEvent(terminal.id, { kind: 'terminal_exit', exitCode: null, reason: 'reload' }, { notify: false });
+      this.detachTerminal(terminal);
+      this.setStatus(terminal.id, 'stopped');
+      terminal.process.kill();
+    }
   }
 
   /**
@@ -351,10 +497,31 @@ export class SessionManager {
   /**
    * Sobe o agente de uma sessão `stopped`/`error`, negocia `session/load` (ou `session/resume`) e volta a idle.
    * Se o agente não sabe retomar, o processo morre e a sessão fica como estava (409). Falha depois disso vira
-   * status `error` com evento. Devolve a sessão como ficou no banco.
+   * status `error` com evento. Devolve a sessão como ficou no banco. Retomada já em curso: espera a mesma.
    * `markStarting`: grava `starting` enquanto o agente carrega a sessão (retomada automática depois de reload).
    */
-  async resume(sessionId: string, options: { markStarting?: boolean } = {}): Promise<Session> {
+  async resume(sessionId: string, options: ResumeOptions = {}): Promise<Session> {
+    return (await this.resumeOnce(sessionId, options)).session;
+  }
+
+  /**
+   * Uma retomada por sessão de cada vez: quem chega com uma já em curso (Retomar, reload ou prompt) recebe o
+   * mesmo resultado, então nunca sobe dois agentes para a mesma sessão. As opções da segunda chamada são ignoradas.
+   */
+  private resumeOnce(sessionId: string, options: ResumeOptions): Promise<ResumeOutcome> {
+    const running = this.resumes.get(sessionId);
+    if (running !== undefined) return running;
+    const attempt = this.startResume(sessionId, options);
+    this.resumes.set(sessionId, attempt);
+    // Registrado antes de qualquer `await` de quem espera: quando o chamador continua, o mapa já está limpo.
+    const forget = (): void => {
+      this.resumes.delete(sessionId);
+    };
+    attempt.then(forget, forget);
+    return attempt;
+  }
+
+  private async startResume(sessionId: string, options: ResumeOptions): Promise<ResumeOutcome> {
     const { db } = this.options;
     const session = this.load(sessionId);
     if (this.isLive(sessionId) || !TERMINAL_STATUSES.includes(session.status)) {
@@ -374,18 +541,42 @@ export class SessionManager {
 
     const cwd = session.worktree?.path ?? workspace.path;
     if (!existsSync(cwd)) {
-      this.markFailed(sessionId, `pasta não existe mais: ${cwd}`);
-      return this.load(sessionId);
+      const failure = `pasta não existe mais: ${cwd}`;
+      this.markFailed(sessionId, failure);
+      return { session: this.load(sessionId), failure };
     }
 
     this.reserved.add(sessionId);
+    let failure: string | undefined;
     try {
       const savedOptions = findSessionConfigOptions(this.options.db, sessionId) ?? [];
-      await this.restore(sessionId, cwd, agent, acpSessionId, savedOptions, options.markStarting === true);
+      failure = await this.restore(sessionId, cwd, agent, acpSessionId, savedOptions, options.markStarting === true);
     } finally {
       this.reserved.delete(sessionId);
     }
-    return this.load(sessionId);
+    return { session: this.load(sessionId), failure };
+  }
+
+  /**
+   * Garante um processo vivo antes de um turno. Sessão sem processo e com status `stopped`/`error` é retomada pelo
+   * mesmo caminho do Retomar, com `starting` enquanto carrega. Retomada já em curso é esperada, nunca repetida.
+   * Falha da retomada vira erro do prompt; sessão que não retoma (PTY, sem acp_session_id, agente sem
+   * loadSession/resume) vira `not_resumable` com a mensagem de criar uma nova.
+   */
+  private async ensureLive(sessionId: string): Promise<void> {
+    const resuming = this.resumes.has(sessionId);
+    if (!resuming && (this.isLive(sessionId) || !TERMINAL_STATUSES.includes(this.load(sessionId).status))) return;
+
+    let outcome: ResumeOutcome;
+    try {
+      outcome = await this.resumeOnce(sessionId, { markStarting: true });
+    } catch (error) {
+      if (error instanceof SessionError && error.code === 'not_resumable') {
+        throw new SessionError('not_resumable', NOT_RESUMABLE_PROMPT_MESSAGE);
+      }
+      throw error;
+    }
+    if (outcome.failure !== undefined) throw new SessionError('agent_failed', outcome.failure);
   }
 
   /** Pasta onde a sessão roda: a do workspace (por enquanto; worktree entra na próxima etapa). */
@@ -410,11 +601,14 @@ export class SessionManager {
   /**
    * Manda um turno ao agente. `attachmentIds` são arquivos que o celular enviou antes para esta sessão: imagem
    * vai inline se o agente aceita; o resto (e imagem sem essa capacidade) entra no texto como caminho.
-   * Validação e leitura acontecem antes da conferência de estado; depois dela não há await.
+   * Sessão parada ou com erro é retomada antes (ver ensureLive). Ordem: validação dos anexos (um id inválido não
+   * sobe agente), retomada, leitura dos anexos (imagem inline depende do agente já subido), conferência de estado.
+   * Depois da conferência de estado não há await.
    */
-  async prompt(sessionId: string, text: string, attachmentIds: readonly string[] = []): Promise<void> {
-    this.requireAcp(sessionId);
+  async prompt(sessionId: string, text: string, attachmentIds: readonly string[] = [], turn?: LoopTurn): Promise<void> {
     const records = this.attachmentRecords(sessionId, attachmentIds);
+    await this.ensureLive(sessionId);
+    this.requireAcp(sessionId);
     const attachments = await this.loadAttachments(this.requireLive(sessionId), records);
 
     const live = this.requireLive(sessionId);
@@ -430,6 +624,7 @@ export class SessionManager {
       kind: 'user_message',
       text,
       ...(infos.length > 0 ? { attachments: infos } : {}),
+      ...(turn !== undefined ? { loop: true as const, loopIteration: turn.iteration } : {}),
     });
     const session = this.load(sessionId);
     if (session.title === DEFAULT_TITLE && title !== undefined) {
@@ -439,30 +634,86 @@ export class SessionManager {
 
     // O aviso do phone-send vai só no primeiro prompt de sessão criada pelo app, e só se o config deixar.
     // Prompt de comando (`/loop ...`) não leva o aviso e não o consome: o agente lê o comando no começo do texto.
+    // A instrução do loop dinâmico também não vai para comando: ela viraria argumento dele.
     const command = isSlashCommand(text);
     const hint = live.phoneHintPending && !command && this.options.config.phoneSendHint ? PHONE_SEND_HINT : undefined;
     if (!command) live.phoneHintPending = false;
+    const extra = [hint, turn?.selfPaced === true ? LOOP_SELF_PACE_INSTRUCTION : undefined].filter(
+      (part): part is string => part !== undefined,
+    );
     live.promptInFlight = true;
     this.setStatus(sessionId, 'running');
     live.connection.agent
       .request(acp.methods.agent.session.prompt, {
         sessionId: acpSessionId,
-        prompt: promptBlocks(text, attachments, hint),
+        prompt: promptBlocks(text, attachments, extra.length > 0 ? extra.join('\n\n') : undefined),
       })
       .then(
         (response) => {
           if (!this.isCurrent(live)) return;
           live.promptInFlight = false;
-          this.appendEvent(sessionId, { kind: 'turn_end', stopReason: response.stopReason });
+          // `error` não existe em ACP v1 (o tipo do SDK não o tem); quando vier, vira erro visível (e push).
+          const stopReason: string = response.stopReason;
+          if (stopReason === 'error') this.appendEvent(sessionId, { kind: 'error', message: 'turno terminou com erro' });
+          this.appendEvent(sessionId, { kind: 'turn_end', stopReason });
+          this.loops.turnEnded(sessionId, { stopReason });
           this.setStatus(sessionId, 'idle');
         },
         (error: unknown) => {
-          if (!this.isCurrent(live)) return;
-          live.promptInFlight = false;
-          this.appendEvent(sessionId, { kind: 'error', message: messageOf(error) });
-          this.setStatus(sessionId, 'idle');
+          const message = messageOf(error);
+          // Falha com o processo já tirado (agente caiu, sessão parada): o erro já foi gravado por quem tirou.
+          // O loop precisa saber mesmo assim, para pausar.
+          if (this.isCurrent(live)) {
+            live.promptInFlight = false;
+            this.appendEvent(sessionId, { kind: 'error', message });
+          }
+          this.loops.turnEnded(sessionId, { error: message });
+          if (this.isCurrent(live)) this.setStatus(sessionId, 'idle');
         },
       );
+  }
+
+  /** Loop da sessão, ou null. Sessão inexistente → not_found. */
+  loopOf(sessionId: string): Loop | null {
+    this.load(sessionId);
+    return this.loops.get(sessionId);
+  }
+
+  /** PUT do loop: cria ou troca. Só sessão de agente (ACP); terminal → not_acp. */
+  putLoop(sessionId: string, request: LoopRequest): Loop {
+    if (this.load(sessionId).kind === 'pty') throw new SessionError('not_acp', 'loop só vale para sessão de agente');
+    return this.loopCall(() => this.loops.create(sessionId, request));
+  }
+
+  pauseLoop(sessionId: string): Loop {
+    this.load(sessionId);
+    return this.loopCall(() => this.loops.pause(sessionId));
+  }
+
+  resumeLoop(sessionId: string): Loop {
+    this.load(sessionId);
+    return this.loopCall(() => this.loops.resume(sessionId));
+  }
+
+  runLoopNow(sessionId: string): Loop {
+    this.load(sessionId);
+    return this.loopCall(() => this.loops.runNow(sessionId));
+  }
+
+  /** DELETE do loop: para e apaga. Sem loop → loop_not_found. */
+  deleteLoop(sessionId: string): void {
+    this.load(sessionId);
+    this.loopCall(() => this.loops.remove(sessionId));
+  }
+
+  /** Erros do loop viram SessionError (os códigos HTTP ficam no server). */
+  private loopCall<T>(action: () => T): T {
+    try {
+      return action();
+    } catch (error) {
+      if (error instanceof LoopError) throw new SessionError(error.code, error.message);
+      throw error;
+    }
   }
 
   /** Sessão com processo vivo (ACP ou terminal): a única em que o agente pode mandar arquivos (`POST /api/agent/files`). */
@@ -517,6 +768,25 @@ export class SessionManager {
     this.resolvePermission(live, null);
   }
 
+  /**
+   * Leitura de uso do agente (`/usage` ou `/status`, ver agent-usage.ts) num processo ACP de uso, separado da sessão:
+   * vale com a sessão rodando, parada ou com erro. Só precisa de a sessão existir e de o agente ter um comando de uso.
+   * Nada é gravado nem transmitido (ver usage-probe.ts).
+   */
+  async usage(sessionId: string): Promise<UsageResponse> {
+    const session = this.load(sessionId);
+    if (session.kind === 'pty') throw new SessionError('usage_unsupported', 'terminal não mostra uso');
+    const command = usageCommandOf(session.agent);
+    if (command === undefined) throw new SessionError('usage_unsupported', 'agente sem comando de uso');
+    const agent = this.agentOf(session.agent);
+    try {
+      return await this.usageProbe.read(session.agent, agent, command);
+    } catch (error) {
+      if (error instanceof UsageProbeError) throw new SessionError(error.code, error.message);
+      throw error;
+    }
+  }
+
   async setConfig(sessionId: string, configId: string, value: ConfigValue): Promise<void> {
     this.requireAcp(sessionId);
     const live = this.requireLive(sessionId);
@@ -544,6 +814,8 @@ export class SessionManager {
 
   /** Para o processo e marca a sessão como stopped. Sessão sem processo só troca o status. */
   async stop(sessionId: string): Promise<void> {
+    // Sessão que o usuário parou: o loop dela para também (senão o disparo a retomaria sozinho).
+    this.loops.stop(sessionId);
     const terminal = this.terminals.get(sessionId);
     if (terminal !== undefined) {
       this.detachTerminal(terminal);
@@ -576,6 +848,7 @@ export class SessionManager {
     }
     this.listeners.delete(sessionId);
     this.agentImages.forget(sessionId);
+    this.loops.drop(sessionId);
     deleteSessionRows(this.options.db, sessionId);
   }
 
@@ -588,6 +861,10 @@ export class SessionManager {
 
   /** Mata todos os agentes (inclusive os que falharam e ainda vivem) e espera saírem. Não grava nada no banco. */
   async shutdown(): Promise<void> {
+    // Processos de uso são temporários e ficam em `running`: o laço abaixo também os mata e espera.
+    this.usageProbe.close();
+    // Sem disparos de loop depois do shutdown: o banco pode fechar logo em seguida.
+    this.loops.close();
     for (const live of [...this.live.values()]) this.detach(live);
     for (const terminal of [...this.terminals.values()]) this.detachTerminal(terminal);
     const processes = [...this.running];
@@ -649,6 +926,19 @@ export class SessionManager {
       this.agentTokens.revoke(id);
       throw error;
     }
+  }
+
+  /** Sobe o shell de uma sessão de terminal de workspace. Não sobe → error, como um agente que não sobe. */
+  private startShellTerminal(id: string, cwd: string, shell: ShellOption): void {
+    try {
+      const command: AgentCommand = { file: shell.file, args: [...shell.args], shell: false };
+      const pty = spawnPty(command, { cwd, env: shellEnvironment(process.env), cols: TERMINAL_COLS, rows: TERMINAL_ROWS });
+      this.attachTerminal(id, pty);
+    } catch (error) {
+      this.fail(id, messageOf(error));
+      return;
+    }
+    this.setStatus(id, 'running');
   }
 
   /** Sobe o terminal de uma sessão pty. Se não sobe, a sessão vai para error (como um agente ACP que não sobe). */
@@ -788,6 +1078,8 @@ export class SessionManager {
   /**
    * Retomada: a capacidade só é conhecida depois do initialize, então o status no banco fica como estava
    * até lá. Sem suporte, mata o processo e lança `not_resumable` (409). Depois disso: idle ou error.
+   * Devolve a mensagem da falha que já foi gravada como evento `error` (o prompt a usa como erro); undefined se deu certo
+   * ou se a sessão foi parada no meio da retomada (aí quem chama vê o status real).
    */
   private async restore(
     id: string,
@@ -796,13 +1088,14 @@ export class SessionManager {
     acpSessionId: string,
     savedOptions: SessionConfigOption[],
     markStarting: boolean,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     let live: LiveSession;
     try {
       live = this.spawnLive(id, cwd, agent);
     } catch (error) {
-      this.markFailed(id, messageOf(error));
-      return;
+      const failure = messageOf(error);
+      this.markFailed(id, failure);
+      return failure;
     }
     live.acpSessionId = acpSessionId;
     live.configOptions = savedOptions;
@@ -820,8 +1113,10 @@ export class SessionManager {
       method = restoreMethodOf(initialized.agentCapabilities);
       live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
     } catch (error) {
-      if (this.isCurrent(live)) this.fail(id, messageOf(error));
-      return;
+      if (!this.isCurrent(live)) return undefined;
+      const failure = messageOf(error);
+      this.fail(id, failure);
+      return failure;
     }
     if (method === undefined) {
       this.detach(live);
@@ -839,13 +1134,17 @@ export class SessionManager {
           ? live.connection.agent.request(acp.methods.agent.session.load, params)
           : live.connection.agent.request(acp.methods.agent.session.resume, params);
       const response = await withTimeout(pending, START_TIMEOUT_MS, method === 'load' ? 'session/load' : 'session/resume');
-      if (!this.isCurrent(live)) return;
+      if (!this.isCurrent(live)) return undefined;
       live.replaying = false;
       this.applyAgentConfig(live, response);
       this.persistConfig(live);
       this.setStatus(id, 'idle');
+      return undefined;
     } catch (error) {
-      if (this.isCurrent(live)) this.fail(id, messageOf(error));
+      if (!this.isCurrent(live)) return undefined;
+      const failure = messageOf(error);
+      this.fail(id, failure);
+      return failure;
     }
   }
 
@@ -899,6 +1198,7 @@ export class SessionManager {
       promptImage: false,
       history: undefined,
       phoneHintPending: false,
+      toolCalls: new Map(),
     };
     this.live.set(id, live);
 
@@ -939,7 +1239,7 @@ export class SessionManager {
         return;
       }
       default: {
-        const draft = sessionUpdateToDraft(update, this.imageSink(id));
+        const draft = sessionUpdateToDraft(update, this.imageSink(id), live.toolCalls);
         if (draft === undefined) {
           this.options.log.debug({ sessionId: id, update: update.sessionUpdate }, 'session/update ignorado');
           return;
@@ -1074,7 +1374,7 @@ export class SessionManager {
       return;
     }
     this.flushPendingUser(live);
-    const draft = sessionUpdateToDraft(update, this.imageSink(live.id));
+    const draft = sessionUpdateToDraft(update, this.imageSink(live.id), live.toolCalls);
     if (draft !== undefined) this.recordHistoryEvent(live, draft);
   }
 
@@ -1176,7 +1476,6 @@ export class SessionManager {
   /**
    * Processo ACP temporário, só para consultar o agente: sobe, roda `run` e mata (também se `run` falhar).
    * Não toca no mapa de sessões. Estoura em `agent_timeout` (504); sai antes de responder → `agent_failed` (502).
-   * Entra em `running`, então o shutdown do daemon também o alcança.
    */
   private async probeAgent<T>(
     agent: AgentConfig,
@@ -1184,6 +1483,37 @@ export class SessionManager {
     timeoutMs: number,
     run: (connection: acp.ClientConnection) => Promise<T>,
   ): Promise<T> {
+    const temp = this.spawnTemporary(agent, cwd, {
+      onSessionUpdate: () => undefined,
+      onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
+    });
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new SessionError('agent_timeout', `agente não respondeu em ${timeoutMs} ms`)),
+        timeoutMs,
+      );
+    });
+    const died = temp.exited.then(() => {
+      throw new SessionError('agent_failed', 'agente encerrou antes de responder');
+    });
+    try {
+      return await Promise.race([run(temp.connection), timeout, died]);
+    } catch (error) {
+      if (error instanceof SessionError) throw error;
+      throw new SessionError('agent_failed', messageOf(error));
+    } finally {
+      clearTimeout(timer);
+      temp.kill();
+      await withTimeout(temp.exited, KILL_TIMEOUT_MS, 'encerrar agente').catch(() => undefined);
+    }
+  }
+
+  /**
+   * Sobe um processo ACP fora do mapa de sessões, com token próprio (revogado quando o processo sai). Fica em
+   * `running`, então o shutdown do daemon o alcança. Quem chama mata com `kill`.
+   */
+  private spawnTemporary(agent: AgentConfig, cwd: string, handlers: AcpHandlers): AcpProcess {
     const id = randomUUID();
     let child: AgentChild;
     try {
@@ -1204,37 +1534,14 @@ export class SessionManager {
     });
     const proc: RunningProcess = { kill: () => killAgent(child), exited };
     this.running.add(proc);
+    // 'error' sem 'exit' acontece quando o executável nem sobe (ENOENT): também não há processo para esperar.
     const forget = (): void => {
       this.running.delete(proc);
     };
     child.once('exit', forget);
     child.once('error', forget);
-
-    const connection = connectAcp(child, {
-      onSessionUpdate: () => undefined,
-      onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
-    });
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new SessionError('agent_timeout', `agente não respondeu em ${timeoutMs} ms`)),
-        timeoutMs,
-      );
-    });
-    const died = exited.then(() => {
-      throw new SessionError('agent_failed', 'agente encerrou antes de responder');
-    });
-    try {
-      return await Promise.race([run(connection), timeout, died]);
-    } catch (error) {
-      if (error instanceof SessionError) throw error;
-      throw new SessionError('agent_failed', messageOf(error));
-    } finally {
-      clearTimeout(timer);
-      this.agentTokens.revoke(id);
-      killAgent(child);
-      await withTimeout(exited, KILL_TIMEOUT_MS, 'encerrar agente').catch(() => undefined);
-    }
+    void exited.then(() => this.agentTokens.revoke(id));
+    return { connection: connectAcp(child, handlers), exited, kill: () => killAgent(child) };
   }
 
   /** Grava o cartão de permissão e fica pendente até respondermos (WS) ou a requisição ser abortada. */
@@ -1353,9 +1660,19 @@ export class SessionManager {
 
     const seq = insertEvent(db, { sessionId, ts, kind, payload: JSON.stringify(draft) });
     const event = SessionEventSchema.parse({ ...draft, seq, sessionId, ts });
+    if (event.kind === 'agent_message_chunk') this.loops.observeText(sessionId, event.text);
     this.emit(sessionId, event);
     if (options.notify !== false) this.notify(sessionId, event);
     return event;
+  }
+
+  /** Loop pausado por falha: aviso de Web Push (`loop_paused`). Erro do handler vai para o log. */
+  private notifyLoopFailure(sessionId: string, message: string): void {
+    try {
+      this.options.onNotify?.(sessionId, 'loop_paused', { kind: 'loop_paused', sessionId, message });
+    } catch (error) {
+      this.options.log.warn({ err: error, sessionId }, 'aviso de loop pausado falhou');
+    }
   }
 
   /** Avisa quem escuta (`onNotify`). Erro do handler vai para o log e não quebra o evento. */
@@ -1430,6 +1747,17 @@ export class SessionManager {
     const live = this.live.get(sessionId);
     if (live !== undefined) live.status = status;
     this.announceStatus(sessionId, status);
+    this.loops.onStatus(sessionId, status);
+  }
+
+  private emitLoop(sessionId: string, loop: Loop | null): void {
+    for (const listener of this.listeners.get(sessionId) ?? []) {
+      try {
+        listener.loop(loop);
+      } catch (error) {
+        this.options.log.warn({ err: error, sessionId }, 'assinante de loop falhou');
+      }
+    }
   }
 
   private announceStatus(sessionId: string, status: SessionStatus): void {

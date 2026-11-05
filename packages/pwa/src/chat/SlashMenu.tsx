@@ -1,6 +1,8 @@
 import type { MouseEvent } from 'react';
-import { X } from '@phosphor-icons/react';
+import { X } from 'lucide-react';
 import type { AvailableCommand } from '@nanachi/shared';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { filterCommands } from './commands.js';
 
 interface SlashMenuProps {
@@ -23,50 +25,67 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
   const keepFocus = (event: MouseEvent) => event.preventDefault();
 
   return (
-    <section className="slash-menu" aria-label="Comandos do agente">
+    <section
+      data-slot="slash-menu"
+      aria-label="Comandos do agente"
+      className="flex flex-col gap-1 rounded-xl border border-border bg-card p-1.5"
+    >
       {search !== undefined && (
-        <div className="slash-head">
-          <input
+        <div className="flex items-center gap-1">
+          <Input
             type="search"
-            className="slash-search"
             aria-label="Buscar comando"
             placeholder="Buscar comando"
             autoFocus
             value={query}
+            className="bg-background"
             onChange={(event) => search.onChange(event.target.value)}
           />
-          <button
-            type="button"
-            className="icon-button slash-close"
+          <Button
+            variant="ghost"
+            size="icon"
             aria-label="Fechar comandos"
             onMouseDown={keepFocus}
             onClick={search.onClose}
           >
-            <X size={20} weight="regular" aria-hidden="true" />
-          </button>
+            <X aria-hidden="true" />
+          </Button>
         </div>
       )}
 
-      <div className="slash-scroll">
+      <div className="max-h-[min(40dvh,240px)] overflow-y-auto overscroll-contain">
         {commands.length === 0 ? (
-          <p className="muted slash-empty">Este agente não anunciou comandos.</p>
+          <p data-slot="slash-empty" className="px-2 py-2.5 text-sm text-muted-foreground">
+            Este agente não anunciou comandos.
+          </p>
         ) : matches.length === 0 ? (
-          <p className="muted slash-empty">Nenhum comando combina com “{query.trim()}”.</p>
+          <p data-slot="slash-empty" className="px-2 py-2.5 text-sm text-muted-foreground">
+            Nenhum comando combina com “{query.trim()}”.
+          </p>
         ) : (
-          <ul className="slash-list">
+          <ul className="flex flex-col">
             {matches.map((command) => (
               <li key={command.name}>
                 <button
                   type="button"
-                  className="slash-item"
+                  data-slot="slash-item"
                   onMouseDown={keepFocus}
                   onClick={() => onPick(command)}
+                  className="flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] active:bg-accent motion-reduce:active:scale-100"
                 >
-                  <span className="slash-line">
-                    <span className="slash-name">/{command.name}</span>
-                    {command.hint !== null && <span className="slash-hint">{command.hint}</span>}
+                  <span className="flex max-w-full min-w-0 items-baseline gap-2">
+                    <span data-slot="slash-name" className="shrink-0 font-mono text-sm font-semibold">
+                      /{command.name}
+                    </span>
+                    {command.hint !== null && (
+                      <span data-slot="slash-hint" className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+                        {command.hint}
+                      </span>
+                    )}
                   </span>
-                  <span className="slash-desc">{command.description}</span>
+                  <span data-slot="slash-desc" className="max-w-full truncate text-sm text-muted-foreground">
+                    {command.description}
+                  </span>
                 </button>
               </li>
             ))}

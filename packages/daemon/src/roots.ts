@@ -32,7 +32,7 @@ function comparable(path: string): string {
 }
 
 /** `target` é `root` ou está dentro dele. Compara por prefixo + separador: `a\bc` não está em `a\b`. */
-function isInside(target: string, root: string): boolean {
+export function isInside(target: string, root: string): boolean {
   const t = comparable(target);
   const r = comparable(root);
   if (t === r) return true;

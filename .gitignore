@@ -13,6 +13,7 @@ coverage/
 .omp/
 .serena/
 /HANDOFF.md
+/PEDIDOS-USUARIO.md
 /nul
 
 # Capturas geradas pelos testes (podem conter dados da área de trabalho)

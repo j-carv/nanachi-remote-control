@@ -113,6 +113,10 @@ function errorEvent(message: string): NotifyDetails {
   return { ...meta, kind: 'error', message };
 }
 
+function loopPaused(sessionId: string, message: string): NotifyDetails {
+  return { kind: 'loop_paused', sessionId, message };
+}
+
 function fileEvent(name: string): NotifyDetails {
   return {
     ...meta,
@@ -262,6 +266,40 @@ describe('createPushNotifier: payload', () => {
     expect(Array.from(body.slice('Erro: '.length)).length).toBeLessThanOrEqual(120);
   });
 
+  it('loop_paused: título "Loop pausado", body "<título da sessão>: <mensagem>", kind loop_paused', async () => {
+    const workspaceId = seedWorkspace({ name: 'nanachi' });
+    const sessionId = seedSession(workspaceId, 'Refatorar login');
+    seedDevice('d1');
+    seedSubscription('https://push.example.test/d1', 'd1');
+    const { send, sent } = fakeSend();
+
+    await notifierWith({ send }).notify(sessionId, 'loop_paused', loopPaused(sessionId, 'agente caiu'));
+
+    expect(PushPayloadSchema.parse(parsedPayload(sent[0] as Sent))).toEqual({
+      title: 'Loop pausado',
+      body: 'Refatorar login: agente caiu',
+      machineId: MACHINE_ID,
+      workspaceId,
+      sessionId,
+      kind: 'loop_paused',
+    });
+  });
+
+  it('loop_paused: a mensagem do erro vai encurtada (120 caracteres no total do trecho)', async () => {
+    const workspaceId = seedWorkspace();
+    const sessionId = seedSession(workspaceId, 'Refatorar login');
+    seedDevice('d1');
+    seedSubscription('https://push.example.test/d1', 'd1');
+    const { send, sent } = fakeSend();
+
+    await notifierWith({ send }).notify(sessionId, 'loop_paused', loopPaused(sessionId, `falhou
+${'x'.repeat(400)}`));
+
+    const body = PushPayloadSchema.parse(parsedPayload(sent[0] as Sent)).body;
+    expect(body.startsWith('Refatorar login: falhou x')).toBe(true);
+    expect(Array.from(body.slice('Refatorar login: '.length)).length).toBeLessThanOrEqual(120);
+  });
+
   it('file: body "Arquivo: <nome>"', async () => {
     const workspaceId = seedWorkspace();
     const sessionId = seedSession(workspaceId);
@@ -284,6 +322,18 @@ describe('createPushNotifier: quem recebe', () => {
     const { send, sent } = fakeSend();
 
     await notifierWith({ send }).notify(sessionId, 'turn_end', turnEnd());
+
+    expect(sent).toEqual([]);
+  });
+
+  it('loop pausado em workspace mudo também não avisa', async () => {
+    const workspaceId = seedWorkspace({ muted: true });
+    const sessionId = seedSession(workspaceId);
+    seedDevice('d1');
+    seedSubscription('https://push.example.test/d1', 'd1');
+    const { send, sent } = fakeSend();
+
+    await notifierWith({ send }).notify(sessionId, 'loop_paused', loopPaused(sessionId, 'falhou'));
 
     expect(sent).toEqual([]);
   });

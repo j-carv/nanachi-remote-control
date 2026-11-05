@@ -47,6 +47,13 @@ export function useAttachmentDrafts() {
       setDrafts([...drafts, ...created]);
       return files.length - room;
     },
+    /** Troca o arquivo de um anexo (recorte) e mantém a posição na lista. A prévia antiga é liberada. */
+    replace(id: string, file: File): void {
+      const target = drafts.find((draft) => draft.id === id);
+      if (target === undefined) return;
+      releaseDraft(target);
+      setDrafts(drafts.map((draft) => (draft.id === id ? createDraft(id, file) : draft)));
+    },
     remove(id: string): void {
       const target = drafts.find((draft) => draft.id === id);
       if (target !== undefined) releaseDraft(target);

@@ -13,7 +13,11 @@ export type Route =
   | { kind: 'devices' }
   | { kind: 'sessions'; workspace: Workspace }
   | { kind: 'chat'; workspace: Workspace; session: Session }
-  | { kind: 'changes'; workspace: Workspace; session: Session };
+  | { kind: 'changes'; workspace: Workspace; session: Session }
+  /** Explorador de arquivos do workspace. `path` é a pasta aberta, relativa à raiz ("" = raiz). */
+  | { kind: 'files'; workspace: Workspace; path: string }
+  /** Editor de um arquivo de texto do workspace. `path` é relativo à raiz do workspace. */
+  | { kind: 'editor'; workspace: Workspace; path: string };
 
 export interface NavState {
   readonly routes: readonly Route[];
