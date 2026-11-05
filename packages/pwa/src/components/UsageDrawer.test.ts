@@ -178,6 +178,23 @@ describe('UsageContent', () => {
     expect(html).not.toMatch(/<button[^>]*aria-label="Atualizar uso"[^>]*disabled=""/);
   });
 
+  it('ready: a claude reply in Claude Code\'s plain text still gets its limit cards (not only the details)', () => {
+    const plain = [
+      '<local-command-stdout>You are currently using your subscription to power your Claude Code usage',
+      '',
+      'Current session: 42% used · resets Nov 5, 11:30pm (UTC)',
+      'Current week (all models): 17% used · resets Nov 11, 11pm (UTC)',
+      '</local-command-stdout>',
+    ].join('\n');
+    const html = render(ready('claude', plain));
+
+    expect(html).toContain('5 horas');
+    expect(html).toContain('>42%<');
+    expect(html).toContain('Renova Nov 5, 11:30pm (UTC)');
+    expect(html).toContain('Semanal');
+    expect(html).not.toContain('<local-command-stdout>');
+  });
+
   it('ready: the markdown of the reply is not shown as text (the cards replace it)', () => {
     const html = render(ready('claude', CLAUDE_TEXT));
 

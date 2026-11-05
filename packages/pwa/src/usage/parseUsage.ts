@@ -67,15 +67,19 @@ interface Outcome {
  * `unparsed`; when nothing is understood the whole text is `unparsed` and the rest is empty.
  */
 export function parseUsage(agent: string, text: string): ParsedUsage {
-  const plain = stripAnsi(text).replace(/\r\n?/g, '\n');
+  // Claude Code keeps its local command output inside these tags in the transcript; they carry no meaning here.
+  const plain = stripAnsi(text).replace(/\r\n?/g, '\n').replace(/<\/?local-command-stdout>/g, '');
   const lines = plain.split('\n');
   return finish(cleanText(plain), lines, runParser(agent, lines));
 }
 
 function runParser(agent: string, lines: readonly string[]): Outcome {
   switch (agent) {
-    case 'claude':
-      return parseClaude(lines);
+    case 'claude': {
+      // The markdown reply when the agent sends it; otherwise Claude Code's own plain-text reply.
+      const markdown = parseClaude(lines);
+      return hasOutcomeData(markdown) ? markdown : parseClaudeText(lines);
+    }
     case 'omp':
       return parseOmp(lines);
     case 'codex':
@@ -96,9 +100,13 @@ function emptyOutcome(lineCount: number): Outcome {
   };
 }
 
+/** True when a parser understood at least one window, session figure, model or extra. */
+function hasOutcomeData(out: Outcome): boolean {
+  return out.windows.length > 0 || out.session !== undefined || out.model !== undefined || out.extras.length > 0;
+}
+
 function finish(text: string, lines: readonly string[], out: Outcome): ParsedUsage {
-  const hasData = out.windows.length > 0 || out.session !== undefined || out.model !== undefined || out.extras.length > 0;
-  if (!hasData) return { windows: [], accounts: [], extras: [], unparsed: text };
+  if (!hasOutcomeData(out)) return { windows: [], accounts: [], extras: [], unparsed: text };
 
   // Claude and codex report one account per reply: their windows belong to it.
   const only = out.accounts.length === 1 ? out.accounts[0] : undefined;
@@ -200,11 +208,13 @@ const CLAUDE_LIMIT = /^(.+?)\s+—\s+(?:(\d+(?:\.\d+)?)%\s*)?(?:·\s*)?(?:Resets
 function claudeLabel(raw: string): string {
   if (/^5-hour limit$/i.test(raw)) return t('usage:windows.fiveHours');
   const weekly = /^Weekly\s*·\s*(.+)$/i.exec(raw);
-  if (weekly !== null) {
-    const scope = (weekly[1] ?? '').trim();
-    return scope.toLowerCase() === 'all models' ? t('usage:windows.weekly') : t('usage:windows.weeklyScope', { scope });
-  }
+  if (weekly !== null) return claudeWeeklyLabel((weekly[1] ?? '').trim());
   return raw;
+}
+
+/** The weekly window's label: "Semanal" for all models, "Semanal · Opus" for one model. */
+function claudeWeeklyLabel(scope: string): string {
+  return scope.toLowerCase() === 'all models' ? t('usage:windows.weekly') : t('usage:windows.weeklyScope', { scope });
 }
 
 function parseClaude(lines: readonly string[]): Outcome {
@@ -276,6 +286,38 @@ function parseClaude(lines: readonly string[]): Outcome {
       }
       index = next - 1;
     }
+  }
+  return out;
+}
+
+// ---------- claude: `/usage` as plain text (Claude Code's own reply, when the markdown is not in time) ----------
+
+/** "Current session: 42% used · resets Nov 5, 11:30pm (UTC)" and "Current week (all models): 17% used · resets …" */
+const CLAUDE_TEXT_LIMIT = /^Current (?:(session)|week(?: \(([^)]+)\))?):\s*(\d+(?:\.\d+)?)%\s*used(?:\s*·\s*resets\s+(.+))?$/i;
+/** The first line of Claude Code's reply: it only says the reply is about the subscription. */
+const CLAUDE_TEXT_INTRO = /^You are currently using your subscription\b/;
+
+/** Reads the session and week limit lines of Claude Code's plain reply. Everything else stays unparsed (details). */
+function parseClaudeText(lines: readonly string[]): Outcome {
+  const out = emptyOutcome(lines.length);
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = (lines[index] ?? '').trim();
+    if (CLAUDE_TEXT_INTRO.test(text)) {
+      out.consumed[index] = true;
+      continue;
+    }
+    const limit = CLAUDE_TEXT_LIMIT.exec(text);
+    if (limit === null) continue;
+    const session = limit[1];
+    const scope = limit[2];
+    out.windows.push(
+      buildWindow({
+        label: session !== undefined ? t('usage:windows.fiveHours') : claudeWeeklyLabel((scope ?? 'all models').trim()),
+        usedPercent: Number(limit[3] ?? ''),
+        resetsAt: limit[4],
+      }),
+    );
+    out.consumed[index] = true;
   }
   return out;
 }

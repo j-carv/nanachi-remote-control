@@ -150,6 +150,76 @@ describe('parseUsage: claude', () => {
   });
 });
 
+/**
+ * Claude Code's own `/usage` text: plain lines, no headings. The agent sends it when its markdown replacement does not
+ * arrive in time (the replacement has a 5 s cap, and a cold agent is slower). The transcript keeps it inside
+ * `<local-command-stdout>`. Same lines as the real reply; the numbers and the zones are made up.
+ */
+const CLAUDE_NATIVE_TEXT = `<local-command-stdout>You are currently using your subscription to power your Claude Code usage
+
+Current session: 42% used · resets Nov 5, 11:30pm (UTC)
+Current week (all models): 17% used · resets Nov 11, 11pm (UTC)
+
+What's contributing to your usage?
+Approximate · sessions on this machine only · shares overlap
+
+Last 24h · 1200 requests · 3 sessions
+  100%  Give "general-purpose" subagents a cheaper model
+  Top MCP servers: example-server 1%
+
+Last 7d · 9000 requests · 12 sessions
+  88%  Start fresh when you switch tasks · run /clear
+</local-command-stdout>`;
+
+describe('parseUsage: claude, plain text', () => {
+  const usage = parseUsage('claude', CLAUDE_NATIVE_TEXT);
+
+  it('reads the session and weekly limits with their percentages and reset texts', () => {
+    expect(usage.windows).toEqual([
+      { label: '5 horas', usedPercent: 42, resetsAt: 'Nov 5, 11:30pm (UTC)' },
+      { label: 'Semanal', usedPercent: 17, resetsAt: 'Nov 11, 11pm (UTC)' },
+    ]);
+  });
+
+  it('has no account, because the plain reply has no plan line', () => {
+    expect(usage.accounts).toEqual([]);
+    expect(usage.windows.every((window) => window.account === undefined)).toBe(true);
+  });
+
+  it('keeps the contributions text as unparsed details, without the wrapper or the intro line', () => {
+    expect(usage.unparsed).toContain("What's contributing to your usage?");
+    expect(usage.unparsed).toContain('Last 24h');
+    expect(usage.unparsed).not.toContain('<local-command-stdout>');
+    expect(usage.unparsed).not.toContain('You are currently using');
+    expect(usage.unparsed).not.toContain('42% used');
+  });
+
+  it('a model-specific week keeps the model in its label', () => {
+    const text = 'Current week (Opus): 9% used · resets Nov 11, 11pm (UTC)';
+    expect(parseUsage('claude', text).windows).toEqual([
+      { label: 'Semanal · Opus', usedPercent: 9, resetsAt: 'Nov 11, 11pm (UTC)' },
+    ]);
+  });
+
+  it('a limit without a reset keeps the percentage and has no resetsAt', () => {
+    const [window] = parseUsage('claude', 'Current session: 100% used').windows;
+    expect(window).toEqual({ label: '5 horas', usedPercent: 100 });
+    expect(window).not.toHaveProperty('resetsAt');
+  });
+
+  it('a reply with only the intro line stays unparsed text', () => {
+    const text = 'You are currently using your subscription to power your Claude Code usage';
+    const usage = parseUsage('claude', text);
+    expect(usage.windows).toEqual([]);
+    expect(usage.unparsed).toBe(text);
+  });
+
+  it('a markdown reply still reads with the markdown parser (no plain-text limits added to it)', () => {
+    const usage = parseUsage('claude', CLAUDE_TEXT);
+    expect(usage.windows.map((window) => window.usedPercent)).toEqual([10, 71]);
+  });
+});
+
 describe('parseUsage: omp', () => {
   const usage = parseUsage('omp', OMP_TEXT);
 

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgentConfig } from '@nanachi/shared';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { USAGE_TIMEOUT_MS, usageTimeoutOf } from '../src/agent-usage.js';
 import { UsageProbe, UsageProbeError, type UsageProbeOptions } from '../src/usage-probe.js';
 import { removeTempDir } from './temp.js';
 
@@ -117,5 +118,28 @@ describe('UsageProbe.isBusy', () => {
     await Promise.all([first, second]);
 
     expect(probe.isBusy('codex', 'a')).toBe(false);
+  });
+});
+
+describe('UsageProbe: per-agent time budget', () => {
+  it('a read uses the budget timeoutFor gives its agent instead of timeoutMs', async () => {
+    // Held in prepare forever: only the budget can end the read.
+    const prepare = vi.fn(() => new Promise<void>(() => undefined));
+    const { probe } = probeWith({ timeoutMs: 60_000, timeoutFor: (agent) => (agent === 'claude' ? 50 : 60_000), prepare });
+
+    const started = Date.now();
+    const outcome = await probe.read('claude', AGENT, '/usage', 'extra').catch((error: unknown) => error);
+
+    expect(outcome).toMatchObject({ code: 'agent_timeout' });
+    expect(String((outcome as Error).message)).toContain('50 ms');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('Claude Code gets a longer budget than the default; other agents keep the default', () => {
+    // A cold Claude probe (start, initialize, session/new, /usage) was measured at 19 s and went past 30 s.
+    expect(usageTimeoutOf('claude')).toBeGreaterThanOrEqual(60_000);
+    expect(usageTimeoutOf('omp')).toBe(USAGE_TIMEOUT_MS);
+    expect(usageTimeoutOf('codex')).toBe(USAGE_TIMEOUT_MS);
+    expect(usageTimeoutOf('unknown')).toBe(USAGE_TIMEOUT_MS);
   });
 });
