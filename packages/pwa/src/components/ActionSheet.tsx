@@ -54,7 +54,7 @@ interface ActionSheetPanelProps {
 export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetPanelProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-2 px-3 pt-1 pb-[max(env(safe-area-inset-bottom),12px)]">
+    <div className="flex flex-col gap-2 px-3 pt-1 pb-[max(env(safe-area-inset-bottom),12px)] wide:px-4 wide:pt-4 wide:pb-4">
       <div className="overflow-hidden rounded-xl bg-card">
         <p data-slot="action-sheet-title" className="border-b border-border px-4 py-3 text-center text-sm text-muted-foreground">{title}</p>
         <div className="max-h-[60dvh] overflow-y-auto">
@@ -78,7 +78,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
                     data-mono={item.mono === true ? 'true' : undefined}
                     aria-current={item.checked === true ? 'true' : undefined}
                     className={cn(
-                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99]',
+                      'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99] wide:min-h-10 wide:py-2',
                       item.tone === 'danger' && 'text-destructive',
                       item.tone === 'muted' && 'text-muted-foreground',
                       item.mono === true && 'font-mono text-[15px]',
@@ -101,7 +101,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
         <button
           type="button"
           data-slot="action-sheet-cancel"
-          className="flex min-h-14 w-full items-center justify-center px-4 text-base font-semibold text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99]"
+          className="flex min-h-14 w-full items-center justify-center px-4 text-base font-semibold text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99] wide:min-h-10"
           onClick={onClose}
         >
           {t('actions.cancel')}
@@ -136,6 +136,8 @@ export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) 
       }}
     >
       <DrawerContent
+        size="sm"
+        hideClose
         onCloseAutoFocus={(event) => {
           if (pickedRef.current) event.preventDefault();
         }}

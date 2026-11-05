@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentProfile } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
 import { setLanguage } from '../i18n/index.js';
+import { LayoutContext } from '../wide/layoutContext.js';
 import { AccountSelect } from './AccountSelect.js';
 
 const PRINCIPAL: AgentProfile = {
@@ -79,6 +80,44 @@ describe('AccountSelect', () => {
     const html = render({ value: 'default', disabled: true });
     expect(html).toMatch(/<select[^>]* disabled=""/);
     expect(html).not.toContain('Troque quando o agente terminar');
+  });
+});
+
+const renderWide = (props: { value: string; disabled?: boolean; showHint?: boolean; busy?: boolean }): string =>
+  renderToStaticMarkup(
+    createElement(
+      LayoutContext.Provider,
+      { value: 'two-pane' },
+      createElement(AccountSelect, { profiles: [PRINCIPAL, WORK], onChange: noop, ...props }),
+    ),
+  );
+
+describe('AccountSelect on a wide screen', () => {
+  it('draws a dropdown trigger with the chosen account and its e-mail, not the native select over the text', () => {
+    const html = renderWide({ value: 'a-1' });
+    expect(html).toContain('data-slot="account-select"');
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain('aria-label="Conta"');
+    expect(html).toContain('Trabalho');
+    expect(html).toContain('trabalho@exemplo.com');
+    expect(html).toContain('lucide-chevrons-up-down');
+    expect(html).not.toContain('class="absolute inset-0 h-full w-full min-w-0 cursor-pointer opacity-0');
+  });
+
+  it('a removed account reads "Conta removida" without naming any account, and the locked hint is tied to the trigger', () => {
+    const html = renderWide({ value: 'sumiu', disabled: true, showHint: true });
+    expect(html).toContain('Conta removida');
+    expect(html).not.toContain('eu@exemplo.com');
+    expect(html).toContain('data-slot="account-hint"');
+    const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(describedBy).toBeDefined();
+    expect(html).toContain(`id="${describedBy}"`);
+  });
+
+  it('while the change is on its way the trigger shows the spinner instead of the chevrons', () => {
+    const html = renderWide({ value: 'a-1', disabled: true, busy: true });
+    expect(html).toContain('data-slot="account-busy"');
+    expect(html).not.toContain('lucide-chevrons-up-down');
   });
 });
 

@@ -112,7 +112,7 @@ export function PairingCodeSheet({ bridge, onClose }: PairingCodeSheetProps) {
         if (!open) onClose();
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="sm" hideClose>
         <DrawerHeader>
           <DrawerTitle>{t('pairing.title')}</DrawerTitle>
           <DrawerDescription className="text-base leading-6 text-foreground/80">
@@ -120,13 +120,14 @@ export function PairingCodeSheet({ bridge, onClose }: PairingCodeSheetProps) {
           </DrawerDescription>
         </DrawerHeader>
         <PairingCodeBody code={code} loading={loading} failed={failed} now={now} />
-        <DrawerFooter className="flex-row">
-          <Button variant="secondary" className="flex-1" onClick={onClose}>
+        <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
+          <Button variant="secondary" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={onClose}>
             {t('pairing.close')}
           </Button>
           <Button
             variant={expired || failed ? 'default' : 'outline'}
-            className="flex-1"
+            size="compact"
+            className="flex-1 wide:min-w-24 wide:flex-none"
             disabled={loading}
             onClick={() => void generate()}
           >

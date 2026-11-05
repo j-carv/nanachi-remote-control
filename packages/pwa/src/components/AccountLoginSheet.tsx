@@ -82,13 +82,13 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
           <div className="flex flex-col gap-2">
             {isSecureLoginUrl(step.url) && (
               <div className="flex gap-2">
-                <Button asChild className="flex-1">
+                <Button asChild size="compact" className="flex-1">
                   <a data-slot="login-link" href={step.url} target="_blank" rel="noopener noreferrer">
                     <ExternalLink aria-hidden="true" />
                     {t('login.openLink')}
                   </a>
                 </Button>
-                <CopyButton text={step.url} label={t('login.copyLink')} />
+                <CopyButton text={step.url} label={t('login.copyLink')} className="wide:size-9" />
               </div>
             )}
             {step.needsCode && (
@@ -104,7 +104,7 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
                   {step.userCode}
                 </span>
               </div>
-              <CopyButton text={step.userCode} label={t('login.copyCode')} />
+              <CopyButton text={step.userCode} label={t('login.copyCode')} className="wide:size-9" />
             </div>
           )}
 
@@ -124,10 +124,10 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
                   autoCorrect="off"
                   spellCheck={false}
                   enterKeyHint="send"
-                  className="font-mono"
+                  className="font-mono wide:h-9"
                   onChange={(event) => onCodeChange(event.target.value)}
                 />
-                <Button type="submit" disabled={sending || !canSendLoginCode(step, code)}>
+                <Button type="submit" size="compact" disabled={sending || !canSendLoginCode(step, code)}>
                   {sending ? t('login.sending') : t('login.send')}
                 </Button>
               </div>
@@ -315,13 +315,13 @@ export function AccountLoginSheet({ api, agentId, agentLabel, accountId, account
           onCodeChange={setCode}
           onSendCode={() => void sendCode()}
         />
-        <DrawerFooter className="flex-row">
+        <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
           {closable ? (
-            <Button variant="secondary" className="flex-1" onClick={closeSheet}>
+            <Button variant="secondary" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={closeSheet}>
               {t('login.close')}
             </Button>
           ) : (
-            <Button variant="secondary" className="flex-1" disabled={cancelling} onClick={() => void cancel()}>
+            <Button variant="secondary" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" disabled={cancelling} onClick={() => void cancel()}>
               {cancelling ? t('login.cancelling') : t('actions.cancel', { ns: 'common' })}
             </Button>
           )}

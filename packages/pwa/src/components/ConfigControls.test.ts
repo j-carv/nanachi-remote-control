@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { setLanguage } from '../i18n/index.js';
 import type { SessionConfigOption } from '@nanachi/shared';
+import { LayoutContext } from '../wide/layoutContext.js';
 import { ConfigControls, ConfigSelect } from './ConfigControls.js';
 
 type SelectOption = Extract<SessionConfigOption, { type: 'select' }>;
@@ -306,6 +307,38 @@ describe('ConfigControls', () => {
 
     expect(html).not.toContain('optgroup');
     expect(html).not.toContain('aria-describedby');
+  });
+});
+
+const renderWideSelect = (option: SelectOption): string =>
+  renderToStaticMarkup(
+    createElement(
+      LayoutContext.Provider,
+      { value: 'two-pane' },
+      createElement(ConfigSelect, { label: 'Modelo', option, onChange: noop }),
+    ),
+  );
+
+describe('ConfigSelect on a wide screen', () => {
+  it('draws a dropdown trigger named by the row label, showing the chosen model and its provider', () => {
+    const html = renderWideSelect(OMP_MODELS);
+
+    expect(html).toContain('data-slot="config-select"');
+    expect(html).toContain('data-option="model"');
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain('aria-label="Modelo"');
+    expect(html).toContain('Claude Opus latest');
+    expect(html).toContain('OpenRouter · Anthropic');
+  });
+
+  it('the trigger is described by the value and then the provider line', () => {
+    const html = renderWideSelect(OMP_MODELS);
+    const trigger = /<button[^>]*role="combobox"[^>]*>/.exec(html)?.[0] ?? '';
+    const ids = (attributeOf(trigger, 'aria-describedby') ?? '').split(' ');
+
+    expect(ids).toHaveLength(2);
+    expect(spanWithId(html, ids[0] ?? '').text).toBe('Claude Opus latest');
+    expect(spanWithId(html, ids[1] ?? '').text).toBe('OpenRouter · Anthropic');
   });
 });
 

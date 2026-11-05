@@ -56,7 +56,7 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
         if (!open) onClose();
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="sm">
         <DrawerHeader>
           <DrawerTitle>{t('shellSheet.title')}</DrawerTitle>
           <DrawerDescription>{t('shellSheet.hint', { name: workspace.name })}</DrawerDescription>
@@ -76,7 +76,7 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
                     type="button"
                     data-slot="shell-option"
                     data-shell={shell.id}
-                    className={`${listRowClass} w-full text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:bg-accent disabled:pointer-events-none disabled:opacity-50`}
+                    className={`${listRowClass} w-full text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:bg-accent disabled:pointer-events-none disabled:opacity-50 wide:min-h-10 wide:py-1.5`}
                     disabled={creating !== null}
                     onClick={() => void create(shell.id)}
                   >
@@ -93,7 +93,7 @@ export function ShellSheet({ api, workspace, onCreated, onClose }: ShellSheetPro
             </ListGroup>
           )}
 
-          <Button variant="ghost" size="wide" onClick={onClose}>
+          <Button variant="ghost" size="wide" className="wide:h-9 wide:w-auto wide:self-end" onClick={onClose}>
             {t('actions.cancel', { ns: 'common' })}
           </Button>
         </div>

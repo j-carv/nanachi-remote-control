@@ -3,6 +3,8 @@ import { ChevronsUpDown } from 'lucide-react';
 import type { ConfigValue, SessionConfigOption } from '@nanachi/shared';
 import type { SelectOption } from '../agentConfig.js';
 import { choiceLabel, modelGroupsOf, modelSourceOf, sourceLabel, type ModelSource } from '../chat/modelSource.js';
+import { useLayout } from '../wide/layoutContext.js';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { ListGroup, listRowClass } from './ListGroup.js';
@@ -68,6 +70,79 @@ function ChosenText({ option, sourceId }: { option: SelectOption; sourceId: stri
   );
 }
 
+/** The wide dropdown's options: a heading per provider when the list has several, else a flat list. */
+function WideChoices({ option }: { option: SelectOption }) {
+  const groups = modelGroupsOf(option);
+  if (groups === undefined) {
+    return (
+      <SelectContent>
+        {option.options.map((choice) => (
+          <SelectItem key={choice.value} value={choice.value} textValue={choice.name}>
+            {choice.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    );
+  }
+  return (
+    <SelectContent>
+      {groups.map((group) => (
+        <SelectGroup key={group.providerId}>
+          <SelectLabel>{group.providerLabel}</SelectLabel>
+          {group.options.map((choice) => (
+            <SelectItem key={choice.value} value={choice.value} textValue={choiceLabel(choice)}>
+              {choiceLabel(choice)}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </SelectContent>
+  );
+}
+
+interface WideChoiceSelectProps {
+  /** Accessible name: the row's label, or the option's name. */
+  label: string;
+  option: SelectOption;
+  onChange(value: string): void;
+  /** Id of the option's description, when it has one. */
+  descriptionId?: string | undefined;
+  className?: string | undefined;
+}
+
+/**
+ * A choice on a wide screen: a styled dropdown whose trigger shows the chosen value, with its provider (and vendor)
+ * after it on the same line. The screen reader reads the value and then the provider.
+ */
+function WideChoiceSelect({ label, option, onChange, descriptionId, className }: WideChoiceSelectProps) {
+  const baseId = useId();
+  const valueId = `${baseId}-value`;
+  const sourceId = `${baseId}-source`;
+  const source = chosenSourceOf(option);
+  const current = option.options.find((choice) => choice.value === option.currentValue);
+  const describedBy = [valueId, source !== null ? sourceId : undefined, descriptionId]
+    .filter((id) => id !== undefined)
+    .join(' ');
+  return (
+    <Select value={option.currentValue} onValueChange={onChange}>
+      <SelectTrigger aria-label={label} aria-describedby={describedBy} className={className}>
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span id={valueId} className="truncate">
+            {current?.name ?? option.currentValue}
+          </span>
+          {source !== null && (
+            <span id={sourceId} className="truncate text-sm text-muted-foreground">
+              {sourceLabel(source)}
+            </span>
+          )}
+        </span>
+        <ChevronsUpDown className="size-4 text-muted-foreground" aria-hidden="true" />
+      </SelectTrigger>
+      <WideChoices option={option} />
+    </Select>
+  );
+}
+
 interface ConfigSelectProps {
   label: string;
   option: SelectOption;
@@ -75,12 +150,25 @@ interface ConfigSelectProps {
 }
 
 /**
- * Linha de um seletor fixo (Acesso / Modelo / Effort) na folha "Configurar sessão". Select nativo: no iOS abre a
- * roda de opções. Dentro de um ListGroup, o `li` fica por fora.
+ * One fixed control (Acesso / Modelo / Effort) in the "Configurar sessão" sheet. A native select, so iOS opens its wheel;
+ * on a wide screen a styled dropdown instead. Inside a ListGroup the `li` stays outside.
  */
 export function ConfigSelect({ label, option, onChange }: ConfigSelectProps) {
   const grouped = modelGroupsOf(option) !== undefined;
   const sourceId = useId();
+  const wide = useLayout() !== 'phone';
+  if (wide) {
+    return (
+      <div
+        data-slot="config-select"
+        data-option={option.category ?? 'outro'}
+        className={`${listRowClass} justify-between wide:min-h-10 wide:py-1.5`}
+      >
+        <span className="shrink-0 text-base">{label}</span>
+        <WideChoiceSelect label={label} option={option} onChange={onChange} className="max-w-[62%]" />
+      </div>
+    );
+  }
   return (
     <label data-slot="config-select" data-option={option.category ?? 'outro'} className={`${listRowClass} justify-between`}>
       <span className="shrink-0 text-base">{label}</span>
@@ -127,7 +215,7 @@ export function ConfigControls({ options, onChange }: ConfigControlsProps) {
       {options.map((option) => (
         <li key={option.id}>
           {option.type === 'boolean' ? (
-            <label data-slot="config-toggle" className={`${listRowClass} cursor-pointer justify-between`}>
+            <label data-slot="config-toggle" className={`${listRowClass} cursor-pointer justify-between wide:min-h-10 wide:py-1.5`}>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-base">{option.name}</span>
                 {option.description && <span className="text-sm text-muted-foreground">{option.description}</span>}
@@ -152,12 +240,34 @@ function ConfigSelectField({ option, onChange }: { option: SelectOption; onChang
   const baseId = useId();
   const descriptionId = `${baseId}-description`;
   const sourceId = `${baseId}-source`;
+  const wide = useLayout() !== 'phone';
   const describedBy = [
     option.description ? descriptionId : undefined,
     chosenSourceOf(option) !== null ? sourceId : undefined,
   ]
     .filter((id) => id !== undefined)
     .join(' ');
+  if (wide) {
+    return (
+      <div className="flex flex-col gap-2 px-4 py-3 wide:gap-1.5 wide:py-2.5">
+        <span className="flex flex-col gap-0.5">
+          <span className="text-base">{option.name}</span>
+          {option.description && (
+            <span id={descriptionId} className="text-sm text-muted-foreground">
+              {option.description}
+            </span>
+          )}
+        </span>
+        <WideChoiceSelect
+          label={option.name}
+          option={option}
+          onChange={onChange}
+          descriptionId={option.description ? descriptionId : undefined}
+          className="w-full"
+        />
+      </div>
+    );
+  }
   return (
     <label className="flex flex-col gap-2 px-4 py-3">
       <span className="flex flex-col gap-0.5">

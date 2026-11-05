@@ -923,7 +923,7 @@ export function ChatScreen({
               <DrawerHeader>
                 <DrawerTitle>{t('configSheet.title')}</DrawerTitle>
               </DrawerHeader>
-              <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
+              <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)] wide:gap-5">
                 {accountSelector !== null && (
                   <section className="flex flex-col gap-2">
                     <ListGroup label={t('configSheet.account')}>
@@ -971,8 +971,8 @@ export function ChatScreen({
             </DrawerContent>
           </Drawer>
 
-          {/* `contents` on the phone (the notices stay flex items of the column); a reading-width column on wide screens. */}
-          <div className="contents wide:mx-auto wide:flex wide:w-full wide:max-w-[760px] wide:flex-col wide:gap-2 wide:empty:hidden">
+          {/* `contents` on the phone (the notices stay flex items of the column); on wide screens the transcript's reading column. */}
+          <div className="contents wide:mx-auto wide:flex wide:w-full wide:max-w-[1040px] wide:flex-col wide:gap-2 wide:empty:hidden">
             <ErrorNotice error={controller.loadError} onRepair={onRepair} />
             <ErrorNotice
               error={controller.resumeError}
@@ -1017,14 +1017,14 @@ export function ChatScreen({
               className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain [overflow-anchor:none] px-0.5 py-2 *:shrink-0 wide:items-center wide:px-2"
             >
               {!controller.loaded && controller.loadError === null && (
-                <p className="text-sm text-muted-foreground wide:w-full wide:max-w-[760px]">{t('timeline.loading')}</p>
+                <p className="text-sm text-muted-foreground wide:w-full wide:max-w-[1040px]">{t('timeline.loading')}</p>
               )}
               {start > 0 && (
                 <Button variant="secondary" className="self-center" onClick={loadEarlier}>
                   {t('timeline.loadEarlier')}
                 </Button>
               )}
-              <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3 wide:w-full wide:max-w-[760px]">
+              <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3 wide:w-full wide:max-w-[1040px]">
                 {topNodes.map((node) => (
                   <div
                     key={node.item.id}
@@ -1036,7 +1036,7 @@ export function ChatScreen({
                 ))}
               </div>
               {chat.permissions.map((request) => (
-                <div key={request.requestId} className="wide:w-full wide:max-w-[760px]">
+                <div key={request.requestId} className="wide:w-full wide:max-w-[1040px]">
                   <PermissionCard
                     api={api}
                     request={request}
@@ -1067,7 +1067,7 @@ export function ChatScreen({
             )}
           </div>
 
-          <div ref={bottomRef} className="flex shrink-0 flex-col gap-2 wide:mx-auto wide:w-full wide:max-w-[760px]">
+          <div ref={bottomRef} className="flex shrink-0 flex-col gap-2 wide:w-full">
             {working !== undefined && (
               <div
                 role="status"
