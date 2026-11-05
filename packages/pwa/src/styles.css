@@ -237,6 +237,16 @@
   }
 
   /*
+   * The open list of a native select is drawn by the platform. On Windows (Chromium, Nanachi Desktop) it kept a white
+   * background while the options inherited the light text of the dark theme, so the options were unreadable. The
+   * options take the popover tokens, which follow the theme. iOS draws its own wheel and ignores these.
+   */
+  select option {
+    background-color: var(--ui-popover);
+    color: var(--ui-popover-foreground);
+  }
+
+  /*
    * A mouse or a trackpad (not a finger): clickable things get the pointer cursor, which Tailwind's preflight no longer
    * sets on buttons, and scrollbars are thin and quiet instead of the platform's wide grey ones. Touch screens never match.
    */
