@@ -166,7 +166,7 @@ export function MainScreen({
         </div>
 
         <ul aria-label={t('main.machines')} className="flex flex-col gap-3">
-          {machines.map((machine) => (
+          {machines.map((machine, index) => (
             <MachineCard
               key={machine.id}
               machine={machine}
@@ -174,6 +174,7 @@ export function MainScreen({
               connection={statuses[machine.id] ?? 'connecting'}
               selected={machine.id === selected.id}
               now={now}
+              index={index}
               onSelect={() => onSelect(machine.id)}
               onOpenSession={onOpenSession}
             />

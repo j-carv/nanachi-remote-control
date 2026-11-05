@@ -77,7 +77,7 @@ export function LogViewer({ lines, emptyText, onFollowChange, resumeToken = 0 }:
       aria-label={t('logs.viewer')}
       tabIndex={0}
       onScroll={(event) => setFollowing(isNearBottom(event.currentTarget))}
-      className="selectable min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card px-3.5 py-3 font-mono text-[12px] leading-[19px]"
+      className="animate-fade-in selectable min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card px-3.5 py-3 font-mono text-[12px] leading-[19px]"
     >
       {lines.length === 0 ? (
         <p className="font-sans text-[13px] text-muted-foreground">{emptyText}</p>

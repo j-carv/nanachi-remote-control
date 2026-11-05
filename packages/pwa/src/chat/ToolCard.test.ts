@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ApiClient } from '../api.js';
 import type { BackgroundView } from './background.js';
+import { historyOf } from './liveItems.js';
 import type { ChatNode } from './nesting.js';
 import { ToolCard } from './ToolCard.js';
 import type { ToolItem } from './toolSummary.js';
@@ -113,6 +114,27 @@ describe('ToolCard with background work', () => {
     expect(html).toContain('Testes unitários');
     expect(html).toContain('Concluído');
     expect(html).toContain('Estado desconhecido');
+  });
+});
+
+describe('ToolCard child rows and motion', () => {
+  it('a child from the history is still, a child that arrived live enters with motion', () => {
+    const fromHistory = leaf(tool({ id: 'tool-old', toolCallId: 'old', title: 'Ler antigo' }));
+    const arrived = leaf(tool({ id: 'tool-new', toolCallId: 'new', title: 'Ler novo' }));
+    const html = renderToStaticMarkup(
+      createElement(ToolCard, {
+        api,
+        item: SUBAGENT,
+        nested: [fromHistory, arrived],
+        history: historyOf([fromHistory.item]),
+        view: ACTIVE,
+        renderNested: (child: ChatNode) =>
+          createElement('span', { 'data-child': 'true' }, child.item.kind === 'tool_call' ? child.item.title : ''),
+      }),
+    );
+
+    expect(html).toMatch(/<li data-item-id="tool-old"(?![^>]*animate-enter)[^>]*>/);
+    expect(html).toMatch(/<li data-item-id="tool-new"[^>]*animate-enter[^>]*>/);
   });
 });
 

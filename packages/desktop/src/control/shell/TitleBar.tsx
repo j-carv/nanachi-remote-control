@@ -43,7 +43,7 @@ function WindowButton({ label, tip, native, onClick, danger = false, children }:
       title={native ? tip : undefined}
       onClick={onClick}
       className={cx(
-        'app-no-drag focus-inset grid h-10 w-[46px] place-items-center text-foreground transition-colors duration-100 group-data-[focused=false]:text-muted-foreground [&_svg]:size-4',
+        'app-no-drag focus-inset grid h-10 w-[46px] place-items-center text-foreground transition-colors duration-150 ease-[var(--ease-premium)] group-data-[focused=false]:text-muted-foreground [&_svg]:size-4',
         danger ? 'hover:bg-destructive hover:text-destructive-foreground active:bg-destructive/85' : 'hover:bg-accent active:bg-accent/70',
       )}
     >
@@ -86,7 +86,7 @@ export function TitleBarView({ machineName, daemon, windowState, nativeTips = fa
             type="button"
             onClick={onOpenStatus}
             aria-label={t('shell.titleBar.daemonButton', { status: summary.word })}
-            className="app-no-drag -ml-0.5 flex h-7 items-center gap-1.5 rounded-md px-2 hover:bg-accent"
+            className="app-no-drag -ml-0.5 flex h-7 items-center gap-1.5 rounded-md px-2 transition-colors duration-150 ease-[var(--ease-premium)] hover:bg-accent"
           >
             <StatusDot tone={summary.tone} pulse={summary.pulse} />
             <span className={cx('font-medium', TONE_TEXT[summary.tone])}>{summary.word}</span>

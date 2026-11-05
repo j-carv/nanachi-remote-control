@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Circle, CircleCheck, CircleDot, ListChecks, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,12 +16,22 @@ const MARK_TONE: Record<PlanEntry['status'], string> = {
   completed: 'text-success',
 };
 
+/** The mark of an entry. It pops in when the entry changes status; the status it first showed does not (history). */
 function PlanMark({ status }: { status: PlanEntry['status'] }) {
   const { t } = useTranslation('chat');
+  const [initialStatus] = useState(status);
   const Mark = MARK[status];
   return (
-    <span role="img" aria-label={t(`status.${status}`)} className={cn('mt-px flex shrink-0', MARK_TONE[status])}>
-      <Mark className="size-5" aria-hidden="true" />
+    <span
+      role="img"
+      aria-label={t(`status.${status}`)}
+      className={cn('mt-px flex shrink-0 transition-colors duration-200 motion-reduce:transition-none', MARK_TONE[status])}
+    >
+      <Mark
+        key={status}
+        className={cn('size-5', status !== initialStatus && 'animate-enter-scale motion-reduce:animate-none')}
+        aria-hidden="true"
+      />
     </span>
   );
 }
@@ -41,7 +52,7 @@ export function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
             data-slot="plan-item"
             data-plan-status={entry.status}
             className={cn(
-              'flex items-start gap-2.5 text-[15px] leading-snug',
+              'flex items-start gap-2.5 text-[15px] leading-snug transition-colors duration-200 motion-reduce:transition-none',
               entry.status === 'completed' && 'text-muted-foreground',
             )}
           >

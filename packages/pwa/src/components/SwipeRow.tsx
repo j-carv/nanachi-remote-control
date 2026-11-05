@@ -90,7 +90,7 @@ export function SwipeRow({ actionLabel, onAction, children }: SwipeRowProps) {
         data-slot="swipe-track"
         className={cn(
           'relative z-10 touch-pan-y bg-card',
-          !dragging && 'transition-transform duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]',
+          !dragging && 'transition-transform duration-200 ease-out-premium',
         )}
         // Fechada, sem transform: um transform cria o bloco de contenção do `position: fixed`.
         style={offset === 0 ? undefined : { transform: `translateX(${offset}px)` }}

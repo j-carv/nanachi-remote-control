@@ -5,8 +5,9 @@ import { cx } from './cx.js';
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'danger-ghost';
 export type ButtonSize = 'sm' | 'md' | 'icon' | 'icon-sm';
 
+// The press is Tailwind's `scale` property, so the transition lists `scale` (not `transform`) for it to glide.
 const BASE =
-  'inline-flex shrink-0 items-center justify-center rounded-md font-medium whitespace-nowrap select-none transition-[background-color,opacity,transform] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0';
+  'inline-flex shrink-0 items-center justify-center rounded-md font-medium whitespace-nowrap select-none transition-[background-color,color,opacity,scale] duration-200 ease-[var(--ease-premium)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0';
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary text-primary-foreground hover:bg-primary/88',
@@ -42,7 +43,13 @@ export function Button({ variant = 'secondary', size = 'md', loading = false, ic
       className={cx(BASE, VARIANTS[variant], SIZES[size], className)}
       {...rest}
     >
-      {loading ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : icon}
+      {loading ? (
+        <span className="inline-grid animate-scale-in">
+          <LoaderCircle className="animate-spin" aria-hidden="true" />
+        </span>
+      ) : (
+        icon
+      )}
       {children}
     </button>
   );

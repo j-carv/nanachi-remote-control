@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
-import { ListGroup, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listRowClass, listRowPressClass, staggerDelay } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { UnifiedPatchView } from '../components/UnifiedPatchView.js';
@@ -61,25 +61,27 @@ export function ChangesScreen({
         </p>
       )}
 
-      {diff.data === null && diff.error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {diff.data === null && diff.error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
       {diff.data !== null && files.length === 0 && (
-        <p className="pl-1 text-muted-foreground">{t('changesScreen.empty')}</p>
+        <p className="animate-enter pl-1 text-muted-foreground">{t('changesScreen.empty')}</p>
       )}
 
       {files.length > 0 && (
         <ListGroup label={t('changesScreen.listLabel')}>
-          {files.map((file) => {
+          {files.map((file, index) => {
             const open = openPath === file.path;
             return (
-              <li key={file.path} data-slot="change-row" className="flex flex-col">
+              <li
+                key={file.path}
+                data-slot="change-row"
+                className="animate-enter flex flex-col"
+                style={staggerDelay(index)}
+              >
                 <button
                   type="button"
                   data-slot="change-toggle"
                   aria-expanded={open}
-                  className={cn(
-                    listRowClass,
-                    'w-full text-left transition-colors hover:bg-accent active:bg-accent',
-                  )}
+                  className={cn(listRowClass, listRowPressClass)}
                   onClick={() => setOpenPath(open ? null : file.path)}
                 >
                   <span className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -100,7 +102,7 @@ export function ChangesScreen({
                   />
                 </button>
                 {open && (
-                  <div className="px-4 pb-3">
+                  <div className="animate-enter px-4 pb-3">
                     <UnifiedPatchView patch={file.patch} />
                   </div>
                 )}

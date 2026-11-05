@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
-import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listMainClass, listRowClass, staggerDelay } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { Button } from '@/components/ui/button';
@@ -52,17 +52,17 @@ export function WorkspacesScreen({ machineName, api, nav, onRepair }: Workspaces
 
       <ErrorNotice error={error} onRepair={onRepair} />
 
-      {workspaces === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {workspaces === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
       {workspaces !== null && workspaces.length === 0 && (
-        <p className="pl-1 text-muted-foreground">
+        <p className="animate-enter pl-1 text-muted-foreground">
           {t('workspaces.empty')}
         </p>
       )}
 
       {workspaces !== null && workspaces.length > 0 && (
         <ListGroup label={t('workspaces.title')}>
-          {workspaces.map((workspace) => (
-            <li key={workspace.id} className={listRowClass}>
+          {workspaces.map((workspace, index) => (
+            <li key={workspace.id} className={`${listRowClass} animate-enter`} style={staggerDelay(index)}>
               <button type="button" className={listMainClass} onClick={() => nav.push({ kind: 'sessions', workspace })}>
                 <Folder className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">

@@ -27,6 +27,8 @@ export function useToast(): Notify {
 }
 
 const LIFETIME_MS: Record<ToastTone, number> = { success: 4500, info: 4500, error: 8000 };
+/** How long a toast slides out before it is removed: the `animate-toast-out` length (styles.css). */
+const EXIT_MS = 180;
 const MAX_VISIBLE = 4;
 
 const ICONS = {
@@ -38,19 +40,30 @@ const ICONS = {
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
   const { t } = useTranslation();
   const [paused, setPaused] = useState(false);
+  // Leaving plays the exit first; the owner removes the toast when it has finished.
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    if (paused) return undefined;
-    const timer = window.setTimeout(() => onDismiss(item.id), LIFETIME_MS[item.tone]);
+    if (paused || leaving) return undefined;
+    const timer = window.setTimeout(() => setLeaving(true), LIFETIME_MS[item.tone]);
     return () => window.clearTimeout(timer);
-  }, [paused, item.id, item.tone, onDismiss]);
+  }, [paused, leaving, item.tone]);
+
+  useEffect(() => {
+    if (!leaving) return undefined;
+    const timer = window.setTimeout(() => onDismiss(item.id), EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving, item.id, onDismiss]);
 
   return (
     <div
       role={item.tone === 'error' ? 'alert' : 'status'}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="pointer-events-auto animate-toast flex items-start gap-2.5 rounded-lg border border-border bg-popover py-2.5 pr-2 pl-3.5 text-popover-foreground shadow-[0_12px_32px_-12px_rgb(0_0_0/0.35)]"
+      className={cx(
+        'pointer-events-auto flex items-start gap-2.5 rounded-lg border border-border bg-popover py-2.5 pr-2 pl-3.5 text-popover-foreground shadow-[0_12px_32px_-12px_rgb(0_0_0/0.35)]',
+        leaving ? 'animate-toast-out' : 'animate-toast',
+      )}
     >
       <span className="mt-0.5 shrink-0 [&_svg]:size-4">{ICONS[item.tone]}</span>
       <div className="min-w-0 flex-1 pt-px">
@@ -60,8 +73,8 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       <button
         type="button"
         aria-label={t('shell.toast.dismiss')}
-        onClick={() => onDismiss(item.id)}
-        className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
+        onClick={() => setLeaving(true)}
+        className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
       >
         <X aria-hidden="true" />
       </button>

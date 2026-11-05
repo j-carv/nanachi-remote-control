@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { DevicesResponse } from '@nanachi/shared';
 import { createApiClient, type ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
-import { ListGroup, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listRowClass, staggerDelay } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { Badge } from '@/components/ui/badge';
@@ -67,12 +67,12 @@ export function DevicesScreen({ machine, nav, onRevokedSelf }: DevicesScreenProp
 
       <ErrorNotice error={error} onRepair={() => nav.push({ kind: 'pair', baseUrl: machine.baseUrl })} />
 
-      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {list.data === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
 
       {list.data !== null && list.data.length > 0 && (
         <ListGroup label={t('list')}>
-          {list.data.map((device) => (
-            <li key={device.id} className={listRowClass}>
+          {list.data.map((device, index) => (
+            <li key={device.id} className={`${listRowClass} animate-enter`} style={staggerDelay(index)}>
               <Smartphone className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="flex min-w-0 flex-wrap items-center gap-2">

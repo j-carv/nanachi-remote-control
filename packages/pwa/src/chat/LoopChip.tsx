@@ -42,7 +42,11 @@ export function LoopChip({ loop, onOpen }: LoopChipProps) {
     >
       <span className="flex h-6 max-w-full items-center gap-1 rounded-full bg-secondary px-2 text-xs font-medium whitespace-nowrap tabular-nums text-foreground">
         <Repeat
-          className={cn('size-3.5 shrink-0', PHASE_ICON[view.phase], running && 'animate-spin motion-reduce:animate-none')}
+          className={cn(
+            'size-3.5 shrink-0 transition-colors duration-200 motion-reduce:transition-none',
+            PHASE_ICON[view.phase],
+            running && 'animate-spin motion-reduce:animate-none',
+          )}
           aria-hidden="true"
         />
         {/* Below 360 px the full text does not fit beside the background chip, so the short form shows. */}

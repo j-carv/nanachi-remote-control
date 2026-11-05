@@ -30,7 +30,7 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
     <section
       data-slot="slash-menu"
       aria-label={t('slash.label')}
-      className="flex flex-col gap-1 rounded-xl border border-border bg-card p-1.5"
+      className="flex animate-enter flex-col gap-1 rounded-xl border border-border bg-card p-1.5 motion-reduce:animate-none"
     >
       {search !== undefined && (
         <div className="flex items-center gap-1">

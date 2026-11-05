@@ -3,6 +3,10 @@ import { Crop, X } from 'lucide-react';
 import type { DraftAttachment } from './useAttachmentDrafts.js';
 import { formatBytes } from '../files/format.js';
 
+/** The dark chip of the crop and remove buttons. It darkens on hover and shrinks a little while pressed. */
+const CHIP_CLASS =
+  'flex size-6 items-center justify-center rounded-full bg-foreground/75 text-background transition-[transform,background-color] duration-150 group-hover:bg-foreground group-active:scale-90 motion-reduce:transition-none';
+
 interface AttachmentDraftsProps {
   drafts: readonly DraftAttachment[];
   onRemove(id: string): void;
@@ -21,7 +25,7 @@ export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsP
     // Padding on all sides keeps the remove and crop buttons, which overhang each item, inside the scroll box.
     <ul data-slot="draft-list" aria-label={t('attachments.label')} className="-mx-2 flex gap-2 overflow-x-auto px-2 pt-2 pb-2">
       {drafts.map(({ id, file, previewUrl }) => (
-        <li key={id} className="relative shrink-0">
+        <li key={id} className="relative shrink-0 animate-enter-scale motion-reduce:animate-none">
           {previewUrl !== null ? (
             <div className="size-16 overflow-hidden rounded-md bg-muted">
               <img data-slot="draft-thumb" className="size-full object-cover" src={previewUrl} alt={file.name} />
@@ -38,9 +42,9 @@ export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsP
               data-slot="draft-crop"
               aria-label={t('attachments.crop', { name: file.name })}
               onClick={() => onCrop(id)}
-              className="absolute -bottom-2 -left-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group absolute -bottom-2 -left-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="flex size-6 items-center justify-center rounded-full bg-foreground/75 text-background">
+              <span className={CHIP_CLASS}>
                 <Crop className="size-3.5" aria-hidden="true" />
               </span>
             </button>
@@ -49,9 +53,9 @@ export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsP
             type="button"
             aria-label={t('attachments.remove', { name: file.name })}
             onClick={() => onRemove(id)}
-            className="absolute -top-2 -right-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group absolute -top-2 -right-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="flex size-6 items-center justify-center rounded-full bg-foreground/75 text-background">
+            <span className={CHIP_CLASS}>
               <X className="size-3.5" aria-hidden="true" />
             </span>
           </button>

@@ -35,6 +35,9 @@ interface EditorScreenProps {
 }
 
 /** Último segmento do caminho: o nome do arquivo. */
+/** Widths of the placeholder lines while a file loads: uneven, so they read as code. Full class names for Tailwind. */
+const LOADING_LINE_WIDTHS = ['w-2/5', 'w-3/5', 'w-1/2', 'w-4/5', 'w-2/3', 'w-1/3', 'w-3/4'] as const;
+
 function nameOf(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
 }
@@ -188,7 +191,14 @@ export function EditorScreen({ workspace, path, api, nav, onRepair }: EditorScre
       )}
 
       <ErrorNotice error={error} onRepair={onRepair} />
-      {file.data === null && file.error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {file.data === null && file.error === null && (
+        <div className="flex h-[68dvh] min-h-64 flex-col gap-2.5 overflow-hidden rounded-xl border border-border bg-card p-4 wide:h-[max(24rem,calc(100dvh-14rem))]">
+          <p className="sr-only">{t('states.loading', { ns: 'common' })}</p>
+          {LOADING_LINE_WIDTHS.map((width, index) => (
+            <span key={index} aria-hidden="true" className={`h-3 shrink-0 rounded animate-shimmer ${width}`} />
+          ))}
+        </div>
+      )}
 
       {file.data !== null && (
         <div

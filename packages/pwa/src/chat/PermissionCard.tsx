@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldExclamationPoint } from 'lucide-react';
+import { LoaderCircle, ShieldExclamationPoint } from 'lucide-react';
 import type { PendingPermission } from './reducer.js';
 import type { ApiClient } from '../api.js';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { ToolContentView } from '../components/ToolContentView.js';
 
 interface PermissionCardProps {
@@ -13,17 +14,24 @@ interface PermissionCardProps {
   onRespond(optionId: string): boolean;
 }
 
-/** Pedido de permissão: um botão por opção. Some quando o daemon confirma (permission_resolved). */
+/**
+ * Permission request: one button per option. It disappears when the daemon confirms (permission_resolved). After a tap
+ * the tapped button shows a spinner and every button stays disabled until the reply arrives.
+ */
 export function PermissionCard({ api, request, onRespond }: PermissionCardProps) {
   const { t } = useTranslation('chat');
-  const [answering, setAnswering] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
 
   function respond(optionId: string) {
-    if (onRespond(optionId)) setAnswering(true);
+    if (onRespond(optionId)) setPicked(optionId);
   }
 
   return (
-    <section data-slot="permission-card" aria-label={t('permission.label')} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <section
+      data-slot="permission-card"
+      aria-label={t('permission.label')}
+      className="flex animate-enter-scale flex-col gap-3 rounded-xl border border-border bg-card p-4 motion-reduce:animate-none"
+    >
       <div className="flex items-start gap-2.5">
         <ShieldExclamationPoint className="mt-0.5 size-5 shrink-0 text-attention" aria-hidden="true" />
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -37,15 +45,17 @@ export function PermissionCard({ api, request, onRespond }: PermissionCardProps)
       <div data-slot="permission-actions" className="flex flex-wrap gap-2">
         {request.options.map((option) => {
           const allow = option.kind.startsWith('allow');
+          const waiting = picked === option.optionId;
           return (
             <Button
               key={option.optionId}
               variant={allow ? 'default' : 'secondary'}
               data-permission={allow ? 'allow' : 'reject'}
-              className="min-w-0 flex-1 basis-[120px]"
-              disabled={answering}
+              className={cn('min-w-0 flex-1 basis-[120px]', waiting && 'disabled:opacity-100')}
+              disabled={picked !== null}
               onClick={() => respond(option.optionId)}
             >
+              {waiting && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
               {option.name}
             </Button>
           );

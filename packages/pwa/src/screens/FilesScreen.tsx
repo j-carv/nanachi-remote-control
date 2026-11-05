@@ -23,7 +23,7 @@ import type { ApiClient } from '../api.js';
 import { ActionSheetButton } from '../components/ActionSheet.js';
 import { DeleteEntrySheet } from '../components/DeleteEntrySheet.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
-import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listMainClass, listRowClass, staggerDelay } from '../components/ListGroup.js';
 import { NameSheet } from '../components/NameSheet.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
@@ -206,16 +206,16 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
       <ErrorNotice error={error} onRepair={onRepair} />
       {copied !== null && <p className="pl-1 text-sm text-muted-foreground">{t('files.copied', { path: copied })}</p>}
 
-      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
-      {list.data !== null && entries.length === 0 && <p className="pl-1 text-muted-foreground">{t('files.empty')}</p>}
+      {list.data === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
+      {list.data !== null && entries.length === 0 && <p className="animate-enter pl-1 text-muted-foreground">{t('files.empty')}</p>}
 
       {entries.length > 0 && (
         <ListGroup label={t('files.contents', { folder: folderLabel })}>
-          {entries.map((entry) => {
+          {entries.map((entry, index) => {
             const slot = slotOf(entry);
             const Icon = SLOT_ICONS[slot];
             return (
-              <li key={entry.name}>
+              <li key={entry.name} className="animate-enter" style={staggerDelay(index)}>
                 <div className={listRowClass}>
                   <button
                     type="button"

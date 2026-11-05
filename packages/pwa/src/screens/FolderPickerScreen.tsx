@@ -3,7 +3,7 @@ import { ArrowRight, ChevronRight, CornerLeftUp, Folder, Check } from 'lucide-re
 import { useTranslation } from 'react-i18next';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
-import { ListGroup, listMainClass, listRowClass } from '../components/ListGroup.js';
+import { ListGroup, ListSkeleton, listRowClass, listRowPressClass, staggerDelay } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { normalizeTypedPath, typedPathErrorText } from '../folderPath.js';
@@ -147,16 +147,16 @@ export function FolderPickerScreen({ api, nav, onRepair }: FolderPickerScreenPro
         </Button>
       )}
 
-      {data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
-      {data !== null && data.dirs.length === 0 && <p className="pl-1 text-muted-foreground">{t('folders.empty')}</p>}
+      {data === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
+      {data !== null && data.dirs.length === 0 && <p className="animate-enter pl-1 text-muted-foreground">{t('folders.empty')}</p>}
 
       {data !== null && data.dirs.length > 0 && (
         <ListGroup label={t('folders.listLabel')}>
-          {data.dirs.map((dir) => (
-            <li key={dir.path}>
+          {data.dirs.map((dir, index) => (
+            <li key={dir.path} className="animate-enter" style={staggerDelay(index)}>
               <button
                 type="button"
-                className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:pointer-events-none disabled:opacity-50`}
+                className={`${listRowClass} ${listRowPressClass}`}
                 disabled={listing.loading}
                 onClick={() => setCurrent(dir.path)}
               >

@@ -15,7 +15,7 @@ import { cx } from '../ui/cx.js';
 import { Dialog } from '../ui/Dialog.js';
 import { StatusDot } from '../ui/StatusDot.js';
 import { EmptyState, ErrorState, GroupSkeleton } from '../ui/States.js';
-import { Group } from '../ui/Surface.js';
+import { Group, rowStyle } from '../ui/Surface.js';
 import { useToast } from '../ui/Toast.js';
 import { Page } from './Page.js';
 
@@ -198,8 +198,14 @@ export function DevicesTable({ devices, now, onRevoke }: DevicesTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {devices.map((device) => (
-            <tr key={device.id} data-slot="device-row" data-revoked={device.revoked} className={cx('h-12', device.revoked && 'text-muted-foreground')}>
+          {devices.map((device, index) => (
+            <tr
+              key={device.id}
+              data-slot="device-row"
+              data-revoked={device.revoked}
+              style={rowStyle(index)}
+              className={cx('animate-row h-12 transition-colors duration-150 ease-[var(--ease-premium)] hover:bg-accent/50', device.revoked && 'text-muted-foreground')}
+            >
               <th scope="row" className="px-4 text-left font-normal">
                 <span className="flex items-center gap-2.5">
                   <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">

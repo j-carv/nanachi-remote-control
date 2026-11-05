@@ -5,6 +5,7 @@ import type { Session, SessionStatus, Workspace } from '@nanachi/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { staggerDelay } from '../components/ListGroup.js';
 import { StatusDot, TONE_TEXT, type StatusTone } from '../components/StatusDot.js';
 import { sessionGroup } from '../machineOverview.js';
 import { formatRelativeTime } from '../relativeTime.js';
@@ -83,7 +84,7 @@ function SessionRow({
         title={label}
         onClick={onOpen}
         className={cn(
-          'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+          'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left outline-none transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]',
           selected && 'bg-accent',
         )}
       >
@@ -105,6 +106,7 @@ function SessionRow({
 
 function WorkspaceGroup({
   node,
+  index,
   selection,
   collapsed,
   expanded,
@@ -117,6 +119,8 @@ function WorkspaceGroup({
   onNewSession,
 }: {
   node: WorkspaceNode;
+  /** Position in the list, for the staggered entrance. */
+  index: number;
   selection: Selection;
   collapsed: boolean;
   expanded: boolean;
@@ -135,10 +139,10 @@ function WorkspaceGroup({
   const showToggle = expanded ? node.sessions.length > SESSION_ROW_LIMIT : hidden > 0;
 
   return (
-    <li data-slot="list-workspace" data-workspace={workspace.id}>
+    <li data-slot="list-workspace" data-workspace={workspace.id} className="animate-enter" style={staggerDelay(index)}>
       <div
         className={cn(
-          'group/ws flex items-center rounded-md transition-colors hover:bg-accent/60',
+          'group/ws flex items-center rounded-md transition-colors duration-200 ease-out-premium hover:bg-accent/60',
           selectedWorkspace && 'bg-accent hover:bg-accent',
         )}
       >
@@ -288,18 +292,25 @@ export function ListPaneView({
         )}
 
         {nodes === null && error === null && (
-          <p className="px-2 py-2 text-sm text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>
+          // Shimmering bars in the shape of the workspace rows; the text is for screen readers only.
+          <div className="flex flex-col gap-2.5 px-2 py-2">
+            <p className="sr-only">{t('states.loading', { ns: 'common' })}</p>
+            <span aria-hidden="true" className="h-3.5 w-4/5 rounded animate-shimmer" />
+            <span aria-hidden="true" className="h-3.5 w-3/5 rounded animate-shimmer" />
+            <span aria-hidden="true" className="h-3.5 w-2/3 rounded animate-shimmer" />
+          </div>
         )}
         {nodes !== null && nodes.length === 0 && (
-          <p className="px-2 py-2 text-sm text-muted-foreground">{t('list.noWorkspaces')}</p>
+          <p className="animate-enter px-2 py-2 text-sm text-muted-foreground">{t('list.noWorkspaces')}</p>
         )}
 
         {nodes !== null && nodes.length > 0 && (
           <ul className="flex flex-col gap-1">
-            {nodes.map((node) => (
+            {nodes.map((node, index) => (
               <WorkspaceGroup
                 key={node.workspace.id}
                 node={node}
+                index={index}
                 selection={selection}
                 collapsed={collapsed.has(node.workspace.id)}
                 expanded={expanded.has(node.workspace.id)}
