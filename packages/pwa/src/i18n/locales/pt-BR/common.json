@@ -2,6 +2,7 @@
   "actions": {
     "back": "Voltar",
     "cancel": "Cancelar",
+    "close": "Fechar",
     "pairAgain": "Parear de novo",
     "gotIt": "Entendi"
   },

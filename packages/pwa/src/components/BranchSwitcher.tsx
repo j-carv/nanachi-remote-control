@@ -133,7 +133,7 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              className="pl-10"
+              className="pl-10 wide:h-9"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
@@ -164,7 +164,7 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                   disabled={busy}
                   aria-current={branch.current ? 'true' : undefined}
                   onClick={() => (branch.current ? onClose() : void switchTo(branch.name, false))}
-                  className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:opacity-50`}
+                  className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:opacity-50 wide:min-h-10 wide:py-1.5`}
                 >
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate font-mono text-[15px] font-medium">{branch.name}</span>
@@ -194,10 +194,10 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    className="font-mono"
+                    className="font-mono wide:h-9"
                     onChange={(event) => setNewName(event.target.value)}
                   />
-                  <Button type="submit" variant="secondary" disabled={busy || newName.trim() === ''}>
+                  <Button type="submit" variant="secondary" size="compact" disabled={busy || newName.trim() === ''}>
                     {busy ? t('branches.creating') : t('branches.create')}
                   </Button>
                 </form>
@@ -206,7 +206,7 @@ function BranchSheet({ api, workspace, head, onClose, onSwitched }: BranchSheetP
                   type="button"
                   disabled={busy}
                   onClick={() => setCreating(true)}
-                  className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:opacity-50`}
+                  className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent disabled:opacity-50 wide:min-h-10 wide:py-1.5`}
                 >
                   <Plus className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="text-base">{t('branches.new')}</span>

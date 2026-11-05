@@ -234,7 +234,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
         </section>
       )}
 
-      <form className="flex flex-col gap-6" onSubmit={submit} aria-label={editing ? t('loop.sheet.formEdit') : t('loop.sheet.formNew')}>
+      <form className="flex flex-col gap-6 wide:gap-5" onSubmit={submit} aria-label={editing ? t('loop.sheet.formEdit') : t('loop.sheet.formNew')}>
         <div className="flex flex-col gap-2">
           <Label htmlFor="loop-prompt">{t('loop.sheet.prompt')}</Label>
           <textarea
@@ -358,7 +358,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
         )}
 
         <div className="flex flex-col gap-3">
-          <Button type="submit" size="wide" disabled={disabled}>
+          <Button type="submit" size="wide" className="wide:w-auto wide:self-end" disabled={disabled}>
             <Repeat aria-hidden="true" />
             {editing ? t('loop.sheet.save') : t('loop.sheet.start')}
           </Button>
@@ -369,6 +369,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
                 type="button"
                 variant="secondary"
                 size="wide"
+                className="wide:w-auto wide:self-end"
                 disabled={native === undefined || !canSend || disabled}
                 onClick={sendNative}
               >

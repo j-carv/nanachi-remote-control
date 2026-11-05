@@ -32,7 +32,7 @@ export function RemoveAccountSheet({ agentLabel, accountLabel, busy, error, onCa
         if (!open && !busy) onCancel();
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="sm">
         <DrawerHeader>
           <DrawerTitle>{t('remove.title')}</DrawerTitle>
           <DrawerDescription className="text-base leading-6 text-foreground/80">
@@ -44,11 +44,11 @@ export function RemoveAccountSheet({ agentLabel, accountLabel, busy, error, onCa
             <ErrorNotice message={describeAccountError(error)} />
           </div>
         )}
-        <DrawerFooter className="flex-row">
-          <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
+        <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
+          <Button variant="secondary" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={onCancel} disabled={busy}>
             {t('actions.cancel', { ns: 'common' })}
           </Button>
-          <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
+          <Button variant="destructive" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={onConfirm} disabled={busy}>
             {busy ? t('remove.removing') : t('remove.confirm')}
           </Button>
         </DrawerFooter>

@@ -2,6 +2,7 @@
   "actions": {
     "back": "Back",
     "cancel": "Cancel",
+    "close": "Close",
     "pairAgain": "Pair again",
     "gotIt": "Got it"
   },

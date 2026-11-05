@@ -34,10 +34,11 @@ interface CopyButtonProps {
   text: string;
   /** Accessible name while idle ("Copiar link"). */
   label: string;
+  className?: string | undefined;
 }
 
 /** Icon button that copies `text` and shows a check mark for a moment. */
-export function CopyButton({ text, label }: CopyButtonProps) {
+export function CopyButton({ text, label, className }: CopyButtonProps) {
   const { t } = useTranslation('accounts');
   const [copied, setCopied] = useState(false);
 
@@ -53,6 +54,7 @@ export function CopyButton({ text, label }: CopyButtonProps) {
       variant="outline"
       size="icon"
       data-slot="copy-button"
+      className={className}
       aria-label={copied ? t('copy.copied') : label}
       onClick={() => {
         void copyText(text).then((done) => setCopied(done));

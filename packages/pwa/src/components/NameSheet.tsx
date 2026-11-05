@@ -69,7 +69,7 @@ export function NameSheet({
         if (!open && !busy) onCancel();
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="sm">
         <form onSubmit={submit}>
           <DrawerHeader>
             <DrawerTitle>{title}</DrawerTitle>
@@ -87,6 +87,7 @@ export function NameSheet({
               autoCorrect="off"
               spellCheck={false}
               enterKeyHint="done"
+              className="wide:h-9"
               onChange={(event) => setName(event.target.value)}
               aria-invalid={problem !== null && name !== ''}
               aria-describedby={problem !== null && name !== '' ? 'entry-name-problem' : undefined}
@@ -100,13 +101,14 @@ export function NameSheet({
               <ErrorNotice error={error} message={errorText} />
             </div>
           </div>
-          <DrawerFooter className="flex-row">
-            <Button type="button" variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
+          <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
+            <Button type="button" variant="secondary" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={onCancel} disabled={busy}>
               {t('actions.cancel')}
             </Button>
             <Button
               type="submit"
-              className="flex-1"
+              size="compact"
+              className="flex-1 wide:min-w-24 wide:flex-none"
               disabled={busy || problem !== null || unchanged}
             >
               {busy ? t('states.wait') : submitLabel}

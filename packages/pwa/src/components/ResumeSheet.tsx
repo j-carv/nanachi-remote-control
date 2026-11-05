@@ -157,7 +157,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
         if (!open) close();
       }}
     >
-      <DrawerContent>
+      <DrawerContent size="lg">
         <DrawerHeader>
           <DrawerTitle>{t('resume.title')}</DrawerTitle>
           <DrawerDescription>{t('resume.hint', { name: workspace.name })}</DrawerDescription>
@@ -179,7 +179,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
                       disabled={importing}
                       className={cn(
                         listRowClass,
-                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent disabled:pointer-events-none disabled:opacity-50',
+                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent disabled:pointer-events-none disabled:opacity-50 wide:min-h-10 wide:py-1.5',
                       )}
                       onClick={() => setChosen(agent.id)}
                     >
@@ -210,10 +210,10 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
                   {listing.items.map((item) => {
                     const age = sessionAgeText(item.updatedAt, now);
                     return (
-                      <li key={item.acpSessionId} className={listRowClass}>
+                      <li key={item.acpSessionId} className={cn(listRowClass, 'wide:min-h-10 wide:py-1.5')}>
                         <button
                           type="button"
-                          className={listMainClass}
+                          className={cn(listMainClass, 'wide:min-h-10')}
                           disabled={importing}
                           onClick={() => void importItem(item)}
                         >
@@ -233,6 +233,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
               {listing !== null && listing.nextCursor !== null && (
                 <Button
                   variant="secondary"
+                  size="compact"
                   disabled={loadingMore || importing}
                   onClick={() => void loadMore()}
                 >
@@ -243,8 +244,8 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
           )}
         </div>
 
-        <DrawerFooter className="flex-row">
-          <Button variant="ghost" className="flex-1" onClick={close} disabled={importing}>
+        <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
+          <Button variant="ghost" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={close} disabled={importing}>
             {t('resume.close')}
           </Button>
         </DrawerFooter>

@@ -6,7 +6,8 @@
  *
  *   390x844 (iPhone 14)  the phone layout is untouched: no list pane, one screen at a time, Enter adds a line.
  *   1440x900             list pane with the machine's workspaces and sessions, the empty screen, the chat in the right
- *                        pane with a ~760 px reading column, Enter sends and Shift+Enter adds a line, a session picked
+ *                        pane: the composer spans the pane, the messages sit in a reading column of at most 1040 px, Enter
+ *                        sends and Shift+Enter adds a line, a session picked
  *                        in the list, "new session" in a dialog, settings without a back button, changes / files /
  *                        editor / terminal in a third pane that Escape and the X close, sheets as centred dialogs and
  *                        side panels, pointer cursors, no horizontal overflow, in light and dark. Enter with the menu of a
@@ -360,7 +361,9 @@ async function checkChatInPane(page) {
   await field.click();
   assert.ok(await page.locator('[data-slot="composer-hint"]').isVisible(), 'the Enter hint shows for a mouse and keyboard');
   const form = await box(page.locator('[data-slot="chat-input"]'));
-  assert.ok(form.width <= 762 && form.width >= 700, `composer column is ~760 px (is ${form.width})`);
+  // The composer and its toolbar span the detail pane (its 24 px gutters are the only space around them).
+  const pane = await box(page.locator('[data-slot="detail-pane"]'));
+  assert.ok(form.width >= pane.width - 64, `composer spans the pane (is ${form.width} of ${pane.width} px)`);
   assert.ok(await page.locator('[data-slot="composer-hint"]').isVisible());
 
   // Shift+Enter adds a line; Enter sends. "flood" makes the fake agent write a long, varied conversation.
@@ -383,10 +386,12 @@ async function checkChatInPane(page) {
   log('distance to the end after the flood: ' + Math.round(distance) + ' px');
   assert.ok(distance >= 0 && distance <= 80, 'the chat followed the end of the stream (distance ' + distance + ' px)');
   const feed = await box(page.locator('[data-slot="chat-feed"]'));
-  assert.ok(feed.width <= 762, `the message column is at most ~760 px (is ${feed.width})`);
+  assert.ok(feed.width <= 1042, `the message column is at most 1040 px (is ${feed.width})`);
   assert.ok(feed.width >= 600, `the message column fills its reading width (is ${feed.width})`);
   const timeline = await box(page.locator('[data-slot="chat-timeline"]'));
-  assert.ok(timeline.width > feed.width + 100, 'the timeline spans the pane and the column is centred in it');
+  const leftGap = feed.x - timeline.x;
+  const rightGap = timeline.x + timeline.width - (feed.x + feed.width);
+  assert.ok(Math.abs(leftGap - rightGap) <= 2, `the message column is centred in the timeline (gaps ${leftGap} and ${rightGap} px)`);
   assert.equal(await overflowX(page), 0, 'wide chat: no horizontal overflow');
   await shotBoth(page, 'wide-02-chat');
 }

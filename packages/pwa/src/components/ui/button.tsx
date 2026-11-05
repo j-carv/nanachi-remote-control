@@ -24,6 +24,8 @@ const buttonVariants = cva(
       },
       size: {
         default: 'h-11 px-4',
+        // A dialog's button: 44 px on the phone, 36 px in a wide dialog (`wide:`). The right pane keeps `default`.
+        compact: 'h-11 px-4 wide:h-9 wide:px-3.5',
         icon: 'size-11 p-0',
         wide: 'h-11 w-full px-4',
       },

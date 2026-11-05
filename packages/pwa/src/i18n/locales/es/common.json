@@ -2,6 +2,7 @@
   "actions": {
     "back": "Volver",
     "cancel": "Cancelar",
+    "close": "Cerrar",
     "pairAgain": "Vincular de nuevo",
     "gotIt": "Entendido"
   },

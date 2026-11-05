@@ -120,7 +120,7 @@ export function NewSessionSheet({
           <DrawerDescription>{workspace.name}</DrawerDescription>
         </DrawerHeader>
 
-        <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-5 pt-4 pb-2">
+        <div className="flex min-h-0 flex-col gap-6 overflow-y-auto px-5 pt-4 pb-2 wide:gap-5">
           <ErrorNotice error={error} />
 
           <fieldset className="flex min-w-0 flex-col gap-2">
@@ -135,7 +135,7 @@ export function NewSessionSheet({
                       aria-pressed={pressed}
                       className={cn(
                         listRowClass,
-                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent',
+                        'w-full text-left text-base transition-colors hover:bg-accent active:bg-accent wide:min-h-10 wide:py-1.5',
                       )}
                       onClick={() => setChosen(agent.id)}
                     >
@@ -193,11 +193,16 @@ export function NewSessionSheet({
           )}
         </div>
 
-        <DrawerFooter className="flex-row">
-          <Button variant="ghost" className="flex-1" onClick={onClose}>
+        <DrawerFooter className="flex-row wide:justify-end wide:pt-2 wide:pb-5">
+          <Button variant="ghost" size="compact" className="flex-1 wide:min-w-24 wide:flex-none" onClick={onClose}>
             {t('actions.cancel', { ns: 'common' })}
           </Button>
-          <Button className="flex-1" disabled={agentId === null || creating} onClick={() => void create()}>
+          <Button
+            size="compact"
+            className="flex-1 wide:min-w-24 wide:flex-none"
+            disabled={agentId === null || creating}
+            onClick={() => void create()}
+          >
             {creating ? t('newSession.creating') : t('newSession.create')}
           </Button>
         </DrawerFooter>
