@@ -138,7 +138,7 @@ describe('the Tailscale card', () => {
     expect(html).toContain('data-slot="desktop-tailscale-address"');
     expect(html).toContain('https://nanachi-office-pc.tail1234.ts.net');
     expect(html).toContain('data-slot="copy-button"');
-    expect(html).toContain('Instale o app Tailscale no iPhone');
+    expect(html).toContain('Instale o app Tailscale no dispositivo móvel');
     expect(html).toContain('Adicionar à Tela de Início');
     expect(html).toContain('MagicDNS');
     expect(html).not.toContain('desktop-tailscale-login');
@@ -190,7 +190,7 @@ describe('the Desktop group in English', () => {
     expect(html).toContain('Start with Windows');
     expect(html).toContain('Nanachi opens in the tray when you sign in to Windows.');
     expect(html).toContain('Generate pairing code');
-    expect(html).toContain('To pair an iPhone or another browser with this PC.');
+    expect(html).toContain('To pair a mobile device or another browser with this PC.');
     expect(html).toContain('Check for updates');
     expect(html).toContain('Built-in Tailscale');
     expect(html).toContain('This PC joins your tailnet as a separate device.');
@@ -211,9 +211,9 @@ describe('the Desktop group in English', () => {
     expect(login).toContain('Sign in to Tailscale');
     expect(login).toContain('Sign in to your Tailscale account');
     const running = render({ tailscale: { state: 'running', dnsName: 'nanachi-office-pc.tail1234.ts.net', tailnet: 'user@example.com', ips: [] } });
-    expect(running).toContain('Address for the iPhone');
+    expect(running).toContain('Address for the mobile device');
     expect(running).toContain('aria-label="Copy address"');
-    expect(running).toContain('Install the Tailscale app on the iPhone');
+    expect(running).toContain('Install the Tailscale app on the mobile device');
     expect(running).toContain('Add to Home Screen');
     expect(running).toContain('The tailnet needs MagicDNS and HTTPS certificates enabled.');
     expect(running).not.toMatch(/\p{Extended_Pictographic}/u);

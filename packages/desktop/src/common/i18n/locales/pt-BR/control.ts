@@ -83,7 +83,7 @@ export const control = {
     restartNow: 'Reiniciar agora',
     tailscaleLogin: 'Entrar no Tailscale',
     tailscaleStartFailed: 'Não foi possível ligar o Tailscale.',
-    addressForPhone: 'Endereço para o iPhone',
+    addressForPhone: 'Endereço para o dispositivo móvel',
     dataFolder: 'Pasta de dados',
     openDataFolderFailed: 'Não foi possível abrir a pasta de dados.',
     openLoginFailed: 'Não foi possível abrir a página de login do Tailscale.',
@@ -147,7 +147,7 @@ export const control = {
     busy: '{{busy}} em andamento',
     pairedDevices: 'Aparelhos pareados',
     activityUnavailable: 'Os números de atividade não estão disponíveis agora: o daemon não respondeu ou não reconheceu este app.',
-    pairIphone: 'Parear iPhone',
+    pairIphone: 'Parear dispositivo móvel',
   },
   /** The restart dialog and what a restart tells the user afterwards. */
   restart: {
@@ -180,7 +180,7 @@ export const control = {
     add: 'Adicionar pastas',
     unknownList: 'Não foi possível ler a lista de pastas desse daemon.',
     emptyTitle: 'Nenhuma pasta permitida',
-    emptyBody: 'Enquanto a lista estiver vazia, nenhum workspace pode ser adicionado no app do iPhone. Adicione uma pasta ou libere um disco inteiro.',
+    emptyBody: 'Enquanto a lista estiver vazia, nenhum workspace pode ser adicionado no app do dispositivo móvel. Adicione uma pasta ou libere um disco inteiro.',
     drive: {
       label: 'Disco {{letter}}',
       kind: { fixed: 'Disco local', removable: 'Removível', network: 'Rede', optical: 'Óptico', unknown: 'Disco' },
@@ -244,7 +244,7 @@ export const control = {
       timeLeft: 'Tempo restante do código',
       expired: 'Expirou',
       expiresIn: 'Expira em {{time}}',
-      step1: 'Abra o Nanachi no iPhone e escolha parear com um código.',
+      step1: 'Abra o Nanachi no dispositivo móvel e escolha parear com um código.',
       step2: 'Digite os seis dígitos antes que o tempo acabe.',
       step3: 'Cada código vale uma vez. Se expirar, gere outro.',
       regenerate: 'Gerar outro',
@@ -266,7 +266,7 @@ export const control = {
     },
     empty: {
       title: 'Nenhum aparelho pareado',
-      description: 'Gere um código aqui e digite no Nanachi do iPhone para ele poder usar este PC.',
+      description: 'Gere um código aqui e digite no Nanachi do dispositivo móvel para ele poder usar este PC.',
     },
     revoke: {
       title: 'Revogar {{name}}?',
@@ -305,8 +305,8 @@ export const control = {
     connection: 'Conexão',
     ipAddresses: 'Endereços IP',
     noIps: 'Nenhum endereço ainda.',
-    stepsHeading: 'No iPhone',
-    step1: 'Instale o app Tailscale no iPhone e entre com a mesma conta.',
+    stepsHeading: 'No dispositivo móvel',
+    step1: 'Instale o app Tailscale no dispositivo móvel e entre com a mesma conta.',
     step2: 'Abra {{address}} no Safari.',
     step3: 'Se o app pedir um código, gere um em {{devices}}.',
     step4: 'Toque em Compartilhar e em "Adicionar à Tela de Início".',

@@ -1,4 +1,5 @@
 {
+  "defaultDeviceName": "Dispositivo móvel",
   "title": "Parear máquina",
   "intro": "Gere um código de 6 dígitos no PC e digite aqui. Ele vale por 5 minutos.",
   "introTailscale": "Entre sem código pela sua conta Tailscale, ou use um código de 6 dígitos gerado no PC.",

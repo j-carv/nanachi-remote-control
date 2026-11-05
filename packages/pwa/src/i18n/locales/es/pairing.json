@@ -1,4 +1,5 @@
 {
+  "defaultDeviceName": "Dispositivo móvil",
   "title": "Vincular máquina",
   "intro": "Genera un código de 6 dígitos en el PC y escríbelo aquí. Es válido por 5 minutos.",
   "introTailscale": "Entra sin código con tu cuenta de Tailscale, o usa un código de 6 dígitos generado en el PC.",

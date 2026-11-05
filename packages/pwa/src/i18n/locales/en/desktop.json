@@ -27,9 +27,9 @@
   },
   "pairing": {
     "row": "Generate pairing code",
-    "rowHint": "To pair an iPhone or another browser with this PC.",
+    "rowHint": "To pair a mobile device or another browser with this PC.",
     "title": "Pairing code",
-    "description": "Enter this code in Nanachi on the iPhone, or in another browser, to pair with this PC.",
+    "description": "Enter this code in Nanachi on the mobile device, or in another browser, to pair with this PC.",
     "codeLabel": "Code {{digits}}",
     "generating": "Generating the code…",
     "failed": "Could not generate the code right now. Check that the daemon is running and try again.",
@@ -59,11 +59,11 @@
     "tailnet": "Tailnet {{name}}",
     "error": "Error",
     "login": "Sign in to Tailscale",
-    "address": "Address for the iPhone",
+    "address": "Address for the mobile device",
     "copyAddress": "Copy address",
     "requirements": "The tailnet needs MagicDNS and HTTPS certificates enabled.",
     "steps": {
-      "install": "Install the Tailscale app on the iPhone and sign in with the same account.",
+      "install": "Install the Tailscale app on the mobile device and sign in with the same account.",
       "open": "Open {{address}} in Safari.",
       "code": "If the app asks for a code, use \"Generate pairing code\" here.",
       "share": "Tap Share, then \"Add to Home Screen\"."

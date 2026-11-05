@@ -139,7 +139,7 @@ describe('phoneSteps', () => {
   it('names the address and covers install, open, pairing code and Home Screen', () => {
     const steps = phoneSteps('https://nanachi-office-pc.tail1234.ts.net');
     expect(steps).toHaveLength(4);
-    expect(steps[0]).toContain('Instale o app Tailscale no iPhone');
+    expect(steps[0]).toContain('Instale o app Tailscale no dispositivo móvel');
     expect(steps[1]).toContain('https://nanachi-office-pc.tail1234.ts.net');
     expect(steps[2]).toContain('Gerar código de pareamento');
     expect(steps[3]).toContain('Adicionar à Tela de Início');
@@ -226,7 +226,7 @@ describe('the Desktop texts in English', () => {
     expect(running).toMatchObject({ title: 'Connected', detail: 'Tailnet me@example.com', address: 'https://pc.tail1.ts.net' });
     expect(describeTailscale({ state: 'error', message: 'falhou' })).toMatchObject({ title: 'Error', problem: 'falhou' });
     expect(phoneSteps('https://pc.tail1.ts.net')).toEqual([
-      'Install the Tailscale app on the iPhone and sign in with the same account.',
+      'Install the Tailscale app on the mobile device and sign in with the same account.',
       'Open https://pc.tail1.ts.net in Safari.',
       'If the app asks for a code, use "Generate pairing code" here.',
       'Tap Share, then "Add to Home Screen".',
