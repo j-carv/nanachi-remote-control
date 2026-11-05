@@ -11,8 +11,9 @@
  *
  * Roteiro:
  *   1. o instalador de verdade (Nanachi-Setup-<versão>.exe, portable) com --yes instala na pasta A e sai com código 0;
- *   2. os arquivos instalados batem com o payload; o app instalado sobe o daemon com o node.exe embutido, o painel carrega
- *      a PWA, /api/health responde; sair deixa nada para trás;
+ *   2. os arquivos instalados batem com o payload; o app instalado sobe o daemon com o node.exe embutido; o centro de
+ *      controle (a janela principal, carregado do app.asar) abre com a ponte e os botões da barra de título e as seções
+ *      carregam sem erro; "Abrir sessões" abre o painel, que carrega a PWA; /api/health responde; sair deixa nada para trás;
  *   3. com o app da pasta A aberto, a janela do instalador (o mesmo app do exe portable, desempacotado) pergunta se pode
  *      fechá-lo, fecha o app e o daemon dele e reinstala por cima (atualização);
  *   4. a janela do instalador, na pasta B: tela inicial (claro e escuro), Opções, pasta recusada, progresso, pronto;
@@ -227,6 +228,8 @@ async function launch(executablePath, args, env = {}) {
   const browser = await chromium.connectOverCDP(endpoint);
   const instance = {
     process: () => child,
+    /** Every window of the app (the control center, the sessions window, ...). */
+    pages: () => browser.contexts().flatMap((context) => context.pages()),
     async firstWindow() {
       const deadline = Date.now() + 60_000;
       for (;;) {
@@ -330,11 +333,38 @@ async function installWithSetupExe() {
   log(`   ${count - 1} arquivos, ${(bytes / 1048576).toFixed(0)} MiB: iguais ao payload`);
 }
 
+const isControlUrl = (url) => url.startsWith('file:') && url.endsWith('/control/index.html');
+
+/** Console errors and uncaught errors of the control center page (the installed app's own renderer). */
+const controlProblems = [];
+
+/** The control center is the main window: it opens on launch, from the app.asar, with the real preload. */
+async function controlPage(instance) {
+  let found = null;
+  await until('a janela do centro de controle abrir', () => {
+    found = instance.pages().find((page) => isControlUrl(page.url())) ?? null;
+    return found !== null;
+  }, 90_000);
+  found.on('console', (message) => {
+    if (message.type() === 'error') controlProblems.push(`console.error: ${message.text()}`);
+  });
+  found.on('pageerror', (error) => controlProblems.push(`pageerror: ${error.message}`));
+  await found.waitForLoadState('domcontentloaded');
+  await found.getByRole('heading', { name: 'Visão geral', level: 1 }).waitFor({ state: 'visible', timeout: 30_000 });
+  return found;
+}
+
+/** The sessions window (the PWA), opened from the control center with "Abrir sessões". */
 async function panelPage(instance) {
-  const page = await instance.firstWindow();
-  await until('a PWA carregar no painel', () => page.url().startsWith(`${origin}/`), 90_000);
+  const control = await controlPage(instance);
+  await control.locator('nav#sidebar').getByRole('button', { name: 'Abrir sessões', exact: true }).click();
+  let page = null;
+  await until('a PWA carregar no painel', () => {
+    page = instance.pages().find((candidate) => candidate.url().startsWith(`${origin}/`)) ?? null;
+    return page !== null;
+  }, 90_000);
   await page.waitForLoadState('domcontentloaded');
-  return page;
+  return { page, control };
 }
 
 async function health() {
@@ -346,18 +376,55 @@ async function runInstalledApp(target) {
   const exe = join(target, 'Nanachi.exe');
   const instance = await launch(exe, [], desktopEnv());
   const electronPid = instance.process().pid;
-  const page = await panelPage(instance);
+  const { page, control } = await panelPage(instance);
   log(`   painel carregado: ${page.url()}`);
   const status = await page.evaluate(async () => await window.nanachiDesktop.status());
   assert.equal(status.mode, 'spawned', 'o app instalado deveria ter subido o próprio daemon');
   assert.ok(Number.isInteger(status.pid));
   pids.add(status.pid);
-  return { instance, page, electronPid, daemonPid: status.pid };
+  return { instance, page, control, electronPid, daemonPid: status.pid };
+}
+
+/**
+ * The installed app's control center: the real renderer from app.asar talking to the real main process and the embedded
+ * daemon. Sections load with no error state and no console error (the accounts section is skipped: it would read this
+ * PC's real agent logins).
+ */
+async function verifyControlCenter(control) {
+  assert.equal(await control.evaluate(() => typeof window.nanachiControl), 'object', 'a ponte window.nanachiControl tem que existir no app instalado');
+  assert.equal(await control.evaluate(() => typeof window.nanachiDesktop), 'undefined', 'o centro de controle não recebe a ponte do painel de sessões');
+  assert.equal(await control.evaluate(() => window.nanachiControl.version), version);
+  const bar = control.locator('header').first();
+  for (const name of ['Minimizar', 'Maximizar', 'Fechar']) await bar.getByRole('button', { name, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+  const tour = [
+    ['Visão geral', 'Serviços'],
+    ['Pastas e discos', 'Pastas permitidas'],
+    ['Aparelhos', 'Este app'],
+    ['Tailscale', 'Tailscale embutido'],
+    ['Logs', 'Abrir pasta dos logs'],
+    ['Ajustes', 'Iniciar com o Windows'],
+  ];
+  const sidebar = control.locator('nav#sidebar');
+  for (const [label, marker] of tour) {
+    await sidebar.getByRole('button', { name: label }).click();
+    await control.getByRole('heading', { name: label, level: 1 }).waitFor({ state: 'visible', timeout: 10_000 });
+    await until(`${label} terminar de carregar`, async () => (await control.locator('[aria-busy="true"]').count()) === 0, 30_000);
+    await control.locator('main').getByText(marker).first().waitFor({ state: 'visible', timeout: 15_000 });
+    assert.equal(await control.locator('main [role="alert"]').count(), 0, `${label}: estado de erro na tela`);
+  }
+  assert.deepEqual(controlProblems, [], 'o centro de controle do app instalado logou erros');
+  const overview = await control.evaluate(() => window.nanachiControl.overview());
+  assert.equal(overview.ok, true, JSON.stringify(overview));
+  assert.equal(overview.value.daemon.mode, 'spawned');
+  assert.notEqual(overview.value.activity, null, 'o daemon embutido respondeu às chamadas autenticadas do Desktop');
+  await sidebar.getByRole('button', { name: 'Visão geral' }).click();
+  await shot(control, 'app-instalado-centro-de-controle');
+  log('   centro de controle do app instalado: seis seções abrem sem erro, a ponte e os botões da barra de título existem');
 }
 
 async function verifyInstalledApp() {
   log(`2. app instalado em ${targetA} (porta ${port})`);
-  const { instance, page, electronPid, daemonPid } = await runInstalledApp(targetA);
+  const { instance, page, control, electronPid, daemonPid } = await runInstalledApp(targetA);
 
   const { status, body } = await health();
   assert.equal(status, 200);
@@ -370,6 +437,7 @@ async function verifyInstalledApp() {
   log(`   daemon (pid ${daemonPid}) roda em ${daemonExe}`);
 
   assert.equal(await page.evaluate(() => typeof window.nanachiDesktop?.status), 'function', 'a ponte window.nanachiDesktop tem que existir');
+  await verifyControlCenter(control);
   const title = await page.title();
   log(`   título do painel: ${JSON.stringify(title)}`);
   await shot(page, 'app-instalado-painel');

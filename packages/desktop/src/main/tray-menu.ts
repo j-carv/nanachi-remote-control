@@ -3,7 +3,10 @@ import { statusLabel } from '../common/status-label.js';
 import type { DaemonStatus } from '../common/types.js';
 
 export interface TrayActions {
-  openPanel(): void;
+  /** The control center (the main window). */
+  openControl(): void;
+  /** The PWA window: sessions and chat. */
+  openSessions(): void;
   generatePairingCode(): void;
   setAutostart(enabled: boolean): void;
   quit(): void;
@@ -26,14 +29,15 @@ export function trayTooltip(status: DaemonStatus): string {
   return text.length <= TOOLTIP_LIMIT ? text : `${text.slice(0, TOOLTIP_LIMIT - 1)}…`;
 }
 
-/** The tray menu from the contract: status line, panel, pairing code, start with Windows, quit. */
+/** The tray menu from the contract: status line, control center, sessions, pairing code, start with Windows, quit. */
 export function buildTrayMenu(input: TrayMenuInput): MenuItemConstructorOptions[] {
   const { status, actions } = input;
   const canPair = status.state === 'running' || status.state === 'attached';
   return [
     { label: statusLabel(status), enabled: false },
     { type: 'separator' },
-    { label: 'Abrir painel', click: () => actions.openPanel() },
+    { label: 'Abrir Nanachi', click: () => actions.openControl() },
+    { label: 'Abrir sessões', click: () => actions.openSessions() },
     { label: 'Gerar código de pareamento', enabled: canPair, click: () => actions.generatePairingCode() },
     {
       label: 'Iniciar com o Windows',

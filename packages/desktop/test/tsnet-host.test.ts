@@ -85,7 +85,8 @@ describe('statusFromEvent', () => {
 describe('tsnetHostname and sidecarArgs', () => {
   it('builds nanachi-<pc name> with only [a-z0-9-]', () => {
     expect(tsnetHostname('OFFICE-PC')).toBe('nanachi-office-pc');
-    expect(tsnetHostname('Desktop do João_01')).toBe('nanachi-desktop-do-jo-o-01');
+    // An accented letter and the underscore after it fold into a single hyphen.
+    expect(tsnetHostname('Desktop do José_01')).toBe('nanachi-desktop-do-jos-01');
     expect(tsnetHostname('--weird  name--')).toBe('nanachi-weird-name');
     expect(tsnetHostname('')).toBe('nanachi');
     expect(tsnetHostname('___')).toBe('nanachi');
@@ -397,12 +398,12 @@ describe('reading the sidecar output', () => {
     await h.host.start();
     const child = last(h.children);
 
-    const message = '{"type":"error","message":"não conectou: João"}\n';
+    const message = '{"type":"error","message":"não conectou: José"}\n';
     const bytes = Buffer.from(message);
     const cut = bytes.indexOf(Buffer.from('ã')) + 1; // inside the two bytes of "ã"
     child.stdout.emit('data', bytes.subarray(0, cut));
     child.stdout.emit('data', bytes.subarray(cut));
-    expect(h.host.status()).toEqual({ state: 'error', message: 'não conectou: João' });
+    expect(h.host.status()).toEqual({ state: 'error', message: 'não conectou: José' });
 
     child.stdout.emit(
       'data',

@@ -104,7 +104,7 @@ func TestParseArgsHostname(t *testing.T) {
 			t.Errorf("hostname %q rejected: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "Nanachi", "my_pc", "my.pc", "my pc", "joão", strings.Repeat("a", 64), "pc!", "pc\n"} {
+	for _, bad := range []string{"", "Nanachi", "my_pc", "my.pc", "my pc", "josé", strings.Repeat("a", 64), "pc!", "pc\n"} {
 		_, _, err := parseArgs(argsWith(t, "--hostname", bad), &bytes.Buffer{})
 		if err == nil {
 			t.Errorf("hostname %q accepted", bad)
@@ -124,7 +124,7 @@ func TestParseArgsStateDir(t *testing.T) {
 		t.Error("relative --state-dir accepted: tsnet would resolve it against whatever the working directory is")
 	}
 	if runtime.GOOS == "windows" {
-		dir := `C:\Users\Joao Álvaro\.nanachi-remote\tsnet`
+		dir := `C:\Users\Jose Álvaro\.nanachi-remote\tsnet`
 		cfg, _, err := parseArgs(argsWith(t, "--state-dir", dir), &bytes.Buffer{})
 		if err != nil || cfg.StateDir != dir {
 			t.Errorf("a path with spaces and accents was rejected or altered: %q, %v", cfg.StateDir, err)

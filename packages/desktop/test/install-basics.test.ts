@@ -350,15 +350,15 @@ describe('reading the registry', () => {
     '',
     'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nanachi',
     '    DisplayName    REG_SZ    Nanachi',
-    '    InstallLocation    REG_SZ    C:\\Users\\João\\AppData\\Local\\Programs\\Nanachi Área',
-    '    UninstallString    REG_SZ    "C:\\Users\\João\\AppData\\Local\\Programs\\Nanachi\\Nanachi.exe" --uninstall',
+    '    InstallLocation    REG_SZ    C:\\Users\\José\\AppData\\Local\\Programs\\Nanachi Área',
+    '    UninstallString    REG_SZ    "C:\\Users\\José\\AppData\\Local\\Programs\\Nanachi\\Nanachi.exe" --uninstall',
     '',
   ].join('\r\n');
 
   it('parseRegQueryValue returns the data of the named value, accents and spaces included', () => {
-    expect(parseRegQueryValue(output, 'InstallLocation')).toBe('C:\\Users\\João\\AppData\\Local\\Programs\\Nanachi Área');
-    expect(parseRegQueryValue(output, 'installlocation')).toBe('C:\\Users\\João\\AppData\\Local\\Programs\\Nanachi Área');
-    expect(parseRegQueryValue(output, 'UninstallString')).toBe('"C:\\Users\\João\\AppData\\Local\\Programs\\Nanachi\\Nanachi.exe" --uninstall');
+    expect(parseRegQueryValue(output, 'InstallLocation')).toBe('C:\\Users\\José\\AppData\\Local\\Programs\\Nanachi Área');
+    expect(parseRegQueryValue(output, 'installlocation')).toBe('C:\\Users\\José\\AppData\\Local\\Programs\\Nanachi Área');
+    expect(parseRegQueryValue(output, 'UninstallString')).toBe('"C:\\Users\\José\\AppData\\Local\\Programs\\Nanachi\\Nanachi.exe" --uninstall');
   });
 
   it('parseRegQueryValue is null for a value that is not there, an empty value and output with no values', () => {

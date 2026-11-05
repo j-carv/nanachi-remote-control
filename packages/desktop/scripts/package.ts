@@ -50,6 +50,14 @@ function requireFile(path: string, what: string): void {
   if (!existsSync(path)) throw new Error(`faltou ${what}: ${path}`);
 }
 
+/** Everything the control center's `index.html` loads (script, stylesheet, icon) has to be on disk next to it. */
+function requireControlAssets(controlDir: string): void {
+  const html = readFileSync(join(controlDir, 'index.html'), 'utf8');
+  const references = [...html.matchAll(/\b(?:src|href)="\.\/([^"#?]+)"/g)].map((match) => match[1] ?? '');
+  if (!references.some((name) => name.endsWith('.js'))) throw new Error(`o index.html do centro de controle não carrega nenhum script: ${controlDir}`);
+  for (const name of references) requireFile(join(controlDir, name), `um arquivo que a interface do centro de controle carrega (dist/control/${name})`);
+}
+
 function electronInfo(desktopDir: string): { dist: string; version: string } {
   const require = createRequire(join(desktopDir, 'package.json'));
   const packageJson = require.resolve('electron/package.json');
@@ -77,6 +85,12 @@ function compileStep(paths: StagePaths, npmCli: string): void {
     env: { ...process.env, PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}` },
   });
   requireFile(join(paths.desktopDir, 'dist', 'main', 'index.js'), 'o build do app (dist/main/index.js)');
+  requireFile(join(paths.desktopDir, 'dist', 'preload', 'index.cjs'), 'o preload do painel de sessões (dist/preload/index.cjs)');
+  // The control center is the main window: without its page and its preload the packaged app would open the sessions window instead.
+  requireFile(join(paths.desktopDir, 'dist', 'control', 'index.html'), 'a interface do centro de controle (dist/control/index.html)');
+  requireFile(join(paths.desktopDir, 'dist', 'control', 'icon.png'), 'o ícone do centro de controle (dist/control/icon.png)');
+  requireControlAssets(join(paths.desktopDir, 'dist', 'control'));
+  requireFile(join(paths.desktopDir, 'dist', 'preload', 'control.cjs'), 'o preload do centro de controle (dist/preload/control.cjs)');
   requireFile(join(paths.desktopDir, 'dist', 'installer', 'main.cjs'), 'o build do instalador (dist/installer/main.cjs)');
   requireFile(join(paths.desktopDir, 'dist', 'ui', 'uninstall.html'), 'a janela de desinstalação (dist/ui/uninstall.html)');
 }

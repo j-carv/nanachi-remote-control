@@ -2,14 +2,15 @@ import semver from 'semver';
 import { messageOf } from '../common/message.js';
 import type { UpdateCheckResult } from '../common/types.js';
 
-const REPO = 'j-carv/nanachi-remote-control';
-export const RELEASES_LATEST_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
+/** The GitHub repository whose releases carry the installer. */
+export const RELEASES_REPO = 'j-carv/nanachi-remote-control';
+export const RELEASES_LATEST_URL = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
 /** Installer asset published with a release: `Nanachi-Setup-<version>.exe`. */
 const INSTALLER_ASSET = /^Nanachi-Setup-.+\.exe$/i;
 
 /** Release page for a tag. Built from the tag, never taken from the API answer, so only github.com is ever opened. */
 export function releasePageUrl(tag: string): string {
-  return `https://github.com/${REPO}/releases/tag/${encodeURIComponent(tag)}`;
+  return `https://github.com/${RELEASES_REPO}/releases/tag/${encodeURIComponent(tag)}`;
 }
 
 /**

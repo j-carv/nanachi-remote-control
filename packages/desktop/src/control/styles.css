@@ -1,0 +1,241 @@
+/*
+ * Nanachi Desktop control center: global styles. docs/DESIGN.md ("Desktop control center") is the source of truth.
+ *
+ * The `--ui-*` token block below is copied from packages/pwa/src/styles.css, so a change to the identity is made there
+ * first and repeated here. The desktop-only deltas are named in the comments: a tighter radius, two derived neutrals
+ * (`--ui-chrome`, `--ui-destructive-foreground`) and a Windows font stack.
+ *
+ * Layers (lowest to highest priority): theme, base, components, utilities. Components are written with utilities in
+ * the TSX; the only element rules here are the document, form controls, scrollbars, selection, and the animations that
+ * utilities cannot express (dialog entrance, toasts).
+ */
+@layer theme, base, components, utilities;
+/* Only this folder is scanned for class names. */
+@import "tailwindcss" source(none);
+@source ".";
+
+@theme inline {
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-destructive-foreground: var(--ui-destructive-foreground);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --color-chrome: var(--ui-chrome);
+
+  /* The only status tones: running, awaiting permission and success. Error uses --color-destructive. */
+  --color-running: var(--ui-running);
+  --color-attention: var(--ui-attention);
+  --color-success: var(--ui-success);
+
+  /* Desktop radii: 6 / 8 / 10 / 14 px (the PWA's are 8 / 10 / 12 / 16). */
+  --radius-sm: calc(var(--ui-radius) - 4px);
+  --radius-md: calc(var(--ui-radius) - 2px);
+  --radius-lg: var(--ui-radius);
+  --radius-xl: calc(var(--ui-radius) + 4px);
+}
+
+:root {
+  color-scheme: light dark;
+  --ui-radius: 0.625rem; /* desktop delta: 0.75rem in the PWA */
+  --ui-background: oklch(0.985 0 0);
+  --ui-foreground: oklch(0.145 0 0);
+  --ui-card: oklch(1 0 0);
+  --ui-card-foreground: oklch(0.145 0 0);
+  --ui-popover: oklch(1 0 0);
+  --ui-popover-foreground: oklch(0.145 0 0);
+  --ui-primary: oklch(0.205 0 0);
+  --ui-primary-foreground: oklch(0.985 0 0);
+  --ui-secondary: oklch(0.955 0 0);
+  --ui-secondary-foreground: oklch(0.205 0 0);
+  --ui-muted: oklch(0.955 0 0);
+  --ui-muted-foreground: oklch(0.47 0 0);
+  --ui-accent: oklch(0.94 0 0);
+  --ui-accent-foreground: oklch(0.205 0 0);
+  --ui-destructive: oklch(0.5 0.15 27);
+  --ui-border: oklch(0.9 0 0);
+  --ui-input: oklch(0.62 0 0);
+  --ui-ring: oklch(0.55 0 0);
+  --ui-running: oklch(0.5 0.07 245);
+  --ui-attention: oklch(0.5 0.1 70);
+  --ui-success: oklch(0.48 0.08 155);
+  /* desktop deltas: the frame (title bar and sidebar) and the text on a destructive fill */
+  --ui-chrome: oklch(0.965 0 0);
+  --ui-destructive-foreground: oklch(1 0 0);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ui-background: oklch(0.145 0 0);
+    --ui-foreground: oklch(0.985 0 0);
+    --ui-card: oklch(0.19 0 0);
+    --ui-card-foreground: oklch(0.985 0 0);
+    --ui-popover: oklch(0.22 0 0);
+    --ui-popover-foreground: oklch(0.985 0 0);
+    --ui-primary: oklch(0.985 0 0);
+    --ui-primary-foreground: oklch(0.205 0 0);
+    --ui-secondary: oklch(0.25 0 0);
+    --ui-secondary-foreground: oklch(0.985 0 0);
+    --ui-muted: oklch(0.25 0 0);
+    --ui-muted-foreground: oklch(0.72 0 0);
+    --ui-accent: oklch(0.28 0 0);
+    --ui-accent-foreground: oklch(0.985 0 0);
+    --ui-destructive: oklch(0.74 0.13 25);
+    --ui-border: oklch(0.3 0 0);
+    --ui-input: oklch(0.5 0 0);
+    --ui-ring: oklch(0.6 0 0);
+    --ui-running: oklch(0.8 0.06 245);
+    --ui-attention: oklch(0.84 0.1 80);
+    --ui-success: oklch(0.8 0.09 155);
+    --ui-chrome: oklch(0.115 0 0);
+    --ui-destructive-foreground: oklch(0.2 0 0);
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-[14px] leading-5 text-foreground;
+    margin: 0;
+    overflow: hidden;
+    cursor: default;
+    /* A control panel, not a document: text is selectable only where it is data (paths, logs, codes). */
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: default;
+  }
+
+  img {
+    -webkit-user-drag: none;
+  }
+
+  /* One focus ring for everything, drawn outside the control. Rows that fill their group use .focus-inset. */
+  :focus-visible {
+    outline: 2px solid var(--ui-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--ui-foreground) 20%, transparent);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ui-foreground) 26%, transparent) transparent;
+  }
+
+  /* Reduced motion: every transition and animation of the app collapses to nothing. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Windows drag regions: the title bar drags the window, every control inside it opts out. */
+@utility app-drag {
+  -webkit-app-region: drag;
+}
+@utility app-no-drag {
+  -webkit-app-region: no-drag;
+}
+/* While a modal dialog is open the title bar must not swallow clicks meant for the backdrop. */
+:root[data-modal] .app-drag {
+  -webkit-app-region: no-drag;
+}
+
+@utility focus-inset {
+  &:focus-visible {
+    outline-offset: -2px;
+  }
+}
+
+@utility selectable {
+  user-select: text;
+  cursor: text;
+}
+
+/* Quiet motion (120-180 ms). The page enters once per section; dialogs and toasts have their own short entrances. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+@keyframes fade-enter {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+@keyframes bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@utility animate-page {
+  animation: page-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@utility animate-toast {
+  animation: toast-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@utility animate-bar {
+  animation: bar-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+dialog.ui-dialog[open] {
+  animation: dialog-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+dialog.ui-dialog[open]::backdrop {
+  animation: fade-enter 160ms ease-out;
+}

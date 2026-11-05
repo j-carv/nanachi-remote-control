@@ -181,7 +181,7 @@ func TestProxySetsIdentityFromWhoIsAndReplacesSpoofedHeaders(t *testing.T) {
 }
 
 func TestProxyEncodesNonASCIIIdentityLikeTailscaleServe(t *testing.T) {
-	who := &fakeWhoIs{resp: userNode("joão@example.com", "João Carvalho", "")}
+	who := &fakeWhoIs{resp: userNode("josé@example.com", "José Carvalho", "")}
 	logf, _ := logRecorder()
 	h := newProxy(newBackend(t), who.lookup, logf)
 
@@ -189,8 +189,8 @@ func TestProxyEncodesNonASCIIIdentityLikeTailscaleServe(t *testing.T) {
 
 	dec := new(mime.WordDecoder)
 	for header, want := range map[string]string{
-		"Tailscale-User-Login": "joão@example.com",
-		"Tailscale-User-Name":  "João Carvalho",
+		"Tailscale-User-Login": "josé@example.com",
+		"Tailscale-User-Name":  "José Carvalho",
 	} {
 		raw := got.Header.Get(header)
 		if !strings.HasPrefix(raw, "=?utf-8?q?") {
