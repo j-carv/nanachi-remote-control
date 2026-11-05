@@ -67,7 +67,7 @@ export interface SessionsViewDeps {
   daemonStatus(): DaemonStatus;
   /** Builds the view: locked-down web preferences, the daemon origin only, the panel's preload. */
   createView(): ViewHandle;
-  /** Pairs Desktop with the daemon when needed, before the PWA loads. A failure only means the PWA starts unpaired. */
+  /** Runs before every load of the PWA: the cache is refreshed when the daemon serves another build, and Desktop is paired when needed. A failure only means the PWA starts unpaired. */
   prepare(): Promise<void>;
   /** Ctrl+1..8 pressed inside the view: the page has to show that section. */
   onShortcut(section: ControlSection): void;

@@ -105,3 +105,12 @@ export function createElectronView(options: ElectronViewOptions): ViewHandle {
   natives.set(handle, view);
   return handle;
 }
+
+/**
+ * Clears the service workers and Cache Storage of one origin in the PWA's session, so the next load is the build on disk and not
+ * a copy its service worker precached. Local storage, IndexedDB and cookies of that origin are kept: they hold the pairing token
+ * and the app's state.
+ */
+export async function clearPwaCache(origin: string): Promise<void> {
+  await session.defaultSession.clearStorageData({ origin, storages: ['serviceworkers', 'cachestorage'] });
+}

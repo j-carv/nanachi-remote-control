@@ -24,9 +24,10 @@ import { createDeviceAddRunner, createPairCliRunner } from './pair-cli.js';
 import { daemonOrigin, isSameOrigin } from './panel-policy.js';
 import { createPairing, createTokenStore, desktopDeviceName } from './pairing.js';
 import { createPairingWindow } from './pairing-window.js';
+import { createPwaCacheRefresh } from './pwa-cache.js';
 import { createRootsStore } from './roots-config.js';
 import { createSessionsView } from './sessions-view.js';
-import { createElectronView, nativeViewOf } from './sessions-view-electron.js';
+import { clearPwaCache, createElectronView, nativeViewOf } from './sessions-view-electron.js';
 import { createSettingsStore, pendingPwaLanguage, resolveStartupLanguage, settingsFileExists } from './settings.js';
 import { fetchHealth, isPortFree, killProcessTree, runProcess, spawnHidden, spawnSidecar } from './system.js';
 import { createTray } from './tray.js';
@@ -172,6 +173,17 @@ async function boot(): Promise<void> {
   }
   openMainRequest = openControl;
 
+  // Before every load of the PWA: a build the daemon serves that differs from the one its cache was cleared for clears the
+  // embedded service worker first, so the first load after an update is not an old precached copy.
+  const refreshPwaCache = createPwaCacheRefresh({
+    origin: () => daemonOrigin(host.port()),
+    fetchImpl: fetch,
+    stored: () => settings.get().pwaBuild,
+    store: (build) => void settings.update({ pwaBuild: build }),
+    clear: clearPwaCache,
+    note,
+  });
+
   // The sessions view: the PWA from the daemon's origin, drawn over the content area of the control center while its
   // "Sessões" section is on screen. Same locked-down preferences, session and `nanachiDesktop` preload as the old panel window.
   const sessions = createSessionsView({
@@ -187,6 +199,8 @@ async function boot(): Promise<void> {
     daemonStatus: () => host.status(),
     createView: () => createElectronView({ preloadPath, origin: () => daemonOrigin(host.port()) }),
     prepare: async () => {
+      // Never rejects: a failed check is logged and the load goes on.
+      await refreshPwaCache();
       try {
         await pairing.ensureMachine();
       } catch (error) {
