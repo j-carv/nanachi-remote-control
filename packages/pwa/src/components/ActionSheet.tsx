@@ -23,13 +23,14 @@ interface ActionSheetPanelProps {
   title: string;
   items: readonly ActionSheetItem[];
   onClose(): void;
-  /** Chamado antes de fechar quando uma ação é escolhida (não no Cancelar). */
-  onPick?: (() => void) | undefined;
+  /** Chamado quando uma ação é escolhida (não no Cancelar). Quem recebe decide quando a ação roda. */
+  onPick(action: () => void): void;
 }
 
 /**
- * Conteúdo da folha: o grupo de ações (rolável dentro da folha) e "Cancelar" em grupo à parte. A folha fecha
- * e só depois a ação escolhida roda. Fica fora do Drawer para os testes renderizarem o markup estático.
+ * Conteúdo da folha: o grupo de ações (rolável dentro da folha) e "Cancelar" em grupo à parte. Escolher uma ação
+ * entrega a ação a `onPick`, que fecha a folha e a roda depois. Fica fora do Drawer para os testes renderizarem o
+ * markup estático.
  */
 export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetPanelProps) {
   return (
@@ -51,12 +52,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
                 item.tone === 'muted' && 'text-muted-foreground',
                 item.mono === true && 'font-mono text-[15px]',
               )}
-              onClick={() => {
-                onPick?.();
-                onClose();
-                // Depois de desmontar a folha: a trava de foco do diálogo ainda segura o foco neste instante.
-                setTimeout(() => item.onSelect(), 0);
-              }}
+              onClick={() => onPick(item.onSelect)}
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span data-slot="action-sheet-label" className="truncate">{item.label}</span>
@@ -93,7 +89,7 @@ interface ActionSheetProps {
  * navegador fecham. A lista por trás fica travada enquanto a folha está aberta.
  */
 export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) {
-  useModalOverlay(onClose);
+  const closeThen = useModalOverlay(onClose);
   // Ao escolher uma ação, quem manda no foco é a própria ação (ex.: o campo do chat). Sem isso, o Radix devolve o
   // foco ao botão que abriu a folha depois que ela fecha. No Cancelar, o foco volta ao botão, como antes.
   const pickedRef = useRef(false);
@@ -116,8 +112,10 @@ export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) 
           title={title}
           items={items}
           onClose={onClose}
-          onPick={() => {
+          onPick={(action) => {
+            // The action runs after this sheet's history entry is popped (see useModalOverlay).
             pickedRef.current = true;
+            closeThen(action);
           }}
         />
       </DrawerContent>

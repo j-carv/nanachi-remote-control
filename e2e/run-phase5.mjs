@@ -406,7 +406,9 @@ async function stepWorktree() {
   await button('Nova sessão').click();
   await page.getByRole('dialog', { name: 'Nova sessão' }).waitFor();
   await page.locator('[role="dialog"] button[aria-pressed]', { hasText: 'Fake' }).click();
-  await page.locator('label[data-slot="config-toggle"]', { hasText: 'Em worktree separado' }).click();
+  const worktreeSwitch = page.getByRole('switch', { name: /Em worktree separado/ });
+  await worktreeSwitch.click();
+  assert.equal(await worktreeSwitch.getAttribute('aria-checked'), 'true', 'switch "Em worktree separado" ligado antes de criar');
   await button('Criar sessão').click();
   await until('chip do branch no chat', () => hasCount(page.locator('[data-slot="session-place"]', { hasText: 'nanachi/' })), 20_000);
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
@@ -431,7 +433,7 @@ async function stepWorktree() {
 async function stepEndWorktree({ branch, worktreePath }) {
   await button('Voltar').click();
   await button('Nova sessão').waitFor();
-  const row = page.locator(`${SESSIONS}`, { hasText: branch });
+  const row = page.locator('li', { hasText: branch });
   await row.getByRole('button', { name: /^Encerrar / }).click();
   await until('pasta do worktree removida', async () => !existsSync(worktreePath), 20_000);
   await until('sessão encerrada na lista', () => hasCount(row.locator('[data-status="stopped"]')), 20_000);
@@ -447,21 +449,25 @@ async function stepTerminal() {
 
   const keys = page.locator('[data-slot="terminal-key"]');
   const count = await keys.count();
-  assert.equal(count, 9, 'nove teclas na barra');
+  assert.equal(count, 18, 'dezoito teclas na barra (as de TERMINAL_KEYS)');
+  // A barra é uma linha só que rola na horizontal (ChatScreen/TerminalScreen: overflow-x-auto, teclas shrink-0).
+  const bar = page.locator('[role="toolbar"][aria-label="Teclas especiais"]');
+  assert.ok(await bar.evaluate((el) => el.scrollWidth > el.clientWidth), 'barra rola na horizontal (teclas fora da tela ficam acessíveis)');
   const boxes = [];
   for (let i = 0; i < count; i += 1) {
     const box = await keys.nth(i).boundingBox();
     assert.ok(box, `tecla ${i} tem caixa`);
-    assert.ok(box.x >= 0 && box.x + box.width <= 390, `tecla ${i} cabe na largura do iPhone`);
     assert.ok(box.y >= 0 && box.y + box.height <= 844, `tecla ${i} cabe na altura da tela`);
     boxes.push(box);
   }
-  assert.equal(new Set(boxes.map((box) => Math.round(box.y))).size, 2, 'teclas em duas linhas');
+  const first = boxes[0];
+  assert.ok(first && first.x >= 0 && first.x + first.width <= 390, 'primeira tecla visível inteira na largura do iPhone sem rolar');
+  assert.equal(new Set(boxes.map((box) => Math.round(box.y))).size, 1, 'teclas numa linha só');
   await shot('05-terminal-teclas');
   for (let i = 0; i < count; i += 1) await keys.nth(i).click();
   await page.waitForTimeout(300);
   await until('terminal segue rodando após as teclas', () => statusIs('running'), 10_000);
-  log('terminal: 9 teclas em 2 linhas, todas visíveis e clicáveis; pill "Em execução"');
+  log('terminal: 18 teclas numa barra que rola, todas clicáveis; pill "Em execução"');
 }
 
 async function stepDevices() {
@@ -485,14 +491,14 @@ async function stepDevices() {
   await headerTitle('Ajustes').waitFor();
   await page.getByRole('button', { name: /^Dispositivos desta máquina/ }).click();
   await headerTitle('Dispositivos desta máquina').waitFor();
-  await until('dois dispositivos na tela', async () => (await page.locator('.device-main').count()) === 2);
+  await until('dois dispositivos na tela', async () => (await page.locator('ul[aria-label="Dispositivos"] > li').count()) === 2);
   const list = await page.locator('ul[aria-label="Dispositivos"]').innerText();
   assert.match(list, /Celular de teste/, 'tela mostra o 2º device');
   assert.match(list, /este aparelho/, 'tela marca este aparelho');
   await shot('06-dispositivos-dois');
 
   await page.locator('ul[aria-label="Dispositivos"] > li', { hasText: 'Celular de teste' }).getByRole('button', { name: /^Revogar/ }).click();
-  await until('2º device some da lista', async () => (await page.locator('.device-main', { hasText: 'Celular de teste' }).count()) === 0);
+  await until('2º device some da lista', async () => (await page.locator('ul[aria-label="Dispositivos"] > li', { hasText: 'Celular de teste' }).count()) === 0);
   assert.equal((await apiFetch(urlA, second.token, '/api/workspaces')).status, 401, 'token revogado não entra mais');
   assert.equal((await apiJson(urlA, tokenA, '/api/devices')).devices.length, 1, 'API lista só este device');
   await shot('07-dispositivo-revogado');
@@ -575,7 +581,7 @@ async function stepMultiPc() {
   setupDirB();
   const codeB = issuePairCode(homeB);
   await goHome();
-  await button('+ adicionar máquina').click();
+  await button('Adicionar máquina').click();
   await page.getByRole('heading', { name: 'Parear máquina' }).waitFor();
   await page.locator('input[type="url"]').fill(urlB);
   await page.locator('input[placeholder="000000"]').fill(codeB);
