@@ -27,9 +27,9 @@
   },
   "pairing": {
     "row": "Gerar código de pareamento",
-    "rowHint": "Para parear o iPhone ou outro navegador com este PC.",
+    "rowHint": "Para parear o dispositivo móvel ou outro navegador com este PC.",
     "title": "Código de pareamento",
-    "description": "Digite este código no Nanachi do iPhone, ou em outro navegador, para parear com este PC.",
+    "description": "Digite este código no Nanachi do dispositivo móvel, ou em outro navegador, para parear com este PC.",
     "codeLabel": "Código {{digits}}",
     "generating": "Gerando o código…",
     "failed": "Não consegui gerar o código agora. Confira se o daemon está rodando e tente de novo.",
@@ -59,11 +59,11 @@
     "tailnet": "Tailnet {{name}}",
     "error": "Erro",
     "login": "Entrar no Tailscale",
-    "address": "Endereço para o iPhone",
+    "address": "Endereço para o dispositivo móvel",
     "copyAddress": "Copiar endereço",
     "requirements": "A tailnet precisa ter MagicDNS e certificados HTTPS ativos.",
     "steps": {
-      "install": "Instale o app Tailscale no iPhone e entre com a mesma conta.",
+      "install": "Instale o app Tailscale no dispositivo móvel e entre com a mesma conta.",
       "open": "Abra {{address}} no Safari.",
       "code": "Se o app pedir um código, use \"Gerar código de pareamento\" aqui.",
       "share": "Toque em Compartilhar e em \"Adicionar à Tela de Início\"."

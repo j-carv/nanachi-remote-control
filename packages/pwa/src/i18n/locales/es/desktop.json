@@ -27,9 +27,9 @@
   },
   "pairing": {
     "row": "Generar código de vinculación",
-    "rowHint": "Para vincular el iPhone u otro navegador con este PC.",
+    "rowHint": "Para vincular el dispositivo móvil u otro navegador con este PC.",
     "title": "Código de vinculación",
-    "description": "Escribe este código en Nanachi en el iPhone, o en otro navegador, para vincularlo con este PC.",
+    "description": "Escribe este código en Nanachi en el dispositivo móvil, o en otro navegador, para vincularlo con este PC.",
     "codeLabel": "Código {{digits}}",
     "generating": "Generando el código…",
     "failed": "No pude generar el código ahora. Comprueba que el daemon esté en ejecución e inténtalo de nuevo.",
@@ -59,11 +59,11 @@
     "tailnet": "Tailnet {{name}}",
     "error": "Error",
     "login": "Iniciar sesión en Tailscale",
-    "address": "Dirección para el iPhone",
+    "address": "Dirección para el dispositivo móvil",
     "copyAddress": "Copiar dirección",
     "requirements": "La tailnet necesita tener MagicDNS y certificados HTTPS activos.",
     "steps": {
-      "install": "Instala la app de Tailscale en el iPhone e inicia sesión con la misma cuenta.",
+      "install": "Instala la app de Tailscale en el dispositivo móvil e inicia sesión con la misma cuenta.",
       "open": "Abre {{address}} en Safari.",
       "code": "Si la app pide un código, usa \"Generar código de vinculación\" aquí.",
       "share": "Toca Compartir y luego \"Agregar a pantalla de inicio\"."

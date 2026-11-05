@@ -18,7 +18,6 @@ interface PairScreenProps {
   onPaired(result: PairResponse, baseUrl: string): void;
 }
 
-const DEFAULT_DEVICE_NAME = 'iPhone';
 const CODE_PATTERN = /^[0-9]{6}$/;
 /** Espera o usuário terminar de digitar o endereço antes de perguntar ao PC pelo Tailscale. */
 const TAILSCALE_CHECK_DELAY_MS = 300;
@@ -60,7 +59,7 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
   const { t } = useTranslation('pairing');
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [code, setCode] = useState('');
-  const [deviceName, setDeviceName] = useState(DEFAULT_DEVICE_NAME);
+  const [deviceName, setDeviceName] = useState(() => t('defaultDeviceName'));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tailscaleLogin = useTailscaleLogin(baseUrl);

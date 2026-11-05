@@ -474,7 +474,7 @@ describe('tailscale', () => {
     expect(markup).toContain('https://pc.tail1.ts.net');
     expect(markup).toContain('user@example.com');
     expect(markup).toContain('100.64.0.1');
-    expect(markup).toContain('No iPhone');
+    expect(markup).toContain('No dispositivo móvel');
     expect(markup).toContain('aria-checked="true"');
   });
 

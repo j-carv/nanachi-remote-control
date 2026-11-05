@@ -1,4 +1,5 @@
 {
+  "defaultDeviceName": "Mobile device",
   "title": "Pair machine",
   "intro": "Generate a 6-digit code on the PC and enter it here. It is valid for 5 minutes.",
   "introTailscale": "Sign in without a code using your Tailscale account, or use a 6-digit code generated on the PC.",

@@ -2,7 +2,7 @@
   "name": "nanachi-remote",
   "version": "0.0.0",
   "private": true,
-  "description": "Controle remoto de agentes de IA em PCs Windows a partir do iPhone (PWA).",
+  "description": "Controle remoto de agentes de IA em PCs Windows a partir de dispositivos móveis (PWA).",
   "workspaces": [
     "packages/*"
   ],
