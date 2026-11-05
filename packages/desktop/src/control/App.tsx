@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ControlApi, ControlSection } from '../common/control-api.js';
+import { I18nextProvider } from 'react-i18next';
+import type { ControlApi, ControlSection, SessionsViewState } from '../common/control-api.js';
 import type { DaemonStatus, TailscaleStatus } from '../common/types.js';
+import { createControlI18n } from './i18n.js';
+import { initialSection, sessionsState, sessionsViewWanted } from './lib/sessions.js';
 import { isSidebarToggle, sectionForShortcut } from './lib/shortcuts.js';
 import { AccountsSection } from './sections/AccountsSection.js';
 import { DevicesSection } from './sections/DevicesSection.js';
 import { FoldersSection } from './sections/FoldersSection.js';
 import { LogsSection } from './sections/LogsSection.js';
 import { OverviewSection } from './sections/OverviewSection.js';
+import { SessionsStage, SessionsUnavailable } from './sections/SessionsSection.js';
 import { SettingsSection } from './sections/SettingsSection.js';
 import { TailscaleSection } from './sections/TailscaleSection.js';
 import { Sidebar } from './shell/Sidebar.js';
@@ -14,9 +18,11 @@ import { TitleBar } from './shell/TitleBar.js';
 import { ApiProvider, useApi } from './state/api.js';
 import { FoldersProvider, useFoldersStore } from './state/folders-store.js';
 import { createLiveValue } from './state/live.js';
-import { useReported } from './state/reported.js';
+import { useOverlayActive } from './state/overlay.js';
 import { useResource } from './state/resource.js';
 import { ShellContext, type ShellValue } from './state/shell.js';
+import { useSessionsViewport } from './state/sessions-viewport.js';
+import { useHoldToasts } from './state/toast-hold.js';
 import { cx } from './ui/cx.js';
 import { ToastProvider } from './ui/Toast.js';
 
@@ -40,7 +46,7 @@ function writeCollapsed(collapsed: boolean): void {
   }
 }
 
-function renderSection(section: ControlSection): ReactNode {
+function renderSection(section: ControlSection, daemon: DaemonStatus | null, viewState: SessionsViewState, openOverview: () => void): ReactNode {
   switch (section) {
     case 'overview':
       return <OverviewSection />;
@@ -56,19 +62,25 @@ function renderSection(section: ControlSection): ReactNode {
       return <LogsSection />;
     case 'settings':
       return <SettingsSection />;
+    case 'sessions':
+      // Only reached while the PWA cannot be shown: the section explains why. With the daemon ready the shell draws the stage.
+      return <SessionsUnavailable daemon={daemon} viewState={viewState} onOpenOverview={openOverview} />;
   }
 }
 
 function Shell() {
   const api = useApi();
-  const [section, setSection] = useState<ControlSection>('overview');
-  const [visited, setVisited] = useState<ReadonlySet<ControlSection>>(() => new Set<ControlSection>(['overview']));
+  // A window opened for the tray's "Abrir sessões" starts on that section (`?section=`); main asks an open one to go there.
+  const [section, setSection] = useState<ControlSection>(() => initialSection(window.location.search));
+  const [visited, setVisited] = useState<ReadonlySet<ControlSection>>(() => new Set<ControlSection>([initialSection(window.location.search)]));
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const pairingRequest = useRef(false);
   const focusTitle = useRef(false);
   const main = useRef<HTMLElement>(null);
 
   const [daemon, setDaemon] = useState<DaemonStatus | null>(null);
+  /** What main says about the sessions view: `crashed` when its page kept dying and main stopped replacing it. */
+  const [viewState, setViewState] = useState<SessionsViewState>('ok');
   const [tailscale, setTailscaleState] = useState<TailscaleStatus | null>(null);
   // The daemon and Tailscale status come from events and from the overview poll. An answer to a poll is older than any
   // event that arrived while the call was in flight, so it never overwrites one (see `state/live.ts`).
@@ -116,6 +128,7 @@ function Shell() {
     [api, daemonLive, reloadOverview, reloadFolders],
   );
   useEffect(() => api.tailscale.onStatus(setTailscale), [api, setTailscale]);
+  useEffect(() => api.sessions.onState(setViewState), [api]);
 
   const navigate = useCallback((next: ControlSection, options?: { pairing?: boolean }): void => {
     if (options?.pairing) pairingRequest.current = true;
@@ -132,6 +145,9 @@ function Shell() {
     document.getElementById('page-title')?.focus({ preventScroll: true });
   }, [section]);
 
+  // The tray (or Ctrl+1..8 pressed inside the PWA, which holds the keyboard) asks for a section.
+  useEffect(() => api.onNavigate(navigate), [api, navigate]);
+
   const toggleSidebar = useCallback((): void => {
     setCollapsed((current) => {
       writeCollapsed(!current);
@@ -147,18 +163,18 @@ function Shell() {
         event.preventDefault();
         navigate(target);
       } else if (isSidebarToggle(event)) {
+        // On Sessões the sidebar is the rail whatever was saved: toggling would only change the choice out of sight.
+        if (section === 'sessions') return;
         event.preventDefault();
         toggleSidebar();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [navigate, toggleSidebar]);
+  }, [navigate, toggleSidebar, section]);
 
-  const reported = useReported();
-  const openSessions = useCallback((): void => {
-    reported(() => api.openSessions(), 'Não foi possível abrir as sessões.');
-  }, [api, reported]);
+  const openSessions = useCallback((): void => navigate('sessions'), [navigate]);
+  const openOverview = useCallback((): void => navigate('overview'), [navigate]);
   const takePairingRequest = useCallback((): boolean => {
     const requested = pairingRequest.current;
     pairingRequest.current = false;
@@ -183,11 +199,22 @@ function Shell() {
 
   const version = overview.state.status === 'ready' ? overview.state.data.appVersion : api.version;
 
+  // The Sessões section with a daemon that is ready: the PWA is drawn by main over the whole content area, so the page keeps
+  // that area bare and tells main where it is (and whether a dialog needs it; toasts wait instead). When the PWA page kept
+  // dying main hides the view: the area then shows the explanation, and the section still reports itself as on screen, so
+  // opening it anew (a report that turns active again) is what tries once more.
+  const sessionsSelected = section === 'sessions';
+  const sessionsStatus = sessionsState(daemon, viewState);
+  const sessionsOnScreen = sessionsSelected && sessionsStatus === 'ready';
+  const covered = useOverlayActive();
+  useSessionsViewport(api, main, { active: sessionsSelected && sessionsViewWanted(sessionsStatus), covered });
+  useHoldToasts(sessionsOnScreen);
+
   return (
     <ShellContext.Provider value={shell}>
       <FoldersProvider value={folders}>
         <div className="flex h-full flex-col bg-background">
-          <TitleBar machineName={daemon?.machineName ?? null} daemon={daemon} onOpenStatus={() => navigate('overview')} />
+          <TitleBar machineName={daemon?.machineName ?? null} daemon={daemon} nativeTips={sessionsSelected} onOpenStatus={() => navigate('overview')} />
           <div className="flex min-h-0 flex-1">
             <Sidebar
               section={section}
@@ -196,15 +223,24 @@ function Shell() {
               version={version}
               onSelect={navigate}
               onToggle={toggleSidebar}
-              onOpenSessions={openSessions}
+              sessionsOpen={sessionsSelected}
             />
-            <main ref={main} id="main" aria-labelledby="page-title" className="@container min-w-0 flex-1 overflow-y-auto bg-background [scrollbar-gutter:stable]">
-              <div
-                key={section}
-                className={cx('animate-page mx-auto flex w-full flex-col px-8 pt-7 pb-8', section === 'logs' ? 'h-full max-w-[1244px]' : 'max-w-[984px]')}
-              >
-                {renderSection(section)}
-              </div>
+            <main
+              ref={main}
+              id="main"
+              aria-labelledby="page-title"
+              className={cx('@container min-w-0 flex-1 bg-background', sessionsOnScreen ? 'overflow-hidden' : 'overflow-y-auto [scrollbar-gutter:stable]')}
+            >
+              {sessionsOnScreen ? (
+                <SessionsStage />
+              ) : (
+                <div
+                  key={section}
+                  className={cx('animate-page mx-auto flex w-full flex-col px-8 pt-7 pb-8', section === 'logs' ? 'h-full max-w-[1244px]' : 'max-w-[984px]')}
+                >
+                  {renderSection(section, daemon, viewState, openOverview)}
+                </div>
+              )}
             </main>
           </div>
         </div>
@@ -213,13 +249,26 @@ function Shell() {
   );
 }
 
-/** The control center: the window's own chrome, the sidebar and the section on screen. */
+/**
+ * The control center: the window's own chrome, the sidebar and the section on screen. Its language is main's: it starts from
+ * the one the preload read and follows every change, so the tray and the page never disagree.
+ */
 export function App({ api }: { api: ControlApi }) {
+  const i18n = useMemo(() => createControlI18n(api.language), [api]);
+  useEffect(() => {
+    document.documentElement.lang = i18n.language;
+    return api.onLanguage((language) => {
+      void i18n.changeLanguage(language);
+      document.documentElement.lang = language;
+    });
+  }, [api, i18n]);
   return (
-    <ApiProvider api={api}>
-      <ToastProvider>
-        <Shell />
-      </ToastProvider>
-    </ApiProvider>
+    <I18nextProvider i18n={i18n}>
+      <ApiProvider api={api}>
+        <ToastProvider>
+          <Shell />
+        </ToastProvider>
+      </ApiProvider>
+    </I18nextProvider>
   );
 }

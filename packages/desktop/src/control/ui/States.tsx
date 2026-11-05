@@ -1,13 +1,15 @@
 import { CircleAlert, Link2Off, RotateCw, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ControlError } from '../../common/control-api.js';
-import { calmErrorHint, errorTitle, isCalmError } from '../lib/errors.js';
+import { calmErrorHint, errorMessage, errorTitle, isCalmError } from '../lib/errors.js';
 import { Button } from './Button.js';
 import { Group } from './Surface.js';
 import { Skeleton } from './Skeleton.js';
 
-/** A section that could not load: what happened (Portuguese message from main) and the way out. */
+/** A section that could not load: what happened (the message from main, already in the language of the page) and the way out. */
 export function ErrorState({ error, onRetry }: { error: ControlError; onRetry: () => void }) {
+  const { t } = useTranslation();
   // Attached to a daemon Desktop did not start, parts of the panel are unavailable by design: say so calmly.
   const calm = isCalmError(error.code);
   return (
@@ -17,11 +19,11 @@ export function ErrorState({ error, onRetry }: { error: ControlError; onRetry: (
       >
         {calm ? <Link2Off aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}
       </span>
-      <h2 className="font-display text-[15px] font-semibold">{errorTitle(error.code)}</h2>
-      <p className="max-w-[440px] text-[13px] leading-5 text-muted-foreground">{error.message}</p>
-      {calm ? <p className="max-w-[440px] text-[13px] leading-5 text-muted-foreground">{calmErrorHint()}</p> : null}
+      <h2 className="font-display text-[15px] font-semibold">{errorTitle(error.code, t)}</h2>
+      <p className="max-w-[440px] text-[13px] leading-5 text-muted-foreground">{errorMessage(error, t)}</p>
+      {calm ? <p className="max-w-[440px] text-[13px] leading-5 text-muted-foreground">{calmErrorHint(t)}</p> : null}
       <Button className="mt-4" icon={<RotateCw aria-hidden="true" />} onClick={onRetry}>
-        Tentar de novo
+        {t('common.retry')}
       </Button>
     </div>
   );
@@ -43,9 +45,10 @@ export function EmptyState({ icon: Icon, title, description, action }: { icon: L
 
 /** Skeleton rows in a group, while a list loads. `aria-busy` tells assistive tech the content is on its way. */
 export function GroupSkeleton({ rows = 3, className }: { rows?: number; className?: string | undefined }) {
+  const { t } = useTranslation();
   return (
     <Group className={className}>
-      <div aria-busy="true" aria-label="Carregando" role="status" className="divide-y divide-border">
+      <div aria-busy="true" aria-label={t('common.loading')} role="status" className="divide-y divide-border">
         {Array.from({ length: rows }, (_, index) => (
           <div key={index} className="flex h-12 items-center gap-3 px-4">
             <Skeleton className="size-8 shrink-0" />

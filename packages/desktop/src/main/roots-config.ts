@@ -1,5 +1,6 @@
 import * as nodeFs from 'node:fs';
 import { join, win32 } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { RootEntry } from '../common/control-api.js';
 
@@ -11,7 +12,7 @@ import type { RootEntry } from '../common/control-api.js';
 
 export type RootsConfigErrorCode = 'invalid_input' | 'io';
 
-/** A failure with a message fit for the user (Portuguese). `invalid_input`: what was asked is wrong; `io`: the file is. */
+/** A failure with a message fit for the user, in Desktop's language. `invalid_input`: what was asked is wrong; `io`: the file is. */
 export class RootsConfigError extends Error {
   readonly code: RootsConfigErrorCode;
   constructor(code: RootsConfigErrorCode, message: string) {
@@ -105,10 +106,10 @@ function shorten(path: string): string {
  */
 export async function prepareRoots(input: readonly string[], previous: readonly string[], probe: PathProbe): Promise<string[]> {
   if (!Array.isArray(input) || input.some((item) => typeof item !== 'string')) {
-    throw new RootsConfigError('invalid_input', 'A lista de pastas é inválida.');
+    throw new RootsConfigError('invalid_input', t('main.roots.invalidList'));
   }
   if (input.length > MAX_ROOTS) {
-    throw new RootsConfigError('invalid_input', `Muitas pastas: o máximo é ${MAX_ROOTS}.`);
+    throw new RootsConfigError('invalid_input', t('main.roots.tooMany', { max: MAX_ROOTS }));
   }
   const known = new Set(previous.map((path) => keyOf(normalizeRoot(path) ?? path)));
   const problems: string[] = [];
@@ -117,12 +118,12 @@ export async function prepareRoots(input: readonly string[], previous: readonly 
 
   for (const raw of input) {
     if (raw.length > MAX_ROOT_LENGTH) {
-      problems.push(`O caminho "${shorten(raw)}" é longo demais.`);
+      problems.push(t('main.roots.pathTooLong', { path: shorten(raw) }));
       continue;
     }
     const path = normalizeRoot(raw);
     if (path === null) {
-      problems.push(`"${shorten(raw)}" não é um caminho absoluto do Windows (por exemplo, C:\\Projetos).`);
+      problems.push(t('main.roots.notAbsolute', { path: shorten(raw) }));
       continue;
     }
     const key = keyOf(path);
@@ -137,11 +138,11 @@ export async function prepareRoots(input: readonly string[], previous: readonly 
     const kind = kinds[index];
     const saved = known.has(keyOf(path));
     if (kind === 'file') {
-      problems.push(`"${path}" não é uma pasta.`);
+      problems.push(t('main.roots.notFolder', { path }));
     } else if (kind === 'missing' && !saved) {
-      problems.push(`A pasta "${path}" não existe.`);
+      problems.push(t('main.roots.missing', { path }));
     } else if (kind === 'timeout' && !saved) {
-      problems.push(`A pasta "${path}" não respondeu a tempo. Se ela está em uma rede ou em um disco desconectado, tente de novo quando estiver disponível.`);
+      problems.push(t('main.roots.timeout', { path }));
     } else {
       result.push(path);
     }
@@ -173,17 +174,17 @@ function readConfigObject(file: string, fs: RootsConfigFs): Record<string, unkno
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (error) {
-    throw new RootsConfigError('io', `Não foi possível ler o config.json (${file}): ${messageOf(error)}`);
+    throw new RootsConfigError('io', t('main.config.readFailed', { file, detail: messageOf(error) }));
   }
   let parsed: unknown;
   try {
     // PowerShell 5.1 writes a BOM; JSON.parse does not accept it.
     parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch (error) {
-    throw new RootsConfigError('io', `O config.json (${file}) não é um JSON válido: ${messageOf(error)}`);
+    throw new RootsConfigError('io', t('main.config.invalidJson', { file, detail: messageOf(error) }));
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new RootsConfigError('io', `O config.json (${file}) precisa ser um objeto JSON.`);
+    throw new RootsConfigError('io', t('main.config.notObject', { file }));
   }
   return parsed as Record<string, unknown>;
 }
@@ -250,7 +251,7 @@ export async function writeAllowedRoots(
     } catch {
       // Left behind; harmless.
     }
-    throw new RootsConfigError('io', `Não foi possível gravar o config.json (${file}): ${messageOf(error)}`);
+    throw new RootsConfigError('io', t('main.config.writeFailed', { file, detail: messageOf(error) }));
   }
 }
 
@@ -308,7 +309,7 @@ export function createRootsStore(options: RootsStoreOptions): RootsStore {
     try {
       options.ensureConfig(options.home);
     } catch (error) {
-      throw new RootsConfigError('io', `Não foi possível preparar o config.json em ${options.home}: ${messageOf(error)}`);
+      throw new RootsConfigError('io', t('main.config.prepareFailed', { home: options.home, detail: messageOf(error) }));
     }
   }
 

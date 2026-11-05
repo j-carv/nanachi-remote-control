@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { acquireOverlay } from '../state/overlay.js';
 import { cx } from './cx.js';
 import { afterNativeClose } from './dialog-logic.js';
 
@@ -35,7 +36,10 @@ export function Dialog({ open, onClose, title, description, children, footer, di
     if (!open && dialog.open) dialog.close();
     if (!open) return undefined;
     document.documentElement.setAttribute('data-modal', '');
+    // The sessions view is drawn over the content area by main: it steps aside while this dialog is open.
+    const release = acquireOverlay();
     return () => {
+      release();
       document.documentElement.removeAttribute('data-modal');
     };
   }, [open]);

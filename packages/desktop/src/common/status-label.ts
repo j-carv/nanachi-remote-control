@@ -1,17 +1,21 @@
+import { getLanguage, translate, type Language } from './i18n/index.js';
 import type { DaemonStatus } from './types.js';
 
-/** First tray menu line and tooltip. The wording is part of the contract (Portuguese UI). */
-export function statusLabel(status: Pick<DaemonStatus, 'state'>): string {
+/**
+ * First tray menu line and tooltip, in `language` (the one Desktop speaks now by default). The pt-BR wording is the one
+ * the tests pin down.
+ */
+export function statusLabel(status: Pick<DaemonStatus, 'state'>, language: Language = getLanguage()): string {
   switch (status.state) {
     case 'starting':
-      return 'Nanachi · iniciando';
+      return translate(language, 'main.status.starting');
     case 'running':
-      return 'Nanachi · rodando';
+      return translate(language, 'main.status.running');
     case 'attached':
-      return 'Nanachi · conectado ao daemon existente';
+      return translate(language, 'main.status.attached');
     case 'stopped':
-      return 'Nanachi · parado';
+      return translate(language, 'main.status.stopped');
     case 'error':
-      return 'Nanachi · erro';
+      return translate(language, 'main.status.error');
   }
 }

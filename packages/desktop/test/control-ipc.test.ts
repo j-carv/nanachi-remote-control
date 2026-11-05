@@ -30,8 +30,10 @@ function fakeActions() {
   const actions = {
     overview: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
     restartDaemon: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
-    openSessions: vi.fn(() => Promise.resolve()),
     openDataFolder: vi.fn(() => Promise.resolve()),
+    sessions: {
+      setViewport: vi.fn((_viewport: unknown) => Promise.resolve()),
+    },
     folders: {
       get: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
       pick: vi.fn(() => Promise.resolve(['C:\\A'])),
@@ -58,6 +60,7 @@ function fakeActions() {
       openFolder: vi.fn(() => Promise.resolve()),
     },
     settings: {
+      setLanguage: vi.fn((language: string) => Promise.resolve(language)),
       getAutostart: vi.fn(() => Promise.resolve({ value: false, supported: true })),
       setAutostart: vi.fn((value: boolean) => Promise.resolve({ value, supported: true })),
       checkForUpdate: vi.fn(() => Promise.resolve({ status: 'up-to-date', current: '1.0.0' } as const)),
@@ -81,6 +84,7 @@ function setup(overrides: Partial<ControlIpcDeps> = {}) {
     ipcMain,
     isOwnSender: (event) => event.senderFrame?.url === 'file:///control/index.html',
     version: '1.2.3',
+    language: () => 'es',
     window,
     actions: actions as unknown as ControlActions,
     ...overrides,
@@ -119,20 +123,33 @@ describe('registerControlIpc', () => {
       }
     }
     expect(window.minimize).not.toHaveBeenCalled();
-    for (const spy of [actions.overview, actions.openSessions, actions.folders.save, actions.devices.revoke, actions.settings.uninstall]) {
+    for (const spy of [actions.overview, actions.sessions.setViewport, actions.settings.setLanguage, actions.folders.save, actions.devices.revoke, actions.settings.uninstall]) {
       expect(spy).not.toHaveBeenCalled();
     }
   });
 
-  it('answers the sync handshake with the version to the control window only', () => {
+  it('answers the sync handshake with the version and the language to the control window only', () => {
     const { ipcMain } = setup();
     const listener = ipcMain.syncListeners.get(CONTROL_SYNC_CHANNELS.init);
     const own = { ...CONTROL, returnValue: undefined as unknown };
     listener?.(own);
-    expect(own.returnValue).toEqual({ version: '1.2.3' });
+    expect(own.returnValue).toEqual({ version: '1.2.3', language: 'es' });
     const stranger = { ...PANEL, returnValue: undefined as unknown };
     listener?.(stranger);
     expect(stranger.returnValue).toBeNull();
+  });
+
+  it('the sessions viewport and the language are for the control window only: the PWA view (another web contents) gets nothing', async () => {
+    const { ipcMain, actions } = setup();
+    const viewport = { x: 0, y: 0, width: 10, height: 10, active: true, covered: false };
+    // The PWA view is another web contents; even one that loads the control page's own URL is not the control window.
+    const view: ControlIpcSender = { sender: { id: 9 }, senderFrame: { url: 'http://127.0.0.1:7780/' } };
+    expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.sessionsViewport, view, viewport)).toThrow(UntrustedSenderError);
+    expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsSetLanguage, view, 'en')).toThrow(UntrustedSenderError);
+    expect(actions.sessions.setViewport).not.toHaveBeenCalled();
+    expect(actions.settings.setLanguage).not.toHaveBeenCalled();
+    await call(ipcMain, CONTROL_INVOKE_CHANNELS.sessionsViewport, CONTROL, viewport);
+    expect(actions.sessions.setViewport).toHaveBeenCalledWith(viewport);
   });
 
   it('drives the window', async () => {
@@ -153,8 +170,8 @@ describe('registerControlIpc', () => {
 
     await own(c.overview);
     await own(c.restartDaemon);
-    await own(c.openSessions);
     await own(c.openDataFolder);
+    await own(c.sessionsViewport, { x: 232, y: 40, width: 948, height: 720, active: true, covered: false });
     await own(c.foldersGet);
     expect(await own(c.foldersPick)).toEqual(['C:\\A']);
     await own(c.foldersSave, ['C:\\A', 'D:\\'], true);
@@ -171,6 +188,7 @@ describe('registerControlIpc', () => {
     await own(c.tailscaleOpenLogin, 'https://login.tailscale.com/a/x');
     await own(c.logsGet);
     await own(c.logsOpenFolder);
+    expect(await own(c.settingsSetLanguage, 'en')).toBe('en');
     await own(c.settingsGetAutostart);
     expect(await own(c.settingsSetAutostart, true)).toEqual({ value: true, supported: true });
     await own(c.settingsCheckForUpdate);
@@ -179,7 +197,8 @@ describe('registerControlIpc', () => {
 
     expect(actions.overview).toHaveBeenCalledTimes(1);
     expect(actions.restartDaemon).toHaveBeenCalledTimes(1);
-    expect(actions.openSessions).toHaveBeenCalledTimes(1);
+    expect(actions.sessions.setViewport).toHaveBeenCalledWith({ x: 232, y: 40, width: 948, height: 720, active: true, covered: false });
+    expect(actions.settings.setLanguage).toHaveBeenCalledWith('en');
     expect(actions.openDataFolder).toHaveBeenCalledTimes(1);
     expect(actions.folders.save).toHaveBeenCalledWith(['C:\\A', 'D:\\'], true);
     expect(actions.folders.reveal).toHaveBeenCalledWith('C:\\A');
@@ -261,6 +280,14 @@ describe('registerControlIpc', () => {
       for (const bad of [undefined, null, 'true', 1, {}, []]) {
         expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsSetAutostart, CONTROL, bad)).toThrow(TypeError);
       }
+      for (const bad of [undefined, null, 'fr', 'pt', 'en-US', 1, {}, ['en']]) {
+        expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsSetLanguage, CONTROL, bad)).toThrow(TypeError);
+      }
+      for (const bad of [undefined, null, 'x', 5, {}, { x: 1, y: 1, width: 1, height: 1 }, { x: 'a', y: 1, width: 1, height: 1, active: true, covered: false }]) {
+        expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.sessionsViewport, CONTROL, bad)).toThrow(TypeError);
+      }
+      expect(actions.settings.setLanguage).not.toHaveBeenCalled();
+      expect(actions.sessions.setViewport).not.toHaveBeenCalled();
       expect(actions.folders.reveal).not.toHaveBeenCalled();
       expect(actions.tailscale.openLogin).not.toHaveBeenCalled();
       expect(actions.settings.openUpdate).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import { powershellPath, systemDirectory } from '../common/system-paths.js';
 import { UNINSTALL_ARG } from '../install/constants.js';
@@ -49,7 +50,7 @@ export function launchUninstaller(options: LaunchUninstallerOptions): void {
   const fail = (error: unknown): void => {
     if (reported) return;
     reported = true;
-    options.onError(`Não foi possível iniciar o desinstalador: ${messageOf(error)}`);
+    options.onError(t('main.uninstallLaunch.failed', { detail: messageOf(error) }));
   };
   try {
     const child = spawn(powershellPath(env), ['-NoProfile', '-NonInteractive', '-Command', UNINSTALL_LAUNCH_SCRIPT], {
@@ -60,7 +61,7 @@ export function launchUninstaller(options: LaunchUninstallerOptions): void {
     });
     child.on('error', fail);
     child.on('exit', (code) => {
-      if (code !== 0) fail(`o PowerShell terminou com ${code === null ? 'erro' : `o código ${code}`}`);
+      if (code !== 0) fail(code === null ? t('main.uninstallLaunch.exitedWithError') : t('main.uninstallLaunch.exitedWithCode', { code }));
     });
     child.unref();
   } catch (error) {

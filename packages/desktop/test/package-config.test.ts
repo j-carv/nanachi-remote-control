@@ -56,6 +56,12 @@ describe('app electron-builder config', () => {
     expect(config.electronLanguages).toEqual(ELECTRON_LANGUAGES);
   });
 
+  it('ships a Chromium locale pack for every language of Desktop, so app.getLocale() can answer es-419, pt-BR and en-US', () => {
+    // `app.getLocale()` only answers with a locale Chromium has a pack for: without `es` the first run of Desktop and the
+    // installer on a Spanish Windows would see `en-US` and pick English.
+    for (const pack of ['pt-BR', 'en-US', 'es', 'es-419']) expect(ELECTRON_LANGUAGES).toContain(pack);
+  });
+
   it('names Nanachi as the publisher (the exe metadata would otherwise keep the Electron one)', () => {
     expect(config.extraMetadata).toEqual({ author: { name: 'Nanachi' } });
   });

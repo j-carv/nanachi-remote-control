@@ -4,6 +4,9 @@ import type { DaemonStatus } from '../../src/common/types.js';
 import { draftAfter, planSave, restartedMessage, saveFolders, savedMessage, saveOutcome } from '../../src/control/lib/save.js';
 import { needsRestartChoice } from '../../src/control/lib/roots.js';
 import { createMockControlApi, type MockScenario } from '../../src/control/mock/mock-api.js';
+import { controlT } from './translator.js';
+
+const t = controlT('pt-BR');
 
 const make = (scenario: MockScenario = 'default') => createMockControlApi({ scenario, latencyMs: 0 });
 
@@ -109,15 +112,15 @@ describe('saveFolders against the contract (mock main)', () => {
 
 describe('messages', () => {
   it('say what really happened, in Portuguese, and do not promise that idle sessions resume by themselves', () => {
-    expect(savedMessage('restarted')).toMatchObject({ tone: 'success', message: expect.stringContaining('quando você enviar uma mensagem') });
-    expect(savedMessage('starting')).toMatchObject({ tone: 'info', message: expect.stringContaining('ainda está iniciando') });
-    expect(savedMessage('restart_failed')).toMatchObject({ tone: 'error', title: expect.stringContaining('não voltou') });
-    expect(savedMessage('pending')).toMatchObject({ tone: 'success', message: expect.stringContaining('próximo reinício') });
+    expect(savedMessage('restarted', t)).toMatchObject({ tone: 'success', message: expect.stringContaining('quando você enviar uma mensagem') });
+    expect(savedMessage('starting', t)).toMatchObject({ tone: 'info', message: expect.stringContaining('ainda está iniciando') });
+    expect(savedMessage('restart_failed', t)).toMatchObject({ tone: 'error', title: expect.stringContaining('não voltou') });
+    expect(savedMessage('pending', t)).toMatchObject({ tone: 'success', message: expect.stringContaining('próximo reinício') });
   });
 
   it('a restart that answers "starting" is not announced as done', () => {
     const status = (state: DaemonStatus['state']): DaemonStatus => ({ state, port: 7780, mode: 'spawned', pid: 1, version: null, machineName: 'PC', restricted: false, message: null, logTail: [] });
-    expect(restartedMessage(status('running'))).toMatchObject({ tone: 'success', message: expect.stringContaining('reiniciou') });
-    expect(restartedMessage(status('starting'))).toMatchObject({ tone: 'info', message: expect.stringContaining('ainda está iniciando') });
+    expect(restartedMessage(status('running'), t)).toMatchObject({ tone: 'success', message: expect.stringContaining('reiniciou') });
+    expect(restartedMessage(status('starting'), t)).toMatchObject({ tone: 'info', message: expect.stringContaining('ainda está iniciando') });
   });
 });

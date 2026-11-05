@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Language } from '../src/common/i18n/index.js';
 import type { AgentAccountsInfo, DeviceInfo, DriveInfo, LogsInfo } from '../src/common/control-api.js';
 import type { DaemonStatus, TailscaleStatus, UpdateCheckResult } from '../src/common/types.js';
 import { createControlService, type ControlHost, type ControlServiceDeps } from '../src/main/control-service.js';
@@ -111,7 +112,7 @@ function setup(
     openPath: vi.fn((_path: string): Promise<string> => Promise.resolve('')),
     showItemInFolder: vi.fn(),
     openExternal: vi.fn((): Promise<void> => Promise.resolve()),
-    openSessions: vi.fn(),
+    setSessionsViewport: vi.fn(),
     startUninstaller: vi.fn(),
   };
   const tailscale = {
@@ -123,6 +124,7 @@ function setup(
   const checkForUpdate = vi.fn((): Promise<UpdateCheckResult> => Promise.resolve({ status: 'up-to-date', current: '1.0.0' }));
   const logs: LogsInfo = { daemon: ['a'], tailscale: ['[tsnet] b'] };
   const pairingCode = vi.fn(() => Promise.resolve({ code: '123456', expiresAt: 99 }));
+  const language = { set: vi.fn((next: Language): Language => next) };
   const service = createControlService({
     home: HOME,
     appVersion: '1.0.0',
@@ -132,6 +134,7 @@ function setup(
     drives: () => Promise.resolve(DRIVES),
     tailscale,
     pairingCode,
+    language,
     readLogs: () => logs,
     autostart,
     checkForUpdate,
@@ -140,7 +143,7 @@ function setup(
     settleTimeoutMs: 200,
     ...options.overrides,
   });
-  return { service, host, daemon, roots, system, tailscale, autostart, checkForUpdate, pairingCode, log, logs };
+  return { service, host, daemon, roots, system, tailscale, autostart, checkForUpdate, pairingCode, language, log, logs };
 }
 
 function expectFailure(result: object, code: string): void {
@@ -697,10 +700,17 @@ describe('logs, folders in the Explorer, settings', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('não pôde abrir'));
   });
 
-  it('opens sessions through the system hook', async () => {
+  it('passes the area reported for the sessions view to the system hook', async () => {
     const { service, system } = setup();
-    await service.openSessions();
-    expect(system.openSessions).toHaveBeenCalledTimes(1);
+    const viewport = { x: 232, y: 40, width: 948, height: 720, active: true, covered: false };
+    await service.sessions.setViewport(viewport);
+    expect(system.setSessionsViewport).toHaveBeenCalledWith(viewport);
+  });
+
+  it('switches the language through the language hook and answers the one in effect', async () => {
+    const { service, language } = setup();
+    expect(await service.settings.setLanguage('es')).toBe('es');
+    expect(language.set).toHaveBeenCalledWith('es');
   });
 
   it('shows the picker folders normalized and without duplicates or junk', async () => {

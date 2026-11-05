@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { BrowserWindow, dialog, nativeTheme, type OpenDialogOptions, screen, session } from 'electron';
+import { BrowserWindow, dialog, nativeTheme, type OpenDialogOptions, screen, session, type WebContentsView } from 'electron';
 import { ALLOWED_CONTROL_EVENT_CHANNELS, CONTROL_EVENT_CHANNELS } from '../common/channels.js';
-import type { WindowState } from '../common/control-api.js';
+import type { ControlSection, WindowState } from '../common/control-api.js';
+import { t } from '../common/i18n/index.js';
 import type { ControlIpcSender, ControlWindowActions } from './control-ipc.js';
 import {
   CONTROL_PARTITION,
@@ -34,8 +35,22 @@ export interface ControlWindowDeps {
 }
 
 export interface ControlWindow extends ControlWindowActions {
-  /** Opens the window, or brings the existing one (even a hidden or minimized one) to the front. */
-  open(): void;
+  /**
+   * Opens the window, or brings the existing one (even a hidden or minimized one) to the front. With `section` the page shows
+   * that section: a new window starts on it, an open one is asked to go there.
+   */
+  open(options?: { section?: ControlSection }): void;
+  /** The window's content area in DIP (where the sessions view is placed), or null when there is no window. */
+  contentSize(): { width: number; height: number } | null;
+  /** Puts a view over the page (the sessions view). */
+  attachView(view: WebContentsView): void;
+  detachView(view: WebContentsView): void;
+  /** Gives the keyboard back to the page itself (the sessions view hid). */
+  focusPage(): void;
+  /** The window has the keyboard focus (false for another application's window, a minimized window and no window). */
+  isFocused(): boolean;
+  /** Calls `listener` whenever the window is resized; returns the function that stops it. */
+  onResize(listener: () => void): () => void;
   /** Sends an event to the page; dropped unless the window shows its own local page. */
   send(channel: string, payload: unknown): void;
   /** True for a message from the control window's own page (see `isControlCaller`). */
@@ -61,6 +76,9 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
   let sessionReady = false;
   /** The page's renderer process ended abnormally: it needs a reload before the window is shown again. */
   let rendererGone = false;
+  /** A section somebody asked for while the page was not ready to be told (it was still loading). */
+  let pendingSection: ControlSection | null = null;
+  const resizeListeners = new Set<() => void>();
 
   function alive(): BrowserWindow | null {
     return window !== null && !window.isDestroyed() ? window : null;
@@ -80,6 +98,20 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
 
   function emitState(): void {
     send(CONTROL_EVENT_CHANNELS.windowState, state());
+  }
+
+  /** Tells the page to show the section somebody asked for, as soon as it can listen. */
+  function flushSection(): void {
+    const target = alive();
+    if (target === null || pendingSection === null) return;
+    if (target.webContents.isLoading() || !isLocalControlUrl(target.webContents.getURL(), deps.indexPath)) return;
+    const section = pendingSection;
+    pendingSection = null;
+    send(CONTROL_EVENT_CHANNELS.navigate, section);
+  }
+
+  function query(section: ControlSection | undefined): { query: Record<string, string> } | undefined {
+    return section === undefined ? undefined : { query: { section } };
   }
 
   function persist(): void {
@@ -123,7 +155,7 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
     );
   }
 
-  function create(): BrowserWindow {
+  function create(section: ControlSection | undefined): BrowserWindow {
     setUpSession();
     const initial = initialBounds(deps.bounds.load(), screen.getAllDisplays().map((display) => display.workArea));
     const created = new BrowserWindow({
@@ -154,6 +186,8 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
       if (details.reason !== 'clean-exit') rendererGone = true;
     });
 
+    created.webContents.on('did-finish-load', flushSection);
+
     created.once('ready-to-show', () => {
       if (initial.maximized) created.maximize();
       created.show();
@@ -172,6 +206,9 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
     created.on('focus', stateChanged);
     created.on('blur', stateChanged);
     created.on('resize', schedulePersist);
+    created.on('resize', () => {
+      for (const listener of [...resizeListeners]) listener();
+    });
     created.on('move', schedulePersist);
     created.on('close', (event) => {
       persist();
@@ -193,7 +230,8 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
       if (window === created) window = null;
     });
 
-    created.loadFile(deps.indexPath).catch((error: unknown) => {
+    // A window created for a section starts on it (the page reads `?section=`), so nothing has to be sent to a page still loading.
+    created.loadFile(deps.indexPath, query(section)).catch((error: unknown) => {
       deps.note(`não foi possível carregar a interface do centro de controle: ${error instanceof Error ? error.message : String(error)}`);
     });
     window = created;
@@ -201,7 +239,8 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
   }
 
   return {
-    open() {
+    open(options) {
+      const section = options?.section;
       // Desktop is shutting down (a second launch can still arrive meanwhile): no new window.
       if (quitting) return;
       if (!exists(deps.indexPath)) {
@@ -213,16 +252,49 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
       }
       const existing = alive();
       if (existing === null) {
-        create();
+        create(section);
         return;
       }
       if (rendererGone) {
         rendererGone = false;
-        existing.webContents.reload();
+        if (section === undefined) {
+          existing.webContents.reload();
+        } else {
+          // The reload starts on the section asked for, like a new window.
+          existing.loadFile(deps.indexPath, query(section)).catch((error: unknown) => {
+            deps.note(`não foi possível recarregar a interface do centro de controle: ${error instanceof Error ? error.message : String(error)}`);
+          });
+        }
+      } else if (section !== undefined) {
+        pendingSection = section;
+        flushSection();
       }
       if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
+    },
+    contentSize() {
+      const target = alive();
+      if (target === null) return null;
+      const { width, height } = target.getContentBounds();
+      return { width, height };
+    },
+    attachView(view) {
+      alive()?.contentView.addChildView(view);
+    },
+    detachView(view) {
+      alive()?.contentView.removeChildView(view);
+    },
+    focusPage() {
+      const target = alive();
+      if (target !== null && !target.webContents.isDestroyed()) target.webContents.focus();
+    },
+    isFocused() {
+      return alive()?.isFocused() ?? false;
+    },
+    onResize(listener) {
+      resizeListeners.add(listener);
+      return () => void resizeListeners.delete(listener);
     },
     send,
     isOwnSender(event) {
@@ -231,8 +303,8 @@ export function createControlWindow(deps: ControlWindowDeps): ControlWindow {
     },
     async pickFolders() {
       const options: OpenDialogOptions = {
-        title: 'Escolher pastas permitidas',
-        buttonLabel: 'Adicionar',
+        title: t('main.dialogs.pickFoldersTitle'),
+        buttonLabel: t('main.dialogs.pickFoldersButton'),
         properties: ['openDirectory', 'multiSelections'],
       };
       const parent = alive();

@@ -9,7 +9,12 @@ import { RELEASES_REPO } from './updates.js';
  * which permissions the page gets and where a restored window may sit. `control-window.ts` applies them; the tests pin them.
  */
 
-export const CONTROL_WINDOW_SIZE = { width: 1180, height: 760, minWidth: 940, minHeight: 620 } as const;
+/**
+ * `minWidth` keeps the PWA in the sessions view in its wide layout: the view is the window minus the 64 px rail
+ * (`SIDEBAR_RAIL_WIDTH`) and, in height, minus the title bar, and the PWA is wide from 900 x 500 (`common/sessions-layout.ts`).
+ * 980 = 900 + 64 + a margin for borders and scrollbar gutters. `test/control-policy.test.ts` pins the arithmetic.
+ */
+export const CONTROL_WINDOW_SIZE = { width: 1180, height: 760, minWidth: 980, minHeight: 620 } as const;
 
 /** The control center keeps its own cookies and storage, apart from the panel (which shows the daemon's PWA). */
 export const CONTROL_PARTITION = 'persist:nanachi-control';
@@ -141,7 +146,8 @@ export interface InitialBounds {
 }
 
 /** Height of the title bar the user drags, and how much of it (and how wide) must be on a screen to be reachable. */
-const TITLE_BAR_HEIGHT = 40;
+/** The title bar the page draws (`control/shell/TitleBar.tsx`), in DIP. */
+export const TITLE_BAR_HEIGHT = 40;
 const MIN_VISIBLE_WIDTH = 160;
 const MIN_VISIBLE_HEIGHT = 24;
 

@@ -1,3 +1,4 @@
+import type { Language } from '../common/i18n/languages.js';
 import type { InstallProgress } from './install.js';
 import type { RunningProcess } from './processes.js';
 import type { UninstallProgress } from './uninstall.js';
@@ -33,6 +34,8 @@ export interface InstallerInit {
   startWithWindows: boolean;
   /** Any of `--target`, `--no-shortcuts`, `--no-registry`, `--no-launch` is set: nothing real is touched. */
   testMode: boolean;
+  /** The language of the page: the installer runs before any setting exists, so it is the system locale's. */
+  language: Language;
 }
 
 export interface InstallRequest {
@@ -67,6 +70,8 @@ export interface UninstallerInit {
   dataDir: string;
   testMode: boolean;
   deleteData: boolean;
+  /** The language of the page: Desktop's setting when it has one, else the system locale's. */
+  language: Language;
 }
 
 export type UninstallOutcome = { ok: true; warnings: string[] } | { ok: false; message: string };

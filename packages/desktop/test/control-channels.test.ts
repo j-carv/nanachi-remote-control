@@ -54,4 +54,26 @@ describe('control channel allowlists', () => {
       expect(ALLOWED_CONTROL_SYNC_CHANNELS.has(channel)).toBe(false);
     }
   });
+
+  it('has the sessions area report, the language switch and the two events that drive the page, on the control side only', () => {
+    expect(CONTROL_INVOKE_CHANNELS.sessionsViewport).toBe('control:sessions-viewport');
+    expect(CONTROL_INVOKE_CHANNELS.settingsSetLanguage).toBe('control:settings-set-language');
+    expect(CONTROL_EVENT_CHANNELS.navigate).toBe('control:navigate');
+    expect(CONTROL_EVENT_CHANNELS.language).toBe('control:language-changed');
+    for (const channel of ['control:sessions-viewport', 'control:settings-set-language', 'control:navigate', 'control:language-changed']) {
+      expect(ALLOWED_INVOKE_CHANNELS.has(channel) || ALLOWED_EVENT_CHANNELS.has(channel) || ALLOWED_SYNC_CHANNELS.has(channel), channel).toBe(false);
+    }
+  });
+
+  it('tells the page when the sessions view gave up, and the PWA when the language changed, each on its own side', () => {
+    expect(CONTROL_EVENT_CHANNELS.sessionsView).toBe('control:sessions-view-changed');
+    expect(EVENT_CHANNELS.language).toBe('desktop:language-changed');
+    expect(ALLOWED_EVENT_CHANNELS.has(CONTROL_EVENT_CHANNELS.sessionsView)).toBe(false);
+    expect(ALLOWED_CONTROL_EVENT_CHANNELS.has(EVENT_CHANNELS.language)).toBe(false);
+  });
+
+  it('no longer has a channel that opens a separate sessions window', () => {
+    expect(Object.keys(CONTROL_INVOKE_CHANNELS)).not.toContain('openSessions');
+    expect(Object.values(CONTROL_INVOKE_CHANNELS)).not.toContain('control:open-sessions');
+  });
 });

@@ -40,18 +40,21 @@ function fakeIpc(): FakeIpc {
 
 describe('control bridge', () => {
   it('exposes exactly the ControlApi surface and nothing else', () => {
-    const bridge = createControlBridge(fakeIpc(), '0.2.0');
+    const bridge = createControlBridge(fakeIpc(), '0.2.0', 'pt-BR');
     expect(Object.keys(bridge).sort()).toEqual(
       [
         'accounts',
         'devices',
         'folders',
+        'language',
         'logs',
         'onDaemonStatus',
+        'onLanguage',
+        'onNavigate',
         'openDataFolder',
-        'openSessions',
         'overview',
         'restartDaemon',
+        'sessions',
         'settings',
         'tailscale',
         'version',
@@ -64,19 +67,22 @@ describe('control bridge', () => {
     expect(Object.keys(bridge.accounts).sort()).toEqual(['list', 'setActive']);
     expect(Object.keys(bridge.tailscale).sort()).toEqual(['onStatus', 'openLogin', 'start', 'status', 'stop']);
     expect(Object.keys(bridge.logs).sort()).toEqual(['get', 'openFolder']);
+    expect(Object.keys(bridge.sessions).sort()).toEqual(['onState', 'setViewport']);
     expect(Object.keys(bridge.settings).sort()).toEqual([
       'checkForUpdate',
       'getAutostart',
       'openUpdate',
       'setAutostart',
+      'setLanguage',
       'uninstall',
     ]);
     expect(bridge.version).toBe('0.2.0');
+    expect(bridge.language).toBe('pt-BR');
   });
 
   it('maps every method to its own control channel, and uses every channel of the allowlist', async () => {
     const ipc = fakeIpc();
-    const bridge = createControlBridge(ipc, '0.2.0');
+    const bridge = createControlBridge(ipc, '0.2.0', 'pt-BR');
 
     await bridge.window.minimize();
     await bridge.window.toggleMaximize();
@@ -84,8 +90,8 @@ describe('control bridge', () => {
     await bridge.window.state();
     await bridge.overview();
     await bridge.restartDaemon();
-    await bridge.openSessions();
     await bridge.openDataFolder();
+    await bridge.sessions.setViewport({ x: 232, y: 40, width: 948, height: 720, active: true, covered: false });
     await bridge.folders.get();
     await bridge.folders.pick();
     await bridge.folders.save(['C:\\Projetos'], true);
@@ -102,6 +108,7 @@ describe('control bridge', () => {
     await bridge.tailscale.openLogin('https://login.tailscale.com/a/abc');
     await bridge.logs.get();
     await bridge.logs.openFolder();
+    await bridge.settings.setLanguage('es');
     await bridge.settings.getAutostart();
     await bridge.settings.setAutostart(true);
     await bridge.settings.checkForUpdate();
@@ -116,8 +123,8 @@ describe('control bridge', () => {
       CONTROL_INVOKE_CHANNELS.windowState,
       CONTROL_INVOKE_CHANNELS.overview,
       CONTROL_INVOKE_CHANNELS.restartDaemon,
-      CONTROL_INVOKE_CHANNELS.openSessions,
       CONTROL_INVOKE_CHANNELS.openDataFolder,
+      CONTROL_INVOKE_CHANNELS.sessionsViewport,
       CONTROL_INVOKE_CHANNELS.foldersGet,
       CONTROL_INVOKE_CHANNELS.foldersPick,
       CONTROL_INVOKE_CHANNELS.foldersSave,
@@ -134,6 +141,7 @@ describe('control bridge', () => {
       CONTROL_INVOKE_CHANNELS.tailscaleOpenLogin,
       CONTROL_INVOKE_CHANNELS.logsGet,
       CONTROL_INVOKE_CHANNELS.logsOpenFolder,
+      CONTROL_INVOKE_CHANNELS.settingsSetLanguage,
       CONTROL_INVOKE_CHANNELS.settingsGetAutostart,
       CONTROL_INVOKE_CHANNELS.settingsSetAutostart,
       CONTROL_INVOKE_CHANNELS.settingsCheckForUpdate,
@@ -147,7 +155,7 @@ describe('control bridge', () => {
 
   it('forwards the page arguments untouched, and only those', async () => {
     const ipc = fakeIpc();
-    const bridge = createControlBridge(ipc, '0.2.0');
+    const bridge = createControlBridge(ipc, '0.2.0', 'pt-BR');
     await bridge.folders.save(['C:\\A', 'D:\\'], false);
     await bridge.folders.save(['C:\\A'], true, 2);
     await bridge.devices.revoke('d-1');
@@ -155,6 +163,7 @@ describe('control bridge', () => {
     await bridge.accounts.list();
     await bridge.accounts.list(true);
     await bridge.settings.setAutostart(false);
+    await bridge.settings.setLanguage('en');
     expect(ipc.invoked.map((call) => call.args)).toEqual([
       [['C:\\A', 'D:\\'], false],
       [['C:\\A'], true, 2],
@@ -163,22 +172,27 @@ describe('control bridge', () => {
       [],
       [true],
       [false],
+      ['en'],
     ]);
   });
 
   it('subscribes only to control event channels and hands the page the payload, never the IPC event', () => {
     const ipc = fakeIpc();
-    const bridge = createControlBridge(ipc, '0.2.0');
+    const bridge = createControlBridge(ipc, '0.2.0', 'pt-BR');
     const onState = vi.fn();
     const onDaemon = vi.fn();
     const onTailscale = vi.fn();
+    const onNavigate = vi.fn();
+    const onLanguage = vi.fn();
     const offState = bridge.window.onState(onState);
     bridge.onDaemonStatus(onDaemon);
     bridge.tailscale.onStatus(onTailscale);
+    bridge.onNavigate(onNavigate);
+    bridge.onLanguage(onLanguage);
+    const onSessionsView = vi.fn();
+    bridge.sessions.onState(onSessionsView);
 
-    expect([...ipc.listeners.keys()].sort()).toEqual(
-      [CONTROL_EVENT_CHANNELS.windowState, CONTROL_EVENT_CHANNELS.daemonStatus, CONTROL_EVENT_CHANNELS.tailscaleStatus].sort(),
-    );
+    expect([...ipc.listeners.keys()].sort()).toEqual(Object.values(CONTROL_EVENT_CHANNELS).sort());
     for (const channel of ipc.listeners.keys()) expect(ALLOWED_CONTROL_EVENT_CHANNELS.has(channel)).toBe(true);
 
     ipc.emit(CONTROL_EVENT_CHANNELS.windowState, { maximized: true, focused: false });
@@ -190,6 +204,13 @@ describe('control bridge', () => {
     expect(onDaemon).toHaveBeenCalledWith({ state: 'running' });
     ipc.emit(CONTROL_EVENT_CHANNELS.tailscaleStatus, { state: 'off' });
     expect(onTailscale).toHaveBeenCalledWith({ state: 'off' });
+    ipc.emit(CONTROL_EVENT_CHANNELS.navigate, 'sessions');
+    expect(onNavigate).toHaveBeenCalledWith('sessions');
+    ipc.emit(CONTROL_EVENT_CHANNELS.language, 'es');
+    expect(onLanguage).toHaveBeenCalledWith('es');
+    ipc.emit(CONTROL_EVENT_CHANNELS.sessionsView, 'crashed');
+    expect(onSessionsView).toHaveBeenCalledWith('crashed');
+    expect(onNavigate).toHaveBeenCalledTimes(1);
 
     offState();
     ipc.emit(CONTROL_EVENT_CHANNELS.windowState, { maximized: false, focused: true });
@@ -198,9 +219,11 @@ describe('control bridge', () => {
   });
 
   it('refuses a callback that is not a function', () => {
-    const bridge = createControlBridge(fakeIpc(), '0.2.0');
+    const bridge = createControlBridge(fakeIpc(), '0.2.0', 'pt-BR');
     expect(() => bridge.onDaemonStatus('nope' as never)).toThrow(TypeError);
     expect(() => bridge.window.onState(undefined as never)).toThrow(TypeError);
     expect(() => bridge.tailscale.onStatus(1 as never)).toThrow(TypeError);
+    expect(() => bridge.onNavigate(null as never)).toThrow(TypeError);
+    expect(() => bridge.onLanguage('es' as never)).toThrow(TypeError);
   });
 });

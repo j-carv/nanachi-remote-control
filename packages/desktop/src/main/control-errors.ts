@@ -1,10 +1,11 @@
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { ControlError } from '../common/control-api.js';
 import { DaemonApiError } from './daemon-api.js';
 import { PairingError } from './pairing.js';
 import { RootsConfigError } from './roots-config.js';
 
-/** A failure the renderer can show as is: Portuguese, no internals, never a token. */
+/** A failure the renderer can show as is: in Desktop's language, no internals, never a token. */
 export function controlFailure(code: ControlError['code'], message: string): ControlError {
   return { ok: false, code, message };
 }
@@ -12,47 +13,43 @@ export function controlFailure(code: ControlError['code'], message: string): Con
 function rejectedMessage(apiCode: string | null): string {
   switch (apiCode) {
     case 'accounts_unsupported':
-      return 'Este agente não tem contas extras.';
+      return t('main.control.rejected.accountsUnsupported');
     case 'account_in_use':
-      return 'Há uma sessão usando esta conta.';
+      return t('main.control.rejected.accountInUse');
     case 'too_many_accounts':
-      return 'O limite de contas deste agente foi atingido.';
+      return t('main.control.rejected.tooManyAccounts');
     case 'not_found':
-      return 'O agente ou a conta não foi encontrado.';
+      return t('main.control.rejected.notFound');
     default:
-      return 'O daemon recusou o pedido.';
+      return t('main.control.rejected.refused');
   }
 }
 
 function daemonFailure(error: DaemonApiError): ControlError {
   switch (error.kind) {
     case 'unavailable':
-      return controlFailure('daemon_unavailable', 'Não foi possível falar com o daemon do Nanachi. Ele pode estar parado ou ainda iniciando.');
+      return controlFailure('daemon_unavailable', t('main.control.daemon.unavailable'));
     case 'not_paired':
-      return controlFailure('not_paired', `Não foi possível parear o Nanachi Desktop com o daemon: ${error.message}`);
+      return controlFailure('not_paired', t('main.control.daemon.notPaired', { detail: error.message }));
     case 'unauthorized':
-      return controlFailure('unauthorized', 'O daemon recusou o acesso do Nanachi Desktop; o dispositivo pode ter sido revogado. Tente de novo.');
+      return controlFailure('unauthorized', t('main.control.daemon.unauthorized'));
     case 'forbidden':
-      return controlFailure(
-        'unauthorized',
-        'O daemon só aceita acessos pelo Tailscale (allowedTailscaleLogins no config.json), então o Nanachi Desktop não consegue consultá-lo. ' +
-          'Deixe essa lista vazia no config.json da pasta de dados do Desktop.',
-      );
+      return controlFailure('unauthorized', t('main.control.daemon.forbidden'));
     case 'rejected':
       return controlFailure('invalid_input', rejectedMessage(error.apiCode));
     case 'not_found':
-      return controlFailure('unknown', 'O daemon não encontrou o que foi pedido.');
+      return controlFailure('unknown', t('main.control.daemon.notFound'));
     case 'busy':
-      return controlFailure('unknown', 'O daemon pediu calma: houve tentativas demais seguidas. Aguarde um instante e tente de novo.');
+      return controlFailure('unknown', t('main.control.daemon.busy'));
     case 'server':
-      return controlFailure('unknown', `O daemon respondeu com erro (HTTP ${error.status ?? '?'}). Veja a aba Logs.`);
+      return controlFailure('unknown', t('main.control.daemon.server', { status: error.status ?? '?' }));
     case 'bad_response':
-      return controlFailure('unknown', 'O daemon respondeu algo que o Nanachi não entendeu. Ele pode ser de outra versão.');
+      return controlFailure('unknown', t('main.control.daemon.badResponse'));
   }
 }
 
 function pairingFailure(error: PairingError): ControlError {
-  const message = `Não foi possível concluir o pareamento: ${error.message}`;
+  const message = t('main.control.pairingFailed', { detail: error.message });
   if (error.kind === 'network') return controlFailure('daemon_unavailable', message);
   if (error.kind === 'rejected') return controlFailure('not_paired', message);
   return controlFailure('unknown', message);
@@ -63,5 +60,5 @@ export function toControlError(error: unknown): ControlError {
   if (error instanceof DaemonApiError) return daemonFailure(error);
   if (error instanceof RootsConfigError) return controlFailure(error.code, error.message);
   if (error instanceof PairingError) return pairingFailure(error);
-  return controlFailure('unknown', `Algo deu errado: ${messageOf(error)}`);
+  return controlFailure('unknown', t('main.control.somethingWrong', { detail: messageOf(error) }));
 }

@@ -1,5 +1,6 @@
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { copyText } from '../lib/clipboard.js';
 import { Button } from './Button.js';
 import { useToast } from './Toast.js';
@@ -7,6 +8,7 @@ import { Tooltip } from './Tooltip.js';
 
 /** An icon button that copies `text`; the icon turns into a check for a moment. */
 export function CopyButton({ text, label }: { text: string; label: string }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
@@ -14,7 +16,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 
   const copy = async (): Promise<void> => {
     if (!(await copyText(text))) {
-      toast({ tone: 'error', message: 'Não foi possível copiar.' });
+      toast({ tone: 'error', message: t('common.copyFailed') });
       return;
     }
     setCopied(true);
@@ -23,7 +25,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   };
 
   return (
-    <Tooltip label={copied ? 'Copiado' : label}>
+    <Tooltip label={copied ? t('common.copied') : label}>
       <Button variant="ghost" size="icon-sm" aria-label={label} onClick={() => void copy()}>
         {copied ? <Check className="text-success" aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </Button>

@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { PairingCode, SeedMachine } from '../common/types.js';
 
@@ -21,23 +22,23 @@ export class PairingError extends Error {
 export function parsePairOutput(stdout: string): PairingCode {
   const lines = stdout.split(/\r?\n/).filter((line) => line.trim() !== '');
   const last = lines.at(-1);
-  if (last === undefined) throw new PairingError('bad_output', 'o comando de pareamento não imprimiu nada');
+  if (last === undefined) throw new PairingError('bad_output', t('main.pairing.cliNothing'));
 
   let json: unknown;
   try {
     json = JSON.parse(last);
   } catch {
-    throw new PairingError('bad_output', 'o comando de pareamento imprimiu algo que não é JSON');
+    throw new PairingError('bad_output', t('main.pairing.cliNotJson'));
   }
   if (typeof json !== 'object' || json === null) {
-    throw new PairingError('bad_output', 'resposta do comando de pareamento inválida');
+    throw new PairingError('bad_output', t('main.pairing.cliInvalid'));
   }
   const { code, expiresAt } = json as Record<string, unknown>;
   if (typeof code !== 'string' || !/^[0-9]{6}$/.test(code)) {
-    throw new PairingError('bad_output', 'o código de pareamento não tem 6 dígitos');
+    throw new PairingError('bad_output', t('main.pairing.codeNotSixDigits'));
   }
   if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= 0) {
-    throw new PairingError('bad_output', 'a validade do código de pareamento é inválida');
+    throw new PairingError('bad_output', t('main.pairing.expiryInvalid'));
   }
   return { code, expiresAt };
 }
@@ -54,20 +55,20 @@ export function parseDeviceOutput(stdout: string): NewDevice {
     .split(/\r?\n/)
     .filter((line) => line.trim() !== '')
     .at(-1);
-  if (last === undefined) throw new PairingError('bad_output', 'o comando de dispositivo não imprimiu nada');
+  if (last === undefined) throw new PairingError('bad_output', t('main.pairing.deviceNothing'));
 
   let json: unknown;
   try {
     json = JSON.parse(last);
   } catch {
-    throw new PairingError('bad_output', 'o comando de dispositivo imprimiu algo que não é JSON');
+    throw new PairingError('bad_output', t('main.pairing.deviceNotJson'));
   }
   if (typeof json !== 'object' || json === null) {
-    throw new PairingError('bad_output', 'resposta do comando de dispositivo inválida');
+    throw new PairingError('bad_output', t('main.pairing.deviceInvalid'));
   }
   const { deviceId, token } = json as Record<string, unknown>;
   if (typeof deviceId !== 'string' || deviceId === '' || typeof token !== 'string' || token === '') {
-    throw new PairingError('bad_output', 'o comando de dispositivo não devolveu deviceId e token');
+    throw new PairingError('bad_output', t('main.pairing.deviceIncomplete'));
   }
   return { deviceId, token };
 }
@@ -189,15 +190,15 @@ export function createPairing(deps: PairingDeps): DesktopPairing {
     try {
       response = await deps.fetchImpl(`${baseUrl}/api/me`, { headers: { authorization: `Bearer ${token}` } });
     } catch (error) {
-      throw new PairingError('network', `o daemon não respondeu ao pareamento: ${messageOf(error)}`);
+      throw new PairingError('network', t('main.pairing.noAnswer', { detail: messageOf(error) }));
     }
-    if (response.status === 429) throw new PairingError('rate_limited', 'muitas tentativas de pareamento; aguarde um pouco');
-    if (!response.ok) throw new PairingError('rejected', `o daemon recusou o novo dispositivo (HTTP ${response.status})`);
+    if (response.status === 429) throw new PairingError('rate_limited', t('main.pairing.rateLimited'));
+    if (!response.ok) throw new PairingError('rejected', t('main.pairing.deviceRefused', { status: response.status }));
 
     const body: unknown = await response.json().catch(() => null);
     const { machineId, machineName } = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
     if (typeof machineId !== 'string' || typeof machineName !== 'string' || machineId === '' || machineName === '') {
-      throw new PairingError('bad_response', 'resposta de pareamento inválida');
+      throw new PairingError('bad_response', t('main.pairing.badResponse'));
     }
     const paired: SeedMachine = { id: machineId, name: machineName, baseUrl, token };
     deps.store.save(paired);

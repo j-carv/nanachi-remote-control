@@ -1,3 +1,4 @@
+import { PWA_LANGUAGE_KEY, type Language } from '../common/i18n/languages.js';
 import type { SeedMachine } from '../common/types.js';
 
 /** Same keys as `packages/pwa/src/machines.ts`. */
@@ -75,5 +76,20 @@ export function seedMachines(storage: StorageLike, machine: SeedMachine | null, 
   } catch {
     // Unreadable JSON or storage that refuses to answer: leave the page to cope, never throw in the preload.
     return 'skipped';
+  }
+}
+
+/**
+ * Gives the PWA Desktop's language: only the `nanachi.language` key, nothing else of its storage. Main hands a language to the
+ * preload only when it has something to write (the first load, a change in Desktop), so this never undoes a choice made inside the PWA.
+ */
+export function seedLanguage(storage: StorageLike, language: Language | null): boolean {
+  if (language === null) return false;
+  try {
+    storage.setItem(PWA_LANGUAGE_KEY, language);
+    return true;
+  } catch {
+    // Storage that refuses to answer: the PWA starts in its own language, never an exception in the preload.
+    return false;
   }
 }

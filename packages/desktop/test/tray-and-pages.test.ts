@@ -6,7 +6,6 @@ import {
   formatRemaining,
   groupCode,
   renderPairingHtml,
-  renderStatusPageHtml,
   toDataUrl,
 } from '../src/main/pages.js';
 import { buildTrayMenu, trayTooltip, type TrayActions } from '../src/main/tray-menu.js';
@@ -154,44 +153,6 @@ describe('pairing page', () => {
     expect(script).toContain('textContent');
     expect(script).not.toContain('innerHTML');
     expect(script).not.toContain('fetch');
-  });
-});
-
-describe('status page', () => {
-  it('shows the error, its reason and the log tail, escaped, with no script', () => {
-    const html = renderStatusPageHtml({
-      state: 'error',
-      port: 7811,
-      message: 'O daemon caiu 6 vezes <b>em 2 minutos</b>.',
-      logTail: ['{"msg":"EADDRINUSE"}', '<script>alert(1)</script>'],
-    });
-    expect(html).toContain('O daemon não conseguiu iniciar');
-    expect(html).toContain('&lt;b&gt;em 2 minutos&lt;/b&gt;');
-    expect(html).toContain('EADDRINUSE');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-    expect(html).not.toContain('<script');
-    expect(html).toContain("default-src 'none'");
-    expect(EMOJI.test(html)).toBe(false);
-  });
-
-  it('explains a daemon that only accepts Tailscale, in the error tone', () => {
-    const html = renderStatusPageHtml({
-      state: 'attached',
-      port: 7777,
-      restricted: true,
-      message: 'O daemon responde, mas só aceita acessos pelo Tailscale (allowedTailscaleLogins no config.json).',
-      logTail: [],
-    });
-    expect(html).toContain('O painel local não consegue usar este daemon');
-    expect(html).toContain('allowedTailscaleLogins');
-    expect(html).toContain('class="error"');
-    expect(html).not.toContain('Abrindo o painel');
-  });
-
-  it('says it is waiting while the daemon starts', () => {
-    const html = renderStatusPageHtml({ state: 'starting', port: 7811, message: null, logTail: [] });
-    expect(html).toContain('Iniciando o daemon');
-    expect(html).toContain('porta 7811');
   });
 });
 

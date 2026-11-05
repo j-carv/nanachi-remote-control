@@ -1,4 +1,4 @@
-/** Origin of the daemon the panel talks to: `http://127.0.0.1:<port>`. */
+/** Origin of the daemon the sessions view (the PWA) talks to: `http://127.0.0.1:<port>`. */
 export function daemonOrigin(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
@@ -17,13 +17,13 @@ export function isSameOrigin(url: string | undefined, origin: string): boolean {
   return parsed !== null && parsed.origin === origin;
 }
 
-/** The panel may stay on pages of the daemon origin; every other navigation is blocked. */
+/** The sessions view may stay on pages of the daemon origin; every other navigation is blocked. */
 export function shouldAllowNavigation(url: string, origin: string): boolean {
   return isSameOrigin(url, origin);
 }
 
 export interface WindowOpenDecision {
-  /** New windows are never created: the panel is a single window. */
+  /** New windows are never created: the PWA lives in one view of the control center. */
   action: 'deny';
   /** An http(s) address that is not the daemon itself goes to the default browser. */
   openExternally: string | null;
@@ -49,9 +49,7 @@ export function backgroundColor(dark: boolean): string {
   return dark ? '#0a0a0a' : '#fafafa';
 }
 
-export const PANEL_SIZE = { width: 1100, height: 760, minWidth: 420, minHeight: 640 } as const;
-
-/** The security preferences of the panel window. A test pins them so nobody loosens one by accident. */
+/** The security preferences of the sessions view (the PWA). A test pins them so nobody loosens one by accident. */
 export function panelWebPreferences(preload: string): {
   preload: string;
   contextIsolation: true;

@@ -1,12 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { PWA_WIDE_MIN_HEIGHT, PWA_WIDE_MIN_WIDTH, SIDEBAR_RAIL_WIDTH } from '../src/common/sessions-layout.js';
 import {
   CONTROL_PARTITION,
   CONTROL_WINDOW_SIZE,
   controlBackgroundColor,
   controlWebPreferences,
   initialBounds,
+  TITLE_BAR_HEIGHT,
   isAllowedLoginUrl,
   isAllowedReleaseUrl,
   isControlCaller,
@@ -172,7 +175,23 @@ describe('window settings', () => {
   });
 
   it('has the sizes of the plan', () => {
-    expect(CONTROL_WINDOW_SIZE).toEqual({ width: 1180, height: 760, minWidth: 940, minHeight: 620 });
+    expect(CONTROL_WINDOW_SIZE).toEqual({ width: 1180, height: 760, minWidth: 980, minHeight: 620 });
+  });
+
+  it('never leaves the PWA in the sessions view narrower or shorter than the width where it switches to its wide layout', () => {
+    // On Sessões the sidebar is the 64 px rail (whatever was saved) and the view fills the rest, below the title bar.
+    const { minWidth, minHeight } = CONTROL_WINDOW_SIZE;
+    expect(minWidth - SIDEBAR_RAIL_WIDTH).toBeGreaterThanOrEqual(PWA_WIDE_MIN_WIDTH);
+    expect(minHeight - TITLE_BAR_HEIGHT).toBeGreaterThanOrEqual(PWA_WIDE_MIN_HEIGHT);
+    // A margin, so a border or a scrollbar gutter does not push it under.
+    expect(minWidth - SIDEBAR_RAIL_WIDTH - PWA_WIDE_MIN_WIDTH).toBeGreaterThanOrEqual(16);
+    expect(SIDEBAR_RAIL_WIDTH).toBe(64);
+  });
+
+  it('uses the thresholds of the PWA layout (packages/pwa/src/wide/layout.ts)', () => {
+    const source = readFileSync(new URL('../../pwa/src/wide/layout.ts', import.meta.url), 'utf8');
+    expect(source).toMatch(new RegExp(`export const WIDE_MIN_WIDTH = ${PWA_WIDE_MIN_WIDTH};`));
+    expect(source).toMatch(new RegExp(`export const WIDE_MIN_HEIGHT = ${PWA_WIDE_MIN_HEIGHT};`));
   });
 
   it('follows the theme tokens: --ui-background light oklch(0.985 0 0) and dark oklch(0.145 0 0)', () => {
@@ -226,7 +245,7 @@ describe('initialBounds', () => {
     expect(initialBounds({ x: 10, y: 10, width: 300, height: 200, maximized: false }, [screen])).toEqual({
       x: 10,
       y: 10,
-      width: 940,
+      width: 980,
       height: 620,
       maximized: false,
     });
@@ -243,7 +262,7 @@ describe('initialBounds', () => {
       maximized: false,
     });
     const tiny: Rect = { x: 0, y: 0, width: 800, height: 560 };
-    expect(initialBounds(undefined, [tiny])).toMatchObject({ width: 940, height: 620 });
+    expect(initialBounds(undefined, [tiny])).toMatchObject({ width: 980, height: 620 });
   });
 
   it('works without any display information', () => {

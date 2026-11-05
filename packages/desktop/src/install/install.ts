@@ -1,5 +1,6 @@
 import * as nodeFs from 'node:fs';
 import { dirname, join } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import { APP_USER_MODEL_ID, EXE_NAME, INSTALL_MARKER, PRODUCT_NAME, SHORTCUT_NAME } from './constants.js';
 import { assertInsideInstall, checkInstallTarget } from './guards.js';
@@ -32,7 +33,7 @@ export interface InstallOptions {
 
 export interface InstallStepPlan {
   id: InstallStepId;
-  /** Shown next to the progress bar (Portuguese). */
+  /** Shown next to the progress bar, in the language in effect when the plan is made. */
   label: string;
   /** Share of the progress bar. */
   weight: number;
@@ -40,31 +41,32 @@ export interface InstallStepPlan {
   skipped: string | null;
 }
 
-const TEST_MODE = 'modo de teste';
-const OFF = 'desligado nas opções';
-
-/** The steps in order, with what each one will do for these options. The launch is the user's click, not a step. */
+/**
+ * The steps in order, with what each one will do for these options. The launch is the user's click, not a step. The texts are
+ * written in the language in effect when the plan is made.
+ */
 export function planInstall(options: InstallOptions): InstallStepPlan[] {
+  const testMode = t('installer.common.testMode');
   return [
-    { id: 'close', label: 'Verificando se o Nanachi está aberto', weight: 2, skipped: null },
-    { id: 'extract', label: 'Copiando os arquivos', weight: 90, skipped: null },
+    { id: 'close', label: t('installer.steps.install.close'), weight: 2, skipped: null },
+    { id: 'extract', label: t('installer.steps.install.extract'), weight: 90, skipped: null },
     {
       id: 'shortcuts',
-      label: 'Criando atalhos',
+      label: t('installer.steps.install.shortcuts'),
       weight: 3,
-      skipped: options.noShortcuts ? TEST_MODE : null,
+      skipped: options.noShortcuts ? testMode : null,
     },
     {
       id: 'startup',
-      label: 'Configurando o início com o Windows',
+      label: t('installer.steps.install.startup'),
       weight: 2,
-      skipped: options.noRegistry ? TEST_MODE : options.startWithWindows ? null : OFF,
+      skipped: options.noRegistry ? testMode : options.startWithWindows ? null : t('installer.steps.skippedOff'),
     },
     {
       id: 'registry',
-      label: 'Registrando o Nanachi no Windows',
+      label: t('installer.steps.install.registry'),
       weight: 3,
-      skipped: options.noRegistry ? TEST_MODE : null,
+      skipped: options.noRegistry ? testMode : null,
     },
   ];
 }
@@ -159,10 +161,10 @@ function prepareTarget(dir: string, fs: FsLike, incomplete: Marker, removeOption
     writeMarker(dir, incomplete, fs);
     return;
   }
-  if (!fs.statSync(dir).isDirectory()) throw new InstallError('Já existe um arquivo com esse nome. Escolha outra pasta.');
+  if (!fs.statSync(dir).isDirectory()) throw new InstallError(t('installer.errors.targetIsFile'));
   const entries = fs.readdirSync(dir);
   if (entries.length > 0 && readInstallMarker(dir, fs) === null) {
-    throw new InstallError('A pasta não está vazia e não parece uma instalação do Nanachi. Escolha uma pasta vazia.');
+    throw new InstallError(t('installer.errors.targetNotEmpty'));
   }
   writeMarker(dir, incomplete, fs);
   for (const name of entries) {
@@ -170,7 +172,7 @@ function prepareTarget(dir: string, fs: FsLike, incomplete: Marker, removeOption
     const path = join(dir, name);
     assertInsideInstall(dir, path);
     if (!removeTree(path, fs, removeOptions)) {
-      throw new InstallError(`Não foi possível substituir ${name} da instalação anterior. Feche o Nanachi e tente de novo.`);
+      throw new InstallError(t('installer.errors.cannotReplace', { name }));
     }
   }
 }
@@ -184,20 +186,20 @@ async function closeRunning(dir: string, deps: InstallDeps): Promise<void> {
     try {
       return await deps.findRunning(dir);
     } catch (error) {
-      throw new InstallError(`Não foi possível verificar se o Nanachi está aberto: ${messageOf(error)}`);
+      throw new InstallError(t('installer.errors.checkRunning', { detail: messageOf(error) }));
     }
   };
   const running = await scan();
   if (running.length === 0) return;
   if (!(await deps.confirmClose(running))) {
-    throw new InstallError('Instalação cancelada: o Nanachi continua aberto.');
+    throw new InstallError(t('installer.errors.installCancelled'));
   }
   await deps.stopProcesses(running.map((process) => process.pid));
   for (let attempt = 0; attempt < 20; attempt += 1) {
     if ((await scan()).length === 0) return;
     await sleep(500);
   }
-  throw new InstallError('Não foi possível fechar o Nanachi. Feche-o pela bandeja do Windows e tente de novo.');
+  throw new InstallError(t('installer.errors.cannotClose'));
 }
 
 /**
@@ -253,7 +255,7 @@ export async function runInstall(options: InstallOptions, deps: InstallDeps): Pr
     const now = new Date().toISOString();
     prepareTarget(dir, fs, { version: deps.payload.meta.version, installedAt: now, complete: false }, deps.removeOptions);
     await deps.extract(deps.payload.zipPath, dir, (bytes) => report(bytes / deps.payload.meta.uncompressedBytes));
-    if (!exists(exe)) throw new InstallError(`A instalação terminou sem ${EXE_NAME}. Baixe o instalador de novo.`);
+    if (!exists(exe)) throw new InstallError(t('installer.errors.missingExe', { exe: EXE_NAME }));
     writeMarker(dir, { version: deps.payload.meta.version, installedAt: now, complete: true }, fs);
   });
 
@@ -271,7 +273,7 @@ export async function runInstall(options: InstallOptions, deps: InstallDeps): Pr
         description: PRODUCT_NAME,
         appUserModelId: APP_USER_MODEL_ID,
       });
-      if (!created) throw new InstallError(`Não foi possível criar o atalho ${path}.`);
+      if (!created) throw new InstallError(t('installer.errors.shortcutFailed', { path }));
     }
   });
 
@@ -283,7 +285,7 @@ export async function runInstall(options: InstallOptions, deps: InstallDeps): Pr
     const sizeKb = Math.ceil(deps.payload.meta.uncompressedBytes / 1024);
     for (const args of buildUninstallEntry({ installDir: dir, version: deps.payload.meta.version, estimatedSizeKb: sizeKb })) {
       const code = await deps.runReg(args);
-      if (code !== 0) throw new InstallError('Não foi possível registrar o Nanachi no Windows (reg.exe falhou).');
+      if (code !== 0) throw new InstallError(t('installer.errors.registryFailed'));
     }
   });
 

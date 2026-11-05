@@ -1,22 +1,38 @@
+import { t } from '../../src/common/i18n/index.js';
 import type { UninstallerApi, UninstallerInit } from '../../src/install/ipc.js';
-import { createProgressView, showView, slot } from './common.js';
+import { applyLanguage, browserLanguage, createProgressView, showBridgeMissing, showView, slot } from './common.js';
 
 /** The uninstall window of `Nanachi.exe --uninstall`: the question, progress, and the result. */
 
 const bridge: UninstallerApi | undefined = window.uninstaller;
 
+/** Stands where the folder goes in the sentence; the folder itself is put in its own element, in monospace. */
+const FOLDER_MARK = '\u0001';
+
+/** "Your sessions ... stay saved in <folder> ...": the sentence follows the language, the folder is set apart. */
+function writeDataNote(dataDir: string): void {
+  const [before = '', after = ''] = t('installer.uninstall.dataNote', { dataDir: FOLDER_MARK }).split(FOLDER_MARK);
+  const folder = document.createElement('span');
+  folder.className = 'mono';
+  folder.dataset.slot = 'data-dir';
+  folder.textContent = dataDir;
+  slot('data-note').replaceChildren(before, folder, after);
+}
+
 function start(api: UninstallerApi, init: UninstallerInit): void {
+  // Desktop's own setting when there is one, the system locale otherwise: the main process picked it.
+  applyLanguage(init.language);
   const deleteData = slot<HTMLInputElement>('delete-data');
   const progress = createProgressView();
   const closeButton = slot<HTMLButtonElement>('close');
   let removing = false;
 
   deleteData.checked = init.deleteData;
-  slot('data-dir').textContent = init.dataDir;
-  slot('version').textContent = `Versão ${init.version}`;
+  writeDataNote(init.dataDir);
+  slot('version').textContent = t('installer.common.version', { version: init.version });
   if (init.testMode) {
     const scope = slot('scope');
-    scope.textContent = 'modo de teste';
+    scope.textContent = t('installer.common.testMode');
     scope.classList.add('badge');
   }
 
@@ -44,9 +60,7 @@ function start(api: UninstallerApi, init: UninstallerInit): void {
       showView('error');
       return;
     }
-    slot('done-detail').textContent = deleteData.checked
-      ? 'O programa e os dados foram removidos.'
-      : 'Seus dados foram mantidos e voltam se você instalar de novo.';
+    slot('done-detail').textContent = deleteData.checked ? t('installer.uninstall.doneDetailDeleted') : t('installer.uninstall.doneDetailKept');
     const warnings = slot('warnings');
     warnings.replaceChildren(
       ...outcome.warnings.map((warning) => {
@@ -66,7 +80,11 @@ function start(api: UninstallerApi, init: UninstallerInit): void {
 }
 
 if (bridge === undefined) {
-  document.body.textContent = 'O desinstalador não conseguiu iniciar (sem ponte com o aplicativo).';
+  showBridgeMissing('installer.uninstall.bridgeMissing');
 } else {
-  void bridge.init().then((init) => start(bridge, init));
+  // If the main process cannot answer, the page still shows itself (in the browser's language) instead of staying hidden.
+  void bridge.init().then(
+    (init) => start(bridge, init),
+    () => applyLanguage(browserLanguage()),
+  );
 }

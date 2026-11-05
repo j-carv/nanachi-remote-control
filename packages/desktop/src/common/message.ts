@@ -1,3 +1,5 @@
+import { t } from './i18n/translate.js';
+
 /**
  * The text of anything that was thrown or rejected. A `catch` binding is `unknown`: a promise can reject with a string, a
  * plain object or `undefined`, and `(error as Error).message` then reads `undefined` (or throws on `null`).
@@ -12,6 +14,6 @@ export function messageOf(error: unknown): string {
   try {
     return String(error);
   } catch {
-    return 'erro desconhecido';
+    return t('main.reasons.unknown');
   }
 }

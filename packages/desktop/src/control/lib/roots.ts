@@ -4,6 +4,7 @@
  * user sees duplicates, redundant entries and pending changes as they edit. Windows paths, compared case-insensitively.
  */
 import type { DriveInfo, RootEntry } from '../../common/control-api.js';
+import type { ControlT } from '../i18n.js';
 
 /** One row of the draft list. `coveredBy` is recomputed locally on every edit. */
 export interface DraftEntry {
@@ -130,14 +131,14 @@ export function pendingChanges(saved: readonly string[], draft: readonly string[
 }
 
 /** `2 pastas adicionadas`, `1 pasta removida`, `2 adicionadas e 1 removida`; empty when nothing changed. */
-export function changeSummary(changes: PendingChanges): string {
+export function changeSummary(changes: PendingChanges, t: ControlT): string {
   const added = changes.added.length;
   const removed = changes.removed.length;
   if (added > 0 && removed > 0) {
-    return `${added} adicionada${added === 1 ? '' : 's'} e ${removed} removida${removed === 1 ? '' : 's'}`;
+    return t('folders.changes.both', { added: t('folders.changes.addedShort', { count: added }), removed: t('folders.changes.removedShort', { count: removed }) });
   }
-  if (added > 0) return `${added} ${added === 1 ? 'pasta adicionada' : 'pastas adicionadas'}`;
-  if (removed > 0) return `${removed} ${removed === 1 ? 'pasta removida' : 'pastas removidas'}`;
+  if (added > 0) return t('folders.changes.added', { count: added });
+  if (removed > 0) return t('folders.changes.removed', { count: removed });
   return '';
 }
 
@@ -173,13 +174,10 @@ export function driveLetter(root: string): string {
   return /^[a-z]:/i.test(root) ? root.slice(0, 2).toUpperCase() : root;
 }
 
-export const DRIVE_KIND_LABELS: Record<DriveInfo['kind'], string> = {
-  fixed: 'Disco local',
-  removable: 'Removível',
-  network: 'Rede',
-  optical: 'Óptico',
-  unknown: 'Disco',
-};
+/** `Disco local`, `Removível`, `Rede`, `Óptico` or `Disco`, in the language of the page. */
+export function driveKindLabel(kind: DriveInfo['kind'], t: ControlT): string {
+  return t(`folders.drive.kind.${kind}`);
+}
 
 export interface DriveUsage {
   used: number;

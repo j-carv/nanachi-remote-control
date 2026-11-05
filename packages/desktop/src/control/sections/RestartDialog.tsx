@@ -1,4 +1,4 @@
-import { pluralize } from '../lib/format.js';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
 
@@ -19,34 +19,33 @@ export interface RestartDialogProps {
  * what they were doing); each one resumes when the user sends it a message. The dialog says exactly that.
  */
 export function RestartDialog({ open, mode, busySessions, busy, onCancel, onLater, onNow }: RestartDialogProps) {
+  const { t } = useTranslation();
+  const sentences: Array<string | null> = [
+    busySessions > 0 ? t('restart.busySessions', { count: busySessions }) : null,
+    t('restart.explanation'),
+    mode === 'save' ? t('restart.saveHint') : null,
+  ];
+  const description = sentences.filter((sentence): sentence is string => sentence !== null).join(' ');
   return (
     <Dialog
       open={open}
       onClose={onCancel}
       dismissible={!busy}
-      title="Reiniciar o Nanachi agora?"
+      title={t('restart.title')}
       width={560}
-      description={
-        <>
-          {busySessions > 0
-            ? `Há ${pluralize(busySessions, 'sessão em andamento', 'sessões em andamento')}, que ${busySessions === 1 ? 'será interrompida' : 'serão interrompidas'}. `
-            : ''}
-          O reinício para o daemon e o inicia de novo: todas as sessões, em andamento ou não, ficam paradas e voltam quando você enviar uma mensagem nelas.
-          {mode === 'save' ? ' Se preferir, salve agora e a nova lista passa a valer no próximo reinício.' : ''}
-        </>
-      }
+      description={description}
       footer={
         <>
           <Button disabled={busy} onClick={onCancel}>
-            Cancelar
+            {t('common.cancel')}
           </Button>
           {mode === 'save' ? (
             <Button disabled={busy} onClick={onLater}>
-              Salvar e aplicar depois
+              {t('restart.saveLater')}
             </Button>
           ) : null}
           <Button variant="primary" loading={busy} onClick={onNow}>
-            {mode === 'save' ? 'Salvar e reiniciar agora' : 'Reiniciar agora'}
+            {mode === 'save' ? t('restart.saveNow') : t('common.restartNow')}
           </Button>
         </>
       }

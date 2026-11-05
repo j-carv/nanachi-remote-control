@@ -55,7 +55,7 @@ export function SectionHeading({ children, action, id }: { children: ReactNode; 
   );
 }
 
-/** Label and value, for the facts of a row (`Porta 7780`). Numbers line up. */
+/** Label and value, for the facts of a row (`Port 7780`). Numbers line up. */
 export function Fact({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
   return (
     <span className="inline-flex items-baseline gap-1.5">

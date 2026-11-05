@@ -18,7 +18,9 @@ import {
 } from '../src/common/channels.js';
 import type { SeedMachine } from '../src/common/types.js';
 import { createBridge, type BridgeIpc } from '../src/preload/bridge.js';
-import { MACHINES_KEY, SELECTED_KEY, seedMachines } from '../src/preload/seed.js';
+import { PWA_LANGUAGE_KEY } from '../src/common/i18n/index.js';
+import { MACHINES_KEY, SELECTED_KEY, seedLanguage, seedMachines } from '../src/preload/seed.js';
+import { LANGUAGE_KEY as PWA_OWN_LANGUAGE_KEY } from '../../pwa/src/i18n/languages.js';
 
 describe('channel allowlist', () => {
   it('is a fixed, prefixed, duplicate-free list', () => {
@@ -65,7 +67,7 @@ describe('bridge', () => {
   it('exposes exactly the contract surface and nothing else', () => {
     const bridge = createBridge(fakeIpc(), '0.1.0');
     expect(Object.keys(bridge).sort()).toEqual(
-      ['checkForUpdate', 'getAutostart', 'onStatus', 'pairingCode', 'setAutostart', 'status', 'tailscale', 'version'].sort(),
+      ['checkForUpdate', 'getAutostart', 'onLanguage', 'onStatus', 'pairingCode', 'setAutostart', 'status', 'tailscale', 'version'].sort(),
     );
     expect(Object.keys(bridge.tailscale).sort()).toEqual(['onStatus', 'start', 'status', 'stop']);
     expect(bridge.version).toBe('0.1.0');
@@ -84,6 +86,7 @@ describe('bridge', () => {
     await bridge.tailscale.stop();
     bridge.onStatus(() => undefined);
     bridge.tailscale.onStatus(() => undefined);
+    bridge.onLanguage(() => undefined);
 
     expect(ipc.invoked.map((call) => call.channel)).toEqual([
       INVOKE_CHANNELS.status,
@@ -96,7 +99,7 @@ describe('bridge', () => {
       INVOKE_CHANNELS.tailscaleStop,
     ]);
     for (const { channel } of ipc.invoked) expect(ALLOWED_INVOKE_CHANNELS.has(channel)).toBe(true);
-    expect([...ipc.listeners.keys()].sort()).toEqual([EVENT_CHANNELS.status, EVENT_CHANNELS.tailscaleStatus].sort());
+    expect([...ipc.listeners.keys()].sort()).toEqual([EVENT_CHANNELS.status, EVENT_CHANNELS.tailscaleStatus, EVENT_CHANNELS.language].sort());
     for (const channel of ipc.listeners.keys()) expect(ALLOWED_EVENT_CHANNELS.has(channel)).toBe(true);
   });
 
@@ -130,6 +133,20 @@ describe('bridge', () => {
     expect(callback).not.toHaveBeenCalled();
     ipc.emit(EVENT_CHANNELS.tailscaleStatus, { state: 'off' });
     expect(callback).toHaveBeenCalledWith({ state: 'off' });
+  });
+
+  it('onLanguage listens on its own channel and hands the page the language', () => {
+    const ipc = fakeIpc();
+    const callback = vi.fn();
+    const off = createBridge(ipc, '0.1.0').onLanguage(callback);
+    ipc.emit(EVENT_CHANNELS.status, { state: 'running' });
+    expect(callback).not.toHaveBeenCalled();
+    ipc.emit(EVENT_CHANNELS.language, 'es');
+    expect(callback).toHaveBeenCalledWith('es');
+    off();
+    ipc.emit(EVENT_CHANNELS.language, 'en');
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(EVENT_CHANNELS.language).toBe('desktop:language-changed');
   });
 
   it('refuses a callback that is not a function', () => {
@@ -250,5 +267,38 @@ describe('machine seed, checked against the PWA reader', () => {
       removeItem: () => undefined,
     };
     expect(seedMachines(broken, DESKTOP, ORIGIN)).toBe('skipped');
+  });
+});
+
+describe('language seed, checked against the PWA', () => {
+  it('writes the key the PWA reads its language from', () => {
+    expect(PWA_LANGUAGE_KEY).toBe(PWA_OWN_LANGUAGE_KEY);
+  });
+
+  it('writes only that key, and only when main handed it a language', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PWA_MACHINES_KEY, '[]');
+    expect(seedLanguage(storage, 'es')).toBe(true);
+    expect([...storage.data.keys()].sort()).toEqual([PWA_MACHINES_KEY, PWA_LANGUAGE_KEY].sort());
+    expect(storage.getItem(PWA_LANGUAGE_KEY)).toBe('es');
+    expect(storage.getItem(PWA_MACHINES_KEY)).toBe('[]');
+  });
+
+  it('leaves a language the user chose inside the PWA alone when there is nothing to hand over', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PWA_LANGUAGE_KEY, 'en');
+    expect(seedLanguage(storage, null)).toBe(false);
+    expect(storage.getItem(PWA_LANGUAGE_KEY)).toBe('en');
+  });
+
+  it('does not throw when the storage refuses to answer', () => {
+    const broken: PwaStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('denied');
+      },
+      removeItem: () => undefined,
+    };
+    expect(seedLanguage(broken, 'pt-BR')).toBe(false);
   });
 });

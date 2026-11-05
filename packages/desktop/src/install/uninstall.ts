@@ -1,5 +1,6 @@
 import * as nodeFs from 'node:fs';
 import { join } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import { EXE_NAME, INSTALL_MARKER, SHORTCUT_NAME } from './constants.js';
 import { assertInsideInstall, checkDataFolder, checkInstallTarget, samePath } from './guards.js';
@@ -27,23 +28,30 @@ export interface UninstallStepPlan {
   skipped: string | null;
 }
 
+/** The steps in order, with their texts in the language in effect when the plan is made. */
 export function planUninstall(options: UninstallOptions): UninstallStepPlan[] {
+  const testMode = t('installer.common.testMode');
   return [
-    { id: 'stop', label: 'Fechando o Nanachi', weight: 10, skipped: null },
-    { id: 'shortcuts', label: 'Removendo atalhos', weight: 5, skipped: options.noShortcuts ? 'modo de teste' : null },
+    { id: 'stop', label: t('installer.steps.uninstall.stop'), weight: 10, skipped: null },
+    { id: 'shortcuts', label: t('installer.steps.uninstall.shortcuts'), weight: 5, skipped: options.noShortcuts ? testMode : null },
     {
       id: 'startup',
-      label: 'Desligando o início com o Windows',
+      label: t('installer.steps.uninstall.startup'),
       weight: 5,
-      skipped: options.noRegistry ? 'modo de teste' : null,
+      skipped: options.noRegistry ? testMode : null,
     },
-    { id: 'files', label: 'Removendo os arquivos do programa', weight: 60, skipped: null },
-    { id: 'data', label: 'Apagando os dados do Nanachi', weight: 10, skipped: options.deleteData ? null : 'os dados ficam guardados' },
+    { id: 'files', label: t('installer.steps.uninstall.files'), weight: 60, skipped: null },
+    {
+      id: 'data',
+      label: t('installer.steps.uninstall.data'),
+      weight: 10,
+      skipped: options.deleteData ? null : t('installer.steps.skippedDataKept'),
+    },
     {
       id: 'registry',
-      label: 'Removendo o Nanachi da lista de aplicativos',
+      label: t('installer.steps.uninstall.registry'),
       weight: 10,
-      skipped: options.noRegistry ? 'modo de teste' : null,
+      skipped: options.noRegistry ? testMode : null,
     },
   ];
 }
@@ -156,7 +164,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
   if (!check.ok) throw new InstallError(check.reason);
   const dir = check.dir;
   if (!fs.existsSync(dir) || readInstallMarker(dir, fs) === null) {
-    throw new InstallError('Esta pasta não parece uma instalação do Nanachi; nada foi removido.');
+    throw new InstallError(t('installer.errors.notAnInstall'));
   }
   const exe = join(dir, EXE_NAME);
   const plan = planUninstall(options);
@@ -191,7 +199,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
       running = await others();
     } catch (error) {
       // Without the list the uninstall still goes on: whatever stays locked is removed by the scheduled cleanup.
-      warnings.push(`Não foi possível verificar se o Nanachi está aberto: ${messageOf(error)}`);
+      warnings.push(t('installer.errors.checkRunning', { detail: messageOf(error) }));
       return;
     }
     if (running.length === 0) return;
@@ -200,7 +208,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
       if ((await others()).length === 0) return;
       await sleep(500);
     }
-    warnings.push('Alguns processos do Nanachi não fecharam; alguns arquivos podem ficar para trás.');
+    warnings.push(t('installer.warnings.processesLeft'));
   });
 
   await step('shortcuts', () => {
@@ -218,7 +226,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
     try {
       command = await deps.readStartupCommand();
     } catch (error) {
-      warnings.push(`Não foi possível ver se o Nanachi inicia com o Windows (${messageOf(error)}); o item de início foi mantido.`);
+      warnings.push(t('installer.warnings.startupUnknown', { detail: messageOf(error) }));
       return;
     }
     if (command === null) return;
@@ -236,7 +244,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
 
   await step('data', async () => {
     if (await deps.homeInUse()) {
-      warnings.push('Os dados do Nanachi não foram apagados: um daemon do Nanachi está usando essa pasta.');
+      warnings.push(t('installer.warnings.dataInUse'));
       return;
     }
     // Desktop's data folder needs both its config and its database; its profile needs one of its own two files. The
@@ -251,13 +259,13 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
     });
     if (!home.ok) {
       // Nothing there is not a problem: there is just nothing to delete.
-      if (isPresent(deps.desktopHome, fs)) warnings.push(`Os dados em ${deps.desktopHome} não foram apagados: ${home.reason}.`);
+      if (isPresent(deps.desktopHome, fs)) warnings.push(t('installer.warnings.dataNotDeleted', { path: deps.desktopHome, reason: home.reason }));
     } else {
       const wasLink = isLink(home.dir, fs);
       if (!removeTree(home.dir, fs, deps.removeOptions)) {
-        warnings.push(`Os dados em ${home.dir} não foram apagados por completo (algum arquivo está em uso).`);
+        warnings.push(t('installer.warnings.dataPartial', { path: home.dir }));
       } else if (wasLink) {
-        warnings.push(`${home.dir} é um atalho (junção) para outra pasta: só o atalho foi removido, o conteúdo da pasta de destino ficou.`);
+        warnings.push(t('installer.warnings.dataLink', { path: home.dir }));
       }
     }
 
@@ -270,7 +278,7 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
       exists: fs.existsSync,
     });
     if (profile.ok && !removeTree(profile.dir, fs, deps.removeOptions)) {
-      warnings.push(`Os dados do Desktop em ${profile.dir} não foram apagados por completo.`);
+      warnings.push(t('installer.warnings.profilePartial', { path: profile.dir }));
     }
   });
 
@@ -280,17 +288,17 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
     try {
       location = await deps.readInstallLocation();
     } catch (error) {
-      warnings.push(`Não foi possível ler a entrada do Nanachi na lista de aplicativos (${messageOf(error)}); ela foi mantida.`);
+      warnings.push(t('installer.warnings.registryUnreadable', { detail: messageOf(error) }));
       return;
     }
     if (location === null) return;
     if (location.trim() === '' || !samePath(location, dir)) {
-      warnings.push('A entrada do Nanachi na lista de aplicativos aponta para outra instalação; ela foi mantida.');
+      warnings.push(t('installer.warnings.registryOther'));
       return;
     }
     const code = await deps.runReg(buildUninstallRemoval());
     // 1 is "the key does not exist": already clean.
-    if (code !== 0 && code !== 1) warnings.push('Não foi possível remover o Nanachi da lista de aplicativos do Windows.');
+    if (code !== 0 && code !== 1) warnings.push(t('installer.warnings.registryRemoveFailed'));
   });
 
   return { removalScheduled, warnings };

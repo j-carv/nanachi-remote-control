@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, dialog, ipcMain, Notification, safeStorage, session, shell } from 'electron';
 import { CONTROL_EVENT_CHANNELS, EVENT_CHANNELS } from '../common/channels.js';
+import { setLanguage, t, type Language } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { DaemonStatus, TailscaleStatus } from '../common/types.js';
 import { APP_USER_MODEL_ID, UNINSTALL_ARG } from '../install/constants.js';
@@ -20,12 +21,13 @@ import { createDriveLister } from './drives.js';
 import { registerIpc } from './ipc.js';
 import { createRotatingLog, readDesktopLogs } from './log-file.js';
 import { createDeviceAddRunner, createPairCliRunner } from './pair-cli.js';
-import { createPanel } from './panel.js';
 import { daemonOrigin, isSameOrigin } from './panel-policy.js';
 import { createPairing, createTokenStore, desktopDeviceName } from './pairing.js';
 import { createPairingWindow } from './pairing-window.js';
 import { createRootsStore } from './roots-config.js';
-import { createSettingsStore } from './settings.js';
+import { createSessionsView } from './sessions-view.js';
+import { createElectronView, nativeViewOf } from './sessions-view-electron.js';
+import { createSettingsStore, pendingPwaLanguage, resolveStartupLanguage, settingsFileExists } from './settings.js';
 import { fetchHealth, isPortFree, killProcessTree, runProcess, spawnHidden, spawnSidecar } from './system.js';
 import { createTray } from './tray.js';
 import { createTsnetHost, resolveSidecarPath, tsnetHostname } from './tsnet-host.js';
@@ -116,7 +118,15 @@ async function boot(): Promise<void> {
     deviceName: desktopDeviceName(hostname()),
   });
 
-  const settings = createSettingsStore(join(userData, 'desktop-settings.json'));
+  const settingsFile = join(userData, 'desktop-settings.json');
+  const hadSettingsFile = settingsFileExists(settingsFile);
+  const settings = createSettingsStore(settingsFile);
+  // Desktop's language: the stored choice; on the very first run the one the system locale suggests; for an upgrade from a
+  // Desktop that only had Portuguese, Portuguese, with the PWA's own language left alone (saved, so it holds).
+  const startup = resolveStartupLanguage({ stored: settings.get().language, hadSettingsFile, locale: app.getLocale() });
+  let language: Language = startup.language;
+  if (settings.get().language === undefined) settings.update(startup.legacy ? { language, pwaLanguage: language } : { language });
+  setLanguage(language);
   // The sidecar: packaged it is resources/bin, in development <build dir>/stage/bin (outside the repo). It only
   // starts when the user turns "Tailscale embutido" on. NANACHI_DESKTOP_TSNET_PATH (unpackaged only) is for tests.
   const tsnet = createTsnetHost({
@@ -139,28 +149,13 @@ async function boot(): Promise<void> {
 
   const pairingWindow = createPairingWindow({ generate: () => pairing.generateCode(), iconPath });
 
-  const panel = createPanel({
-    origin: () => daemonOrigin(host.port()),
-    daemonStatus: () => host.status(),
-    preloadPath,
-    iconPath,
-    prepare: async () => {
-      try {
-        await pairing.ensureMachine();
-      } catch (error) {
-        note(`pareamento do Desktop falhou: ${messageOf(error)}`);
-        throw error;
-      }
-    },
-  });
-
-  /** The PWA window (sessions and chat). */
+  /** The control center, on the "Sessões" section: where the PWA (sessions and chat) lives. */
   function openSessions(): void {
-    panel.open().catch((error: unknown) => note(`não foi possível abrir as sessões: ${messageOf(error)}`));
+    control.open({ section: 'sessions' });
   }
 
-  // The control center is the main window. Without its page on disk (the renderer was not built) it says so in the log
-  // and the sessions window opens instead, so Desktop is never left with nothing to open.
+  // The control center is the main window. Without its page on disk (the renderer was not built) it says so in the log and
+  // in a dialog: there is no other window to fall back to.
   const control = createControlWindow({
     indexPath: controlIndexPath,
     preloadPath: controlPreloadPath,
@@ -169,7 +164,7 @@ async function boot(): Promise<void> {
       load: () => settings.get().controlWindow,
       save: (bounds) => void settings.update({ controlWindow: bounds }),
     },
-    onMissingUi: openSessions,
+    onMissingUi: () => dialog.showErrorBox(t('main.dialogs.title'), t('main.dialogs.missingUi')),
     note,
   });
   function openControl(): void {
@@ -177,11 +172,40 @@ async function boot(): Promise<void> {
   }
   openMainRequest = openControl;
 
+  // The sessions view: the PWA from the daemon's origin, drawn over the content area of the control center while its
+  // "Sessões" section is on screen. Same locked-down preferences, session and `nanachiDesktop` preload as the old panel window.
+  const sessions = createSessionsView({
+    host: {
+      contentSize: () => control.contentSize(),
+      isFocused: () => control.isFocused(),
+      attach: (handle) => control.attachView(nativeViewOf(handle)),
+      detach: (handle) => control.detachView(nativeViewOf(handle)),
+      focusPage: () => control.focusPage(),
+      onResize: (listener) => control.onResize(listener),
+    },
+    origin: () => daemonOrigin(host.port()),
+    daemonStatus: () => host.status(),
+    createView: () => createElectronView({ preloadPath, origin: () => daemonOrigin(host.port()) }),
+    prepare: async () => {
+      try {
+        await pairing.ensureMachine();
+      } catch (error) {
+        note(`pareamento do Desktop falhou: ${messageOf(error)}`);
+        throw error;
+      }
+    },
+    // The PWA holds the keyboard while it is on screen: Ctrl+1..8 are handed to the control center, which shows the section.
+    onShortcut: (section) => control.open({ section }),
+    // The view gave up (its page kept dying) or is fine again: the control center page shows an explanation or the view.
+    viewState: (state) => control.send(CONTROL_EVENT_CHANNELS.sessionsView, state),
+    note,
+  });
+
   function showPairingCode(): void {
     pairingWindow.show().catch((error: unknown) => {
       const message = messageOf(error);
       note(`código de pareamento: ${message}`);
-      dialog.showErrorBox('Nanachi', `Não foi possível gerar o código de pareamento.\n\n${message}`);
+      dialog.showErrorBox(t('main.dialogs.title'), `${t('main.dialogs.pairingCodeFailed')}\n\n${message}`);
     });
   }
 
@@ -194,6 +218,26 @@ async function boot(): Promise<void> {
     const effective = autostart.set(enabled);
     refreshTray(host.status());
     return effective;
+  }
+
+  /**
+   * Switches Desktop's language everywhere at once: the main process's own texts, the tray, the control center page and the
+   * PWA in the sessions view (which switches live through the bridge, so an unsent message stays). Returns the language in effect.
+   */
+  function applyLanguage(next: Language): Language {
+    if (next === language) return language;
+    language = next;
+    setLanguage(next);
+    settings.update({ language: next });
+    refreshTray(host.status());
+    control.send(CONTROL_EVENT_CHANNELS.language, next);
+    // The status messages (a failed start, a busy port, a Tailscale error) are built in the language in effect: show them again in the new one.
+    control.send(CONTROL_EVENT_CHANNELS.daemonStatus, host.status());
+    control.send(CONTROL_EVENT_CHANNELS.tailscaleStatus, tsnet.status());
+    // The PWA that took the event stored the language itself: that is what Desktop last wrote into it. A PWA that did not get
+    // it (no view yet, still loading) is handed the language by the preload of its next load.
+    if (sessions.languageChanged(next) === 'sent') settings.update({ pwaLanguage: next });
+    return language;
   }
 
   function startTailscale(): Promise<TailscaleStatus> {
@@ -237,16 +281,16 @@ async function boot(): Promise<void> {
       if (status.restricted) note('o daemon só aceita acessos pelo Tailscale (allowedTailscaleLogins); o painel local não consegue usá-lo');
     }
     refreshTray(status);
-    panel.onDaemonStatus(status);
-    panel.send(EVENT_CHANNELS.status, status);
+    sessions.onDaemonStatus(status);
+    sessions.send(EVENT_CHANNELS.status, status);
     control.send(CONTROL_EVENT_CHANNELS.daemonStatus, status);
   });
   tsnet.onStatus((status) => {
-    panel.send(EVENT_CHANNELS.tailscaleStatus, status);
+    sessions.send(EVENT_CHANNELS.tailscaleStatus, status);
     control.send(CONTROL_EVENT_CHANNELS.tailscaleStatus, status);
   });
 
-  // The PWA window's bridge: a fixed list of channels, only for the page loaded from the daemon's own origin.
+  // The PWA's bridge: a fixed list of channels, only for the page loaded from the daemon's own origin.
   registerIpc({
     ipcMain,
     isTrustedUrl: (url) => isSameOrigin(url, daemonOrigin(host.port())),
@@ -260,7 +304,14 @@ async function boot(): Promise<void> {
       stop: stopTailscale,
     },
     checkForUpdate: () => checkForUpdate({ currentVersion: app.getVersion() }),
-    init: () => ({ version: app.getVersion(), machine: pairing.current() }),
+    init: () => {
+      // Desktop gives the PWA its language on the first load and after Desktop's own language changed; in between the PWA
+      // keeps what the user chose inside it.
+      const { pwaLanguage } = settings.get();
+      const pending = pendingPwaLanguage(language, pwaLanguage);
+      if (pending !== null) settings.update({ pwaLanguage: pending });
+      return { version: app.getVersion(), machine: pairing.current(), language: pending };
+    },
   });
 
   // The control center's API: its own channel list, only for its own local page, and the device token never leaves main.
@@ -289,6 +340,7 @@ async function boot(): Promise<void> {
     }),
     tailscale: { status: () => tsnet.status(), start: startTailscale, stop: stopTailscale },
     pairingCode: () => pairing.generateCode(),
+    language: { set: applyLanguage },
     readLogs: () => readDesktopLogs(logFile),
     autostart: { supported: autostart.supported, get: () => autostart.get(), set: setAutostart },
     checkForUpdate: () => checkForUpdate({ currentVersion: app.getVersion() }),
@@ -297,17 +349,17 @@ async function boot(): Promise<void> {
       openPath: (path) => shell.openPath(path),
       showItemInFolder: (path) => shell.showItemInFolder(path),
       openExternal: (url) => shell.openExternal(url),
-      openSessions,
+      setSessionsViewport: (viewport) => sessions.setViewport(viewport),
       startUninstaller: () => {
         if (!app.isPackaged) {
-          dialog.showErrorBox('Nanachi', 'O desinstalador só existe no Nanachi instalado.');
+          dialog.showErrorBox(t('main.dialogs.title'), t('main.dialogs.uninstallOnlyInstalled'));
           return;
         }
         launchUninstaller({
           execPath: process.execPath,
           onError: (message) => {
             note(message);
-            dialog.showErrorBox('Nanachi', message);
+            dialog.showErrorBox(t('main.dialogs.title'), message);
           },
         });
       },
@@ -318,11 +370,12 @@ async function boot(): Promise<void> {
     ipcMain,
     isOwnSender: (event) => control.isOwnSender(event),
     version: app.getVersion(),
+    language: () => language,
     window: control,
     actions: controlActions,
   });
 
-  // A 401 from the daemon in the panel means the device was revoked: pair again once and reload the page.
+  // A 401 from the daemon in the sessions view means the device was revoked: pair again once and reload the page.
   session.defaultSession.webRequest.onCompleted((details) => {
     if (details.statusCode !== 401 || !isSameOrigin(details.url, daemonOrigin(host.port()))) return;
     if (new URL(details.url).pathname === '/api/pair') return;
@@ -330,7 +383,7 @@ async function boot(): Promise<void> {
       (machine) => {
         if (machine === null) return;
         note('dispositivo revogado: Desktop pareou de novo');
-        panel.reload();
+        sessions.reload();
       },
       (error: unknown) => note(`não foi possível parear de novo: ${messageOf(error)}`),
     );
@@ -342,6 +395,7 @@ async function boot(): Promise<void> {
     quitting = true;
     event.preventDefault();
     // From here the control center really closes instead of hiding.
+    sessions.destroy();
     control.destroy();
     pairingWindow.close();
     // Stops only a daemon Desktop spawned; an attached one is left running.
@@ -363,8 +417,8 @@ async function notifyIfUpdateAvailable(): Promise<void> {
   const result = await checkForUpdate({ currentVersion: app.getVersion() });
   if (result.status !== 'available') return;
   const notification = new Notification({
-    title: 'Nova versão do Nanachi',
-    body: `A versão ${result.latest} está disponível. Clique para abrir a página da versão.`,
+    title: t('main.notifications.updateTitle'),
+    body: t('main.notifications.updateBody', { version: result.latest }),
   });
   notification.on('click', () => void shell.openExternal(result.url));
   notification.show();

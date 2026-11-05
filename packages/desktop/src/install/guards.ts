@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME } from './constants.js';
 
 /**
@@ -54,21 +55,21 @@ function standaloneFolders(profile: string, extra: readonly string[] | undefined
   return [join(profile, STANDALONE_DATA_DIR_NAME), ...(extra ?? [])];
 }
 
-/** Whether `input` may be used as an install folder. The reasons are shown to the user (Portuguese). */
+/** Whether `input` may be used as an install folder. The reasons are shown to the user, in the language in effect. */
 export function checkInstallTarget(input: string, context: TargetContext): TargetCheck {
   const exists = context.exists ?? existsSync;
   if (typeof input !== 'string' || input.trim() === '' || input.includes('\0')) {
-    return { ok: false, reason: 'Escolha uma pasta para instalar o Nanachi.' };
+    return { ok: false, reason: t('installer.targets.choose') };
   }
-  if (!isAbsolute(input)) return { ok: false, reason: 'O caminho da pasta precisa ser completo (por exemplo C:\\Programas\\Nanachi).' };
+  if (!isAbsolute(input)) return { ok: false, reason: t('installer.targets.notAbsolute') };
   const dir = resolve(input);
   if (parse(dir).root !== '' && samePath(dir, parse(dir).root)) {
-    return { ok: false, reason: 'Escolha uma pasta dentro do disco, não a raiz dele.' };
+    return { ok: false, reason: t('installer.targets.driveRoot') };
   }
   if (samePath(dir, context.profile) || isInside(dir, context.profile)) {
-    return { ok: false, reason: 'Escolha uma subpasta; a pasta do usuário (ou uma que a contém) não pode receber o Nanachi.' };
+    return { ok: false, reason: t('installer.targets.userFolder') };
   }
-  const dataProblem = 'Essa pasta guarda ou contém os dados do Nanachi (.nanachi-desktop ou .nanachi-remote). Escolha outra.';
+  const dataProblem = t('installer.targets.dataFolder');
   if (overlapsAny(dir, [context.desktopHome, ...standaloneFolders(context.profile, context.standaloneDirs)])) {
     return { ok: false, reason: dataProblem };
   }
@@ -116,29 +117,29 @@ export type DataFolderCheck = { ok: true; dir: string } | { ok: false; reason: s
 export function checkDataFolder(input: string, context: DataFolderContext): DataFolderCheck {
   const exists = context.exists ?? existsSync;
   if (typeof input !== 'string' || input.trim() === '' || input.includes('\0')) {
-    return { ok: false, reason: 'o caminho está vazio' };
+    return { ok: false, reason: t('installer.dataFolder.empty') };
   }
-  if (!isFullyQualified(input)) return { ok: false, reason: 'o caminho não é completo (como C:\\Dados\\Nanachi)' };
+  if (!isFullyQualified(input)) return { ok: false, reason: t('installer.dataFolder.notAbsolute') };
   const dir = resolve(input);
-  if (samePath(dir, parse(dir).root)) return { ok: false, reason: 'é a raiz de um disco' };
+  if (samePath(dir, parse(dir).root)) return { ok: false, reason: t('installer.dataFolder.driveRoot') };
   if (samePath(dir, context.profile) || isInside(dir, context.profile)) {
-    return { ok: false, reason: 'é a pasta do usuário ou uma pasta que a contém' };
+    return { ok: false, reason: t('installer.dataFolder.userFolder') };
   }
   if (samePath(dir, context.installDir) || isInside(dir, context.installDir) || isInside(context.installDir, dir)) {
-    return { ok: false, reason: 'se mistura com a pasta do programa' };
+    return { ok: false, reason: t('installer.dataFolder.programFolder') };
   }
   if (overlapsAny(dir, standaloneFolders(context.profile, context.standaloneDirs))) {
-    return { ok: false, reason: 'é a pasta de dados do daemon avulso do Nanachi (.nanachi-remote ou NANACHI_HOME), que o Desktop nunca apaga' };
+    return { ok: false, reason: t('installer.dataFolder.standalone') };
   }
   if (overlapsAny(dir, context.others ?? [])) {
-    return { ok: false, reason: 'se mistura com outra pasta de dados do Nanachi' };
+    return { ok: false, reason: t('installer.dataFolder.otherData') };
   }
   for (const name of context.requireAll ?? []) {
-    if (!exists(join(dir, name))) return { ok: false, reason: `não tem ${name}, então não parece uma pasta de dados do Nanachi` };
+    if (!exists(join(dir, name))) return { ok: false, reason: t('installer.dataFolder.missingFile', { name }) };
   }
   const any = context.requireAny ?? [];
   if (any.length > 0 && !any.some((name) => exists(join(dir, name)))) {
-    return { ok: false, reason: 'não parece uma pasta de dados do Nanachi' };
+    return { ok: false, reason: t('installer.dataFolder.notData') };
   }
   return { ok: true, dir };
 }

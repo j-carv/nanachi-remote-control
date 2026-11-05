@@ -1,10 +1,14 @@
 import { Check, CircleAlert, Download, FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { Language } from '../../common/i18n/index.js';
 import type { UpdateCheckResult } from '../../common/types.js';
 import { useApi } from '../state/api.js';
+import { useLanguageSetting } from '../state/language.js';
 import { useReported } from '../state/reported.js';
 import { useShell } from '../state/shell.js';
 import { Button } from '../ui/Button.js';
+import { LanguageSelect } from '../ui/LanguageSelect.js';
 import { Group, Row, SectionHeading } from '../ui/Surface.js';
 import { Switch } from '../ui/Switch.js';
 import { useToast } from '../ui/Toast.js';
@@ -14,6 +18,10 @@ import { Page } from './Page.js';
 const UNINSTALL_GUARD_MS = 8000;
 
 export interface SettingsViewProps {
+  /** Desktop's language, and the way to change it. `languageBusy`: a change is on its way to main. */
+  language: Language;
+  onLanguage: (language: Language) => void;
+  languageBusy: boolean;
   version: string;
   dataFolder: string | null;
   autostart: { value: boolean; supported: boolean } | null;
@@ -30,17 +38,18 @@ export interface SettingsViewProps {
 }
 
 function UpdateLine({ update }: { update: UpdateCheckResult | null }) {
-  if (!update) return <>Procura no GitHub se há uma versão nova do Nanachi.</>;
+  const { t } = useTranslation();
+  if (!update) return <>{t('settings.updateIdle')}</>;
   switch (update.status) {
     case 'up-to-date':
       return (
         <span className="inline-flex items-center gap-1.5">
           <Check className="size-3.5 text-success" aria-hidden="true" />
-          Você está na versão mais recente.
+          {t('settings.upToDate')}
         </span>
       );
     case 'available':
-      return <span className="text-foreground">{`A versão ${update.latest} está disponível. Você tem a ${update.current}.`}</span>;
+      return <span className="text-foreground">{t('settings.updateAvailable', { latest: update.latest, current: update.current })}</span>;
     case 'error':
       return (
         <span className="inline-flex items-center gap-1.5 text-destructive">
@@ -51,16 +60,23 @@ function UpdateLine({ update }: { update: UpdateCheckResult | null }) {
   }
 }
 
-export function SettingsView({ version, dataFolder, autostart, autostartBusy, onAutostart, update, checking, onCheckUpdate, onDownload, onOpenDataFolder, uninstalling, onUninstall }: SettingsViewProps) {
+export function SettingsView({ language, onLanguage, languageBusy, version, dataFolder, autostart, autostartBusy, onAutostart, update, checking, onCheckUpdate, onDownload, onOpenDataFolder, uninstalling, onUninstall }: SettingsViewProps) {
+  const { t } = useTranslation();
   return (
     <>
       <section aria-labelledby="settings-general">
-        <SectionHeading id="settings-general">Geral</SectionHeading>
+        <SectionHeading id="settings-general">{t('settings.general')}</SectionHeading>
         <Group>
           <Row
-            title="Iniciar com o Windows"
+            title={t('settings.languageTitle')}
+            id="settings-language"
+            description={t('settings.languageDescription')}
+            trailing={<LanguageSelect value={language} onChange={onLanguage} disabled={languageBusy} labelledBy="settings-language" />}
+          />
+          <Row
+            title={t('settings.autostart')}
             id="settings-autostart"
-            description={autostart && !autostart.supported ? 'Não está disponível nesta instalação.' : 'O Nanachi abre na bandeja quando você entra no Windows.'}
+            description={autostart && !autostart.supported ? t('settings.autostartUnsupported') : t('settings.autostartHint')}
             trailing={
               <Switch
                 checked={autostart?.value ?? false}
@@ -74,20 +90,20 @@ export function SettingsView({ version, dataFolder, autostart, autostartBusy, on
       </section>
 
       <section aria-labelledby="settings-updates">
-        <SectionHeading id="settings-updates">Atualizações</SectionHeading>
+        <SectionHeading id="settings-updates">{t('settings.updates')}</SectionHeading>
         <Group>
           <Row
-            title={<span className="tabular-nums">Versão {version}</span>}
+            title={<span className="tabular-nums">{t('settings.version', { version })}</span>}
             description={<UpdateLine update={update} />}
             trailing={
               <>
                 {update?.status === 'available' ? (
                   <Button variant="primary" icon={<Download aria-hidden="true" />} onClick={() => onDownload(update.url)}>
-                    Baixar
+                    {t('settings.download')}
                   </Button>
                 ) : null}
                 <Button icon={<RefreshCw className={checking ? 'animate-spin' : undefined} aria-hidden="true" />} disabled={checking} onClick={onCheckUpdate}>
-                  Verificar atualizações
+                  {t('settings.checkUpdates')}
                 </Button>
               </>
             }
@@ -96,15 +112,15 @@ export function SettingsView({ version, dataFolder, autostart, autostartBusy, on
       </section>
 
       <section aria-labelledby="settings-data">
-        <SectionHeading id="settings-data">Dados</SectionHeading>
+        <SectionHeading id="settings-data">{t('settings.data')}</SectionHeading>
         <Group>
           <Row
             icon={FolderOpen}
-            title="Pasta de dados"
-            description={<span className="selectable block truncate font-mono text-[12px]">{dataFolder ?? 'Indisponível'}</span>}
+            title={t('common.dataFolder')}
+            description={<span className="selectable block truncate font-mono text-[12px]">{dataFolder ?? t('settings.dataUnavailable')}</span>}
             trailing={
               <Button disabled={dataFolder === null} onClick={onOpenDataFolder}>
-                Abrir pasta
+                {t('common.openFolder')}
               </Button>
             }
           />
@@ -112,15 +128,15 @@ export function SettingsView({ version, dataFolder, autostart, autostartBusy, on
       </section>
 
       <section aria-labelledby="settings-remove">
-        <SectionHeading id="settings-remove">Remover</SectionHeading>
+        <SectionHeading id="settings-remove">{t('settings.remove')}</SectionHeading>
         <Group>
           <Row
             icon={Trash2}
-            title="Desinstalar o Nanachi"
-            description="Abre a janela de remoção, que pede a sua confirmação. Seus dados só são apagados se você marcar isso lá."
+            title={t('settings.uninstallTitle')}
+            description={t('settings.uninstallHint')}
             trailing={
               <Button variant="danger-ghost" disabled={uninstalling} onClick={onUninstall}>
-                Desinstalar…
+                {t('settings.uninstall')}
               </Button>
             }
           />
@@ -131,7 +147,9 @@ export function SettingsView({ version, dataFolder, autostart, autostartBusy, on
 }
 
 export function SettingsSection() {
+  const { t } = useTranslation();
   const api = useApi();
+  const languageSetting = useLanguageSetting();
   const shell = useShell();
   const toast = useToast();
   const reported = useReported();
@@ -164,12 +182,17 @@ export function SettingsSection() {
     };
   }, [api]);
 
+  const { change } = languageSetting;
+  const changeLanguage = async (next: Language): Promise<void> => {
+    if (!(await change(next))) toast({ tone: 'error', message: t('settings.languageFailed') });
+  };
+
   const changeAutostart = async (value: boolean): Promise<void> => {
     setAutostartBusy(true);
     try {
       setAutostart(await api.settings.setAutostart(value));
     } catch {
-      toast({ tone: 'error', message: 'Não foi possível mudar o início com o Windows.' });
+      toast({ tone: 'error', message: t('settings.autostartFailed') });
     } finally {
       setAutostartBusy(false);
     }
@@ -180,7 +203,7 @@ export function SettingsSection() {
     try {
       setUpdate(await api.settings.checkForUpdate());
     } catch {
-      setUpdate({ status: 'error', current: version, message: 'Não foi possível consultar as atualizações agora.' });
+      setUpdate({ status: 'error', current: version, message: t('settings.checkFailed') });
     } finally {
       setChecking(false);
     }
@@ -192,7 +215,7 @@ export function SettingsSection() {
     if (uninstallStarted.current) return;
     uninstallStarted.current = true;
     setUninstalling(true);
-    reported(() => api.settings.uninstall(), 'Não foi possível iniciar o desinstalador.');
+    reported(() => api.settings.uninstall(), t('settings.uninstallFailed'));
     uninstallTimer.current = window.setTimeout(() => {
       uninstallStarted.current = false;
       setUninstalling(false);
@@ -205,6 +228,9 @@ export function SettingsSection() {
   return (
     <Page section="settings">
       <SettingsView
+        language={languageSetting.language}
+        onLanguage={(next) => void changeLanguage(next)}
+        languageBusy={languageSetting.busy}
         version={version}
         dataFolder={overview?.dataFolder ?? null}
         autostart={autostart}
@@ -213,8 +239,8 @@ export function SettingsSection() {
         update={update}
         checking={checking}
         onCheckUpdate={() => void checkUpdate()}
-        onDownload={(url) => reported(() => api.settings.openUpdate(url), 'Não foi possível abrir a página da atualização.')}
-        onOpenDataFolder={() => reported(() => api.openDataFolder(), 'Não foi possível abrir a pasta de dados.')}
+        onDownload={(url) => reported(() => api.settings.openUpdate(url), t('settings.openUpdateFailed'))}
+        onOpenDataFolder={() => reported(() => api.openDataFolder(), t('common.openDataFolderFailed'))}
         uninstalling={uninstalling}
         onUninstall={uninstall}
       />

@@ -1,6 +1,9 @@
 import { createRoot } from 'react-dom/client';
+import { I18nextProvider } from 'react-i18next';
 import type { ControlApi } from '../common/control-api.js';
+import { languageFromLocale } from '../common/i18n/index.js';
 import { App } from './App.js';
+import { createControlI18n } from './i18n.js';
 import { MissingBridge } from './MissingBridge.js';
 import './styles.css';
 
@@ -21,4 +24,13 @@ async function resolveApi(): Promise<ControlApi | null> {
 const container = document.getElementById('root');
 if (!container) throw new Error('#root not found');
 const api = await resolveApi();
-createRoot(container).render(api ? <App api={api} /> : <MissingBridge />);
+// Outside Desktop there is no setting to read: the browser's own language picks the one of the "open it from Desktop" page.
+createRoot(container).render(
+  api ? (
+    <App api={api} />
+  ) : (
+    <I18nextProvider i18n={createControlI18n(languageFromLocale(navigator.language))}>
+      <MissingBridge />
+    </I18nextProvider>
+  ),
+);

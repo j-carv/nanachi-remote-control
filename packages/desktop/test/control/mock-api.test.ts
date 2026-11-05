@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlResult } from '../../src/common/control-api.js';
 import type { DaemonStatus } from '../../src/common/types.js';
+import type { Language } from '../../src/common/i18n/index.js';
 import { createMockControlApi, type MockScenario } from '../../src/control/mock/mock-api.js';
+import { MOCK_MESSAGES } from '../../src/control/mock/messages.js';
 
 const NOW = 1_700_000_000_000;
 const make = (scenario: MockScenario = 'default') => createMockControlApi({ scenario, latencyMs: 0, now: () => NOW });
@@ -151,5 +153,85 @@ describe('mock ControlApi', () => {
     expect(second.daemon.length).toBeGreaterThan(first.daemon.length);
     expect(await api.settings.setAutostart(false)).toEqual({ value: false, supported: true });
     expect((await api.settings.getAutostart()).value).toBe(false);
+  });
+});
+
+/** Like main, the mock words its errors in Desktop's language: the page must never get Portuguese in an English or Spanish window. */
+describe('mock ControlApi language', () => {
+  const makeIn = (language: Language, scenario: MockScenario = 'default') => createMockControlApi({ scenario, latencyMs: 0, now: () => NOW, language });
+  const messageOf = <T>(result: ControlResult<T>): string => {
+    if (result.ok) throw new Error('expected a ControlError');
+    return result.message;
+  };
+
+  it('starts in the language it was given (pt-BR by default) and says so', () => {
+    expect(make().language).toBe('pt-BR');
+    expect(makeIn('en').language).toBe('en');
+    expect(makeIn('es').language).toBe('es');
+  });
+
+  it('pt-BR keeps the texts it always had', async () => {
+    expect(messageOf(await make('attached').devices.list())).toBe('Este app ainda não está pareado com o daemon que já estava rodando, então ele não pode ler isto.');
+    expect(messageOf(await make('down').overview())).toBe('O daemon não respondeu em 127.0.0.1:7780.');
+    expect(messageOf(await make().folders.save(['projetos'], true))).toBe('“projetos” não é um caminho completo, como C:\\Projetos.');
+  });
+
+  it('English: the messages of every kind of failure are English', async () => {
+    const attached = makeIn('en', 'attached');
+    expect(messageOf(await attached.devices.list())).toContain('not paired');
+    expect(messageOf(await attached.accounts.list())).toContain('did not accept');
+    expect(messageOf(await attached.restartDaemon())).toBe('Nanachi only restarts the daemon it started itself.');
+    expect(messageOf(await makeIn('en').folders.save(['projects'], true))).toBe('“projects” is not a full path, like C:\\Projects.');
+    expect(messageOf(await makeIn('en', 'readonly').folders.save(['C:\\a'], true))).toBe('The list can only be changed on the daemon that Nanachi started.');
+    expect(messageOf(await makeIn('en').devices.revoke('dev-2'))).toBe('This app cannot revoke its own access.');
+    expect(messageOf(await makeIn('en').devices.revoke('nope'))).toBe('That device no longer exists.');
+    const down = makeIn('en', 'down');
+    expect(messageOf(await down.overview())).toBe('The daemon did not answer on 127.0.0.1:7780.');
+    expect(messageOf(await down.devices.list())).toBe('The daemon did not answer on 127.0.0.1:7780. Try again in a few seconds.');
+  });
+
+  it('Spanish: the messages are Spanish', async () => {
+    expect(messageOf(await makeIn('es', 'attached').devices.pairingCode())).toContain('no está emparejada');
+    expect(messageOf(await makeIn('es').folders.save(['proyectos'], true))).toBe('“proyectos” no es una ruta completa, como C:\\Proyectos.');
+    expect(messageOf(await makeIn('es', 'down').folders.get())).toContain('no respondió');
+  });
+
+  it('follows the language when it changes in the middle of the session, like main', async () => {
+    const api = make('attached');
+    expect(messageOf(await api.devices.list())).toContain('Este app ainda não');
+    const heard: Language[] = [];
+    api.onLanguage((language) => heard.push(language));
+    expect(await api.settings.setLanguage('en')).toBe('en');
+    expect(api.language).toBe('en');
+    expect(heard).toEqual(['en']);
+    expect(messageOf(await api.devices.list())).toContain('not paired');
+    await api.settings.setLanguage('es');
+    expect(messageOf(await api.devices.list())).toContain('no está emparejada');
+  });
+
+  it('a language change rewords the message of a status that carries one', async () => {
+    const api = make('down');
+    const seen: Array<string | null> = [];
+    api.onDaemonStatus((status) => seen.push(status.message));
+    await api.settings.setLanguage('en');
+    expect(seen).toEqual(['Port 7780 is in use by another program.']);
+  });
+
+  it.each(['en', 'es'] as const)('no message of the mock in %s has a Portuguese-only letter', (language) => {
+    const messages = MOCK_MESSAGES[language];
+    const all = [
+      messages.notPaired,
+      messages.unreachable(7780),
+      messages.unreachableShort(7780),
+      messages.portBusy(7780),
+      messages.notOwnDaemon,
+      messages.rootsReadOnly,
+      messages.notAFullPath('x'),
+      messages.deviceGone,
+      messages.deviceSelf,
+      messages.accountsRefused,
+    ].join('\n');
+    expect(all).not.toMatch(/[ãõçâêôÃÕÇÂÊÔ]/);
+    if (language === 'en') expect(all.normalize('NFD')).not.toMatch(/\p{M}/u);
   });
 });

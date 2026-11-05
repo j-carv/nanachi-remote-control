@@ -1,10 +1,10 @@
-import type { DaemonStatus } from '../common/types.js';
-
 /**
- * Small local pages (pairing window, "daemon not ready" page). Plain HTML and CSS in the monochrome style of
+ * The small local page of the pairing window. Plain HTML and CSS in the monochrome style of
  * `docs/DESIGN.md`: the same `--ui-*` tokens, light and dark by `prefers-color-scheme`, no colour except the error
  * tone, no emoji, nothing loaded from the network.
  */
+
+import { getLanguage, translate, type Language, type MessageKey, type Params } from '../common/i18n/index.js';
 
 export function escapeHtml(text: string): string {
   return text
@@ -62,13 +62,21 @@ h1 { margin: 0; font-size: 14px; font-weight: 500; color: var(--ui-muted-foregro
 .mono { font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace; }
 `;
 
-function page(options: { title: string; csp: string; css: string; body: string; script?: string; nonce?: string }): string {
+function page(options: {
+  language: Language;
+  title: string;
+  csp: string;
+  css: string;
+  body: string;
+  script?: string;
+  nonce?: string;
+}): string {
   const script =
     options.script !== undefined && options.nonce !== undefined
       ? `<script nonce="${escapeHtml(options.nonce)}">${options.script}</script>`
       : '';
   return `<!doctype html>
-<html lang="pt-BR">
+<html lang="${options.language}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${options.csp}">
@@ -88,6 +96,8 @@ export function groupCode(code: string): string {
 }
 
 export interface PairingPageInput {
+  /** The language of the page; Desktop's current one when absent. */
+  language?: Language;
   code: string;
   /** Epoch ms. */
   expiresAt: number;
@@ -109,102 +119,68 @@ const PAIRING_CSS = `
 .expired .code, .expired .qr { opacity: 0.35; }
 `;
 
-/** Counts down to `expiresAt` once a second; at zero the page says the code expired. */
+/**
+ * Counts down to `expiresAt` once a second; at zero the page says the code expired. The words come from the page itself
+ * (`data-expires-in`, with `{{time}}` where the clock goes, and `data-expired`), written by the main process in the page's
+ * language, so the script holds no text of its own.
+ */
 const PAIRING_SCRIPT = `
 (function () {
   var root = document.getElementById('pairing');
   var label = document.getElementById('remaining');
   var expiresAt = Number(root.getAttribute('data-expires-at'));
+  var expiresIn = root.getAttribute('data-expires-in') || '';
+  var expired = root.getAttribute('data-expired') || '';
   function tick() {
     var left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
     if (left === 0) {
       root.classList.add('expired');
-      label.textContent = 'Código expirado. Gere outro pelo ícone do Nanachi.';
+      label.textContent = expired;
       return;
     }
     var m = String(Math.floor(left / 60)).padStart(2, '0');
     var s = String(left % 60).padStart(2, '0');
-    label.textContent = 'Expira em ' + m + ':' + s;
+    label.textContent = expiresIn.replace('{{time}}', m + ':' + s);
     setTimeout(tick, 1000);
   }
   tick();
 })();
 `;
 
-export function formatRemaining(expiresAt: number, now: number): string {
+/** The countdown line for `expiresAt` as seen at `now`, in `language` (Desktop's by default). */
+export function formatRemaining(expiresAt: number, now: number, language: Language = getLanguage()): string {
   const left = Math.max(0, Math.round((expiresAt - now) / 1000));
-  if (left === 0) return 'Código expirado. Gere outro pelo ícone do Nanachi.';
+  if (left === 0) return translate(language, 'main.pairingWindow.expired');
   const minutes = String(Math.floor(left / 60)).padStart(2, '0');
   const seconds = String(left % 60).padStart(2, '0');
-  return `Expira em ${minutes}:${seconds}`;
+  return translate(language, 'main.pairingWindow.expiresIn', { time: `${minutes}:${seconds}` });
 }
 
 /** The pairing window: code, countdown and QR. The QR image is the only thing that is not text. */
 export function renderPairingHtml(input: PairingPageInput): string {
   if (!/^[0-9]{6}$/.test(input.code)) throw new Error('código de pareamento inválido');
   if (!input.qrDataUrl.startsWith('data:image/png;base64,')) throw new Error('QR inválido');
-  const body = `<main id="pairing" data-expires-at="${Math.trunc(input.expiresAt)}">
-  <h1>Nanachi · Código de pareamento</h1>
+  const language = input.language ?? getLanguage();
+  const text = (key: MessageKey, params?: Params): string => escapeHtml(translate(language, key, params));
+  // `{{time}}` stays in the text the script reads: the script puts the clock there.
+  const expiresIn = escapeHtml(translate(language, 'main.pairingWindow.expiresIn', { time: '{{time}}' }));
+  const body = `<main id="pairing" data-expires-at="${Math.trunc(input.expiresAt)}" data-expires-in="${expiresIn}" data-expired="${text('main.pairingWindow.expired')}">
+  <h1>${text('main.pairingWindow.windowTitle')}</h1>
   <div class="card">
-    <div class="code mono" aria-label="Código ${escapeHtml(input.code)}">${escapeHtml(groupCode(input.code))}</div>
-    <p class="muted center" id="remaining">${escapeHtml(formatRemaining(input.expiresAt, input.now))}</p>
+    <div class="code mono" aria-label="${text('main.pairingWindow.codeLabel', { code: input.code })}">${escapeHtml(groupCode(input.code))}</div>
+    <p class="muted center" id="remaining">${escapeHtml(formatRemaining(input.expiresAt, input.now, language))}</p>
   </div>
-  <div class="qr"><img src="${escapeHtml(input.qrDataUrl)}" alt="QR do código ${escapeHtml(input.code)}"></div>
-  <p class="muted center">No outro aparelho, abra o Nanachi, adicione uma máquina e digite o código. Uso único.</p>
+  <div class="qr"><img src="${escapeHtml(input.qrDataUrl)}" alt="${text('main.pairingWindow.qrAlt', { code: input.code })}"></div>
+  <p class="muted center">${text('main.pairingWindow.hint')}</p>
 </main>`;
   return page({
-    title: 'Código de pareamento',
+    language,
+    title: translate(language, 'main.pairingWindow.pageTitle'),
     csp: `default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}'`,
     css: PAIRING_CSS,
     body,
     script: PAIRING_SCRIPT,
     nonce: input.nonce,
-  });
-}
-
-const STATUS_CSS = `
-.error { color: var(--ui-destructive); }
-.card > :first-child { margin-top: 0; }
-.card > :last-child { margin-bottom: 0; }
-pre {
-  font-weight: 400; margin: 0; padding: 12px; max-height: 240px; overflow: auto; background: var(--ui-muted);
-  border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-word; user-select: text;
-}
-`;
-
-/** Shown in the panel window while the daemon is not ready (starting, stopped, or gave up). No script at all. */
-export function renderStatusPageHtml(
-  status: Pick<DaemonStatus, 'state' | 'message' | 'logTail' | 'port'> & { restricted?: boolean },
-): string {
-  const headline: Record<DaemonStatus['state'], string> = {
-    starting: 'Iniciando o daemon',
-    running: 'Abrindo o painel',
-    attached: 'Abrindo o painel',
-    stopped: 'O daemon está parado',
-    error: 'O daemon não conseguiu iniciar',
-  };
-  const restricted = status.restricted === true;
-  const title = restricted ? 'O painel local não consegue usar este daemon' : headline[status.state];
-  const detail =
-    status.message ??
-    (status.state === 'starting' ? `Aguardando o daemon responder na porta ${status.port}.` : 'Nada para mostrar ainda.');
-  const log =
-    status.logTail.length > 0
-      ? `<div class="card"><p class="muted">Últimas linhas do log</p><pre class="mono">${escapeHtml(status.logTail.join('\n'))}</pre></div>`
-      : '';
-  const body = `<main>
-  <h1>Nanachi</h1>
-  <div class="card">
-    <p${status.state === 'error' || restricted ? ' class="error"' : ''}>${escapeHtml(title)}</p>
-    <p class="muted">${escapeHtml(detail)}</p>
-  </div>
-  ${log}
-</main>`;
-  return page({
-    title: 'Nanachi',
-    csp: `default-src 'none'; style-src 'unsafe-inline'`,
-    css: STATUS_CSS,
-    body,
   });
 }
 

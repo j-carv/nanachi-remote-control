@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ControlSection } from '../src/common/control-api.js';
 import type { ControlWindowBounds } from '../src/main/settings.js';
 
 /**
@@ -38,10 +39,15 @@ const electron = vi.hoisted(() => {
   class FakeWebContents extends Emitter {
     reload = vi.fn();
     send = vi.fn();
+    focus = vi.fn();
     setWindowOpenHandler = vi.fn();
     url = '';
+    loading = false;
     getURL(): string {
       return this.url;
+    }
+    isLoading(): boolean {
+      return this.loading;
     }
     isDestroyed(): boolean {
       return false;
@@ -82,7 +88,12 @@ const electron = vi.hoisted(() => {
     destroy = vi.fn(() => {
       this.destroyed = true;
     });
-    loadFile = vi.fn(() => Promise.resolve());
+    loadFile = vi.fn((_path: string, _options?: { query: Record<string, string> }) => Promise.resolve());
+    contentView = { addChildView: vi.fn(), removeChildView: vi.fn() };
+    contentBounds = { x: 0, y: 0, width: 1180, height: 760 };
+    getContentBounds(): { x: number; y: number; width: number; height: number } {
+      return this.contentBounds;
+    }
     constructor() {
       super();
       FakeWindow.all.push(this);
@@ -130,7 +141,7 @@ const { createControlWindow } = await import('../src/main/control-window.js');
 
 const INDEX = 'C:\\app\\dist\\control\\index.html';
 
-function setup() {
+function setup(open: { section: ControlSection } | undefined = undefined) {
   const save = vi.fn((_bounds: ControlWindowBounds) => undefined);
   const note = vi.fn();
   const control = createControlWindow({
@@ -142,10 +153,17 @@ function setup() {
     note,
     exists: () => true,
   });
-  control.open();
+  if (open === undefined) control.open();
+  else control.open(open);
   const window = electron.FakeWindow.all.at(-1);
   if (window === undefined) throw new Error('a janela não foi criada');
   return { control, window, save, note };
+}
+
+/** The window's page is the control center's own local page, loaded. */
+function pageLoaded(window: InstanceType<typeof electron.FakeWindow>): void {
+  window.webContents.url = 'file:///C:/app/dist/control/index.html';
+  window.webContents.loading = false;
 }
 
 beforeEach(() => {
@@ -241,5 +259,111 @@ describe('a renderer that died', () => {
     expect(window.webContents.reload).toHaveBeenCalledTimes(1);
     expect(window.show).toHaveBeenCalled();
     expect(window.focus).toHaveBeenCalled();
+  });
+});
+
+describe('opening on a section (the tray item "Abrir sessões")', () => {
+  it('a new window starts on that section: the page reads ?section= from its own URL', () => {
+    const { window } = setup({ section: 'sessions' });
+    expect(window.loadFile).toHaveBeenCalledWith(INDEX, { query: { section: 'sessions' } });
+  });
+
+  it('a new window without a section loads the plain page', () => {
+    const { window } = setup();
+    expect(window.loadFile).toHaveBeenCalledWith(INDEX, undefined);
+  });
+
+  it('an open window is shown and asked to go there', () => {
+    const { control, window } = setup();
+    pageLoaded(window);
+    control.open({ section: 'sessions' });
+    expect(window.webContents.send).toHaveBeenCalledWith('control:navigate', 'sessions');
+    expect(window.show).toHaveBeenCalled();
+    expect(electron.FakeWindow.all).toHaveLength(1);
+  });
+
+  it('a hidden window (closed to the tray) is brought back on that section', () => {
+    const { control, window } = setup();
+    pageLoaded(window);
+    window.visible = false;
+    control.open({ section: 'sessions' });
+    expect(window.webContents.send).toHaveBeenCalledWith('control:navigate', 'sessions');
+    expect(window.show).toHaveBeenCalled();
+    expect(window.focus).toHaveBeenCalled();
+  });
+
+  it('a page that is still loading is told when it finishes, once', () => {
+    const { control, window } = setup();
+    window.webContents.loading = true;
+    control.open({ section: 'sessions' });
+    expect(window.webContents.send).not.toHaveBeenCalled();
+    pageLoaded(window);
+    window.webContents.emit('did-finish-load');
+    window.webContents.emit('did-finish-load');
+    expect(window.webContents.send.mock.calls.filter(([channel]) => channel === 'control:navigate')).toEqual([['control:navigate', 'sessions']]);
+  });
+
+  it('opening with no section sends no navigation', () => {
+    const { control, window } = setup();
+    pageLoaded(window);
+    control.open();
+    expect(window.webContents.send.mock.calls.filter(([channel]) => channel === 'control:navigate')).toEqual([]);
+  });
+
+  it('a window whose renderer died reloads on the section asked for', () => {
+    const { control, window } = setup();
+    window.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+    control.open({ section: 'sessions' });
+    expect(window.loadFile).toHaveBeenLastCalledWith(INDEX, { query: { section: 'sessions' } });
+    expect(window.webContents.reload).not.toHaveBeenCalled();
+  });
+});
+
+describe('what the sessions view needs from the window', () => {
+  it('reports the content area, and nothing while there is no window', () => {
+    const unopened = createControlWindow({
+      indexPath: INDEX,
+      preloadPath: 'C:\app\dist\preload\control.cjs',
+      iconPath: 'C:\app\icon.png',
+      bounds: { load: () => undefined, save: vi.fn() },
+      onMissingUi: vi.fn(),
+      note: vi.fn(),
+      exists: () => true,
+    });
+    expect(unopened.contentSize()).toBeNull();
+    const { control, window } = setup();
+    expect(control.contentSize()).toEqual({ width: 1180, height: 760 });
+    window.contentBounds = { x: 0, y: 0, width: 940, height: 620 };
+    expect(control.contentSize()).toEqual({ width: 940, height: 620 });
+  });
+
+  it('attaches and detaches a view on the window content, and gives the keyboard back to the page', () => {
+    const { control, window } = setup();
+    const view = {} as never;
+    control.attachView(view);
+    control.detachView(view);
+    expect(window.contentView.addChildView).toHaveBeenCalledWith(view);
+    expect(window.contentView.removeChildView).toHaveBeenCalledWith(view);
+    control.focusPage();
+    expect(window.webContents.focus).toHaveBeenCalled();
+  });
+
+  it('says whether the window has the keyboard focus', () => {
+    const { control, window } = setup();
+    expect(control.isFocused()).toBe(true);
+    window.isFocused = () => false;
+    expect(control.isFocused()).toBe(false);
+  });
+
+  it('tells its listeners about every resize until they stop', () => {
+    const { control, window } = setup();
+    const listener = vi.fn();
+    const stop = control.onResize(listener);
+    window.emit('resize');
+    window.emit('resize');
+    expect(listener).toHaveBeenCalledTimes(2);
+    stop();
+    window.emit('resize');
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

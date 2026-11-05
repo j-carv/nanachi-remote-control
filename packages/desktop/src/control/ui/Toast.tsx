@@ -1,5 +1,7 @@
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useToastsHeld } from '../state/toast-hold.js';
 import { cx } from './cx.js';
 
 export type ToastTone = 'success' | 'error' | 'info';
@@ -10,7 +12,7 @@ export interface ToastInput {
   tone?: ToastTone;
 }
 
-interface ToastItem extends ToastInput {
+export interface ToastItem extends ToastInput {
   id: number;
   tone: ToastTone;
 }
@@ -34,6 +36,7 @@ const ICONS = {
 } satisfies Record<ToastTone, ReactNode>;
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
+  const { t } = useTranslation();
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
@@ -56,12 +59,29 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       </div>
       <button
         type="button"
-        aria-label="Dispensar aviso"
+        aria-label={t('shell.toast.dismiss')}
         onClick={() => onDismiss(item.id)}
         className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5"
       >
         <X aria-hidden="true" />
       </button>
+    </div>
+  );
+}
+
+export interface ToastStackProps {
+  items: readonly ToastItem[];
+  /** The sessions view is on screen: the toasts wait (they stay queued) and show when it is gone. */
+  held: boolean;
+  onDismiss: (id: number) => void;
+}
+
+/** The region the toasts appear in. It stays for screen readers even while empty or while the toasts wait. */
+export function ToastStack({ items, held, onDismiss }: ToastStackProps) {
+  const { t } = useTranslation();
+  return (
+    <div role="region" aria-label={t('shell.toast.region')} className="pointer-events-none fixed right-4 bottom-4 z-[70] flex w-[344px] flex-col gap-2">
+      {held ? null : items.map((item) => <ToastCard key={item.id} item={item} onDismiss={onDismiss} />)}
     </div>
   );
 }
@@ -77,15 +97,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setItems((current) => [...current, item].slice(-MAX_VISIBLE));
   }, []);
   const value = useMemo(() => notify, [notify]);
+  // The sessions view is drawn over the content area by main, where the toasts sit: they wait while it is on screen.
+  const held = useToastsHeld();
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div role="region" aria-label="Notificações" className="pointer-events-none fixed right-4 bottom-4 z-[70] flex w-[344px] flex-col gap-2">
-        {items.map((item) => (
-          <ToastCard key={item.id} item={item} onDismiss={dismiss} />
-        ))}
-      </div>
+      <ToastStack items={items} held={held} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
 }

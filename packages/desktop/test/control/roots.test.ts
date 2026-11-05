@@ -5,6 +5,7 @@ import {
   buildDraftEntries,
   changeSummary,
   computeCoveredBy,
+  driveKindLabel,
   driveLetter,
   driveSwitchState,
   driveUsage,
@@ -16,6 +17,7 @@ import {
   splitPath,
   toggleDriveRoot,
 } from '../../src/control/lib/roots.js';
+import { controlT } from './translator.js';
 
 describe('normalizeRootPath', () => {
   it.each([
@@ -122,7 +124,35 @@ describe('changeSummary', () => {
     [{ added: ['x', 'y'], removed: ['z'] }, '2 adicionadas e 1 removida'],
     [{ added: [], removed: [] }, ''],
   ])('%j -> %s', (changes, text) => {
-    expect(changeSummary({ ...changes, dirty: changes.added.length + changes.removed.length > 0 })).toBe(text);
+    expect(changeSummary({ ...changes, dirty: changes.added.length + changes.removed.length > 0 }, controlT('pt-BR'))).toBe(text);
+  });
+});
+
+describe('changeSummary and the drive kinds follow the language', () => {
+  const en = controlT('en');
+  const es = controlT('es');
+  const summaries = [
+    { added: ['x'], removed: [] },
+    { added: ['x', 'y', 'z'], removed: [] },
+    { added: [], removed: ['x'] },
+    { added: [], removed: ['x', 'y'] },
+    { added: ['x', 'y'], removed: ['z'] },
+    { added: [], removed: [] },
+  ].map((changes) => ({ ...changes, dirty: changes.added.length + changes.removed.length > 0 }));
+
+  it('English', () => {
+    expect(summaries.map((changes) => changeSummary(changes, en))).toEqual(['1 folder added', '3 folders added', '1 folder removed', '2 folders removed', '2 added and 1 removed', '']);
+    expect((['fixed', 'removable', 'network', 'optical', 'unknown'] as const).map((kind) => driveKindLabel(kind, en))).toEqual(['Local disk', 'Removable', 'Network', 'Optical', 'Drive']);
+  });
+
+  it('Spanish', () => {
+    expect(summaries.map((changes) => changeSummary(changes, es))).toEqual(['1 carpeta agregada', '3 carpetas agregadas', '1 carpeta quitada', '2 carpetas quitadas', '2 agregadas y 1 quitada', '']);
+    expect((['fixed', 'removable', 'network', 'optical', 'unknown'] as const).map((kind) => driveKindLabel(kind, es))).toEqual(['Disco local', 'Extraíble', 'Red', 'Óptico', 'Disco']);
+  });
+
+  it('Portuguese keeps the drive kinds it always had', () => {
+    const pt = controlT('pt-BR');
+    expect((['fixed', 'removable', 'network', 'optical', 'unknown'] as const).map((kind) => driveKindLabel(kind, pt))).toEqual(['Disco local', 'Removível', 'Rede', 'Óptico', 'Disco']);
   });
 });
 

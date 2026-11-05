@@ -1,3 +1,4 @@
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { AccountInfo, AgentAccountsInfo, DeviceInfo } from '../common/control-api.js';
 import type { SeedMachine } from '../common/types.js';
@@ -138,7 +139,7 @@ function parseAccounts(body: unknown): AgentAccountsInfo[] {
       // Only the principal login exists: the agent's own top-level fields describe it.
       const principal: AccountInfo = {
         id: 'default',
-        name: 'Conta principal',
+        name: t('main.accounts.principal'),
         principal: true,
         active: true,
         status: statusOf(item.status),
@@ -339,7 +340,7 @@ export function createTokenAccess(pairing: PairingLike, options: TokenAccessOpti
 
   const foreign = (generation: string): PairingError => {
     refused = { generation, token: usableToken() };
-    return new PairingError('rejected', 'o Nanachi Desktop só se pareia com o daemon que ele mesmo iniciou');
+    return new PairingError('rejected', t('main.pairing.onlyOwnDaemon'));
   };
 
   function failedRecently(): PairingError | null {
@@ -373,7 +374,7 @@ export function createTokenAccess(pairing: PairingLike, options: TokenAccessOpti
       const recent = failedRecently();
       if (now() - lastRefreshAt < cooldown || recent !== null) {
         if (held !== null) return held;
-        throw recent ?? new PairingError('rejected', 'o pareamento do Nanachi Desktop foi tentado há pouco; aguarde um instante');
+        throw recent ?? new PairingError('rejected', t('main.pairing.triedRecently'));
       }
       lastRefreshAt = now();
       return pair();

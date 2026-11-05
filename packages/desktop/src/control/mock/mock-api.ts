@@ -11,6 +11,7 @@ import type {
   ControlApi,
   ControlError,
   ControlResult,
+  ControlSection,
   DeviceInfo,
   DriveInfo,
   FoldersState,
@@ -18,9 +19,13 @@ import type {
   OverviewInfo,
   RootEntry,
   SaveRootsResult,
+  SessionsViewState,
+  SessionsViewport,
   WindowState,
 } from '../../common/control-api.js';
+import type { Language } from '../../common/i18n/index.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from '../../common/types.js';
+import { MOCK_MESSAGES, type MockMessages } from './messages.js';
 
 export type MockScenario = 'default' | 'empty' | 'readonly' | 'busy' | 'pending' | 'down' | 'attached' | 'login' | 'update';
 
@@ -32,6 +37,8 @@ export interface MockOptions {
   now?: () => number;
   /** What the native folder picker returns. */
   picked?: string[];
+  /** Desktop's language when the page starts (default pt-BR). The mock's error messages follow it, as main's do. */
+  language?: Language;
 }
 
 export interface MockControl extends ControlApi {
@@ -40,6 +47,12 @@ export interface MockControl extends ControlApi {
     setDaemon: (status: DaemonStatus) => void;
     setTailscale: (status: TailscaleStatus) => void;
     setPicked: (paths: string[]) => void;
+    /** What main would do when the tray asks for a section. */
+    navigate: (section: ControlSection) => void;
+    /** What main would do when the sessions view gives up or comes back. */
+    setSessionsView: (state: SessionsViewState) => void;
+    /** Every report of the sessions area, in order. */
+    viewports: SessionsViewport[];
     calls: string[];
   };
 }
@@ -50,6 +63,7 @@ const DAY = 24 * HOUR;
 const GB = 1024 ** 3;
 
 const DATA_FOLDER = 'C:\\Users\\user\\.nanachi-desktop';
+const PORT = 7780;
 
 function error(code: ControlError['code'], message: string): ControlError {
   return { ok: false, code, message };
@@ -68,7 +82,14 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
   const latency = options.latencyMs ?? 120;
   const clock = options.now ?? (() => Date.now());
   const calls: string[] = [];
+  const viewports: SessionsViewport[] = [];
+  let language: Language = options.language ?? 'pt-BR';
+  const languageListeners = new Set<(next: Language) => void>();
+  const navigateListeners = new Set<(section: ControlSection) => void>();
+  const sessionsViewListeners = new Set<(state: SessionsViewState) => void>();
   let picked = options.picked ?? ['C:\\Projetos\\blog', 'D:\\Clientes'];
+  // Read at the moment of each answer, so a language change in the middle of a session is followed (as main does).
+  const text = (): MockMessages => MOCK_MESSAGES[language];
 
   const delay = (): Promise<void> => (latency > 0 ? new Promise((resolve) => setTimeout(resolve, latency)) : Promise.resolve());
   const track = (name: string): void => {
@@ -76,8 +97,8 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
   };
   // Attached to a daemon Desktop did not start: it does not know this app, so devices and accounts answer these.
   const attached = scenario === 'attached';
-  const unknownApp = (): ControlError => error('not_paired', 'Este app ainda não está pareado com o daemon que já estava rodando, então ele não pode ler isto.');
-  const down = (): ControlError => error('daemon_unavailable', 'O daemon não respondeu em 127.0.0.1:7780. Tente de novo em alguns segundos.');
+  const unknownApp = (): ControlError => error('not_paired', text().notPaired);
+  const down = (): ControlError => error('daemon_unavailable', text().unreachable(PORT));
 
   let autostart = { value: true, supported: true };
 
@@ -89,13 +110,14 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
   /* ---------------------------------------------------------------- daemon */
   let daemon: DaemonStatus = {
     state: scenario === 'down' ? 'error' : scenario === 'attached' ? 'attached' : 'running',
-    port: 7780,
+    port: PORT,
     mode: scenario === 'attached' ? 'attached' : scenario === 'down' ? 'none' : 'spawned',
     pid: scenario === 'attached' || scenario === 'down' ? null : 14232,
     version: '0.1.0',
     machineName: 'OFFICE-PC',
     restricted: false,
-    message: scenario === 'down' ? 'A porta 7780 está ocupada por outro programa.' : null,
+    message: scenario === 'down' ? text().portBusy(PORT) : null,
+    // Log lines are what the process wrote, not texts of the interface: they are never translated.
     logTail: scenario === 'down' ? ['[desktop] porta 7780 ocupada', '[desktop] nova tentativa em 15 s'] : [],
   };
   const daemonListeners = new Set<(status: DaemonStatus) => void>();
@@ -210,6 +232,17 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
   /* ------------------------------------------------------------- api object */
   const api: MockControl = {
     version: '0.1.0',
+    get language() {
+      return language;
+    },
+    onNavigate(callback) {
+      navigateListeners.add(callback);
+      return () => navigateListeners.delete(callback);
+    },
+    onLanguage(callback) {
+      languageListeners.add(callback);
+      return () => languageListeners.delete(callback);
+    },
     window: {
       async minimize() {
         track('window.minimize');
@@ -234,7 +267,7 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
     async overview() {
       track('overview');
       await delay();
-      if (scenario === 'down') return error('daemon_unavailable', 'O daemon não respondeu em 127.0.0.1:7780.');
+      if (scenario === 'down') return error('daemon_unavailable', text().unreachableShort(PORT));
       const info: OverviewInfo = {
         daemon,
         tailscale,
@@ -251,17 +284,24 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
     async restartDaemon() {
       track('restartDaemon');
       await delay();
-      if (daemon.mode !== 'spawned') return error('not_own_daemon', 'O Nanachi só reinicia o daemon que ele mesmo iniciou.');
+      if (daemon.mode !== 'spawned') return error('not_own_daemon', text().notOwnDaemon);
       setDaemon({ ...daemon, state: 'starting', pid: null });
       setTimeout(() => setDaemon({ ...daemon, state: 'running', pid: 15880 }), latency > 0 ? 900 : 0);
       applied = saved.map((entry) => entry.path.toLowerCase()).join('|');
       return ok(daemon);
     },
-    async openSessions() {
-      track('openSessions');
-    },
     async openDataFolder() {
       track('openDataFolder');
+    },
+    sessions: {
+      async setViewport(viewport) {
+        track('sessions.setViewport');
+        viewports.push(viewport);
+      },
+      onState(callback) {
+        sessionsViewListeners.add(callback);
+        return () => sessionsViewListeners.delete(callback);
+      },
     },
     folders: {
       async get() {
@@ -277,7 +317,7 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
       async save(roots, restart, confirmedBusy) {
         track(`folders.save:${restart ? 'restart' : 'later'}`);
         await delay();
-        if (!editable) return error('not_own_daemon', 'A lista só pode ser mudada no daemon que o Nanachi iniciou.');
+        if (!editable) return error('not_own_daemon', text().rootsReadOnly);
         // Like main: the busy sessions are counted again, and nothing is written until the user agreed to interrupt them.
         if (restart && busySessions > (confirmedBusy ?? 0)) {
           const asked: SaveRootsResult = { state: foldersState(), applied: 'needs_confirmation' };
@@ -286,7 +326,7 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
         const next: Array<{ path: string; exists: boolean }> = [];
         for (const raw of roots) {
           const path = normalize(raw);
-          if (!/^[a-z]:\\/i.test(path)) return error('invalid_input', `“${raw}” não é um caminho completo, como C:\\Projetos.`);
+          if (!/^[a-z]:\\/i.test(path)) return error('invalid_input', text().notAFullPath(raw));
           if (next.some((entry) => entry.path.toLowerCase() === path.toLowerCase())) continue;
           const known = saved.find((entry) => entry.path.toLowerCase() === path.toLowerCase());
           next.push({ path, exists: known ? known.exists : true });
@@ -315,8 +355,8 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
         track(`devices.revoke:${id}`);
         await delay();
         const target = devices.find((device) => device.id === id);
-        if (!target) return error('invalid_input', 'Esse aparelho não existe mais.');
-        if (target.isThisApp) return error('invalid_input', 'Este app não pode revogar o próprio acesso.');
+        if (!target) return error('invalid_input', text().deviceGone);
+        if (target.isThisApp) return error('invalid_input', text().deviceSelf);
         devices = devices.map((device) => (device.id === id ? { ...device, revoked: true } : device));
         return ok(devices.map((device) => ({ ...device })));
       },
@@ -332,7 +372,7 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
       async list(refresh) {
         track(refresh ? 'accounts.list:refresh' : 'accounts.list');
         await delay();
-        if (attached) return error('unauthorized', 'O daemon que já estava rodando não aceitou o acesso deste app.');
+        if (attached) return error('unauthorized', text().accountsRefused);
         return ok(accounts.map((agent) => ({ ...agent, accounts: agent.accounts.map((account) => ({ ...account })) })));
       },
       async setActive(agentId, accountId) {
@@ -390,6 +430,15 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
       },
     },
     settings: {
+      async setLanguage(next) {
+        track(`settings.setLanguage:${next}`);
+        const previous = language;
+        language = next;
+        // A status that carries main's own message is worded again, as main would on its next report.
+        if (daemon.message === MOCK_MESSAGES[previous].portBusy(PORT)) setDaemon({ ...daemon, message: text().portBusy(PORT) });
+        languageListeners.forEach((listener) => listener(next));
+        return next;
+      },
       async getAutostart() {
         track('settings.getAutostart');
         await delay();
@@ -423,6 +472,9 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
       setPicked: (paths) => {
         picked = paths;
       },
+      navigate: (section) => navigateListeners.forEach((listener) => listener(section)),
+      setSessionsView: (state) => sessionsViewListeners.forEach((listener) => listener(state)),
+      viewports,
       calls,
     },
   };

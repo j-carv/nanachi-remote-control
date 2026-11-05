@@ -1,3 +1,4 @@
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { DaemonRuntime } from './daemon-runtime.js';
 import { PairingError } from './pairing.js';
@@ -28,12 +29,12 @@ async function runDaemonCli(
       PAIR_CLI_TIMEOUT_MS,
     );
   } catch (error) {
-    throw new PairingError('cli_failed', `não foi possível rodar o comando de pareamento: ${messageOf(error)}`);
+    throw new PairingError('cli_failed', t('main.pairing.cliFailed', { detail: messageOf(error) }));
   }
-  if (result.timedOut) throw new PairingError('cli_failed', 'o comando de pareamento demorou demais');
+  if (result.timedOut) throw new PairingError('cli_failed', t('main.pairing.cliTimeout'));
   if (result.exitCode !== 0) {
     const detail = result.stderr.trim();
-    throw new PairingError('cli_failed', detail !== '' ? detail : `o comando de pareamento saiu com código ${result.exitCode}`);
+    throw new PairingError('cli_failed', detail !== '' ? detail : t('main.pairing.cliExit', { code: String(result.exitCode) }));
   }
   return result.stdout;
 }

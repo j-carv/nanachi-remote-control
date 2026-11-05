@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { DaemonStatus, TailscaleStatus } from '../../common/types.js';
 
 /** `muted` is the neutral grey; the others are the status tokens of docs/DESIGN.md. */
@@ -13,42 +14,45 @@ export interface StatusSummary {
   detail: string;
 }
 
-export function daemonSummary(status: DaemonStatus): StatusSummary {
+/** The `t` of the control namespace (a helper outside React gets it from its caller). */
+type T = TFunction<'control'>;
+
+export function daemonSummary(status: DaemonStatus, t: T): StatusSummary {
   switch (status.state) {
     case 'running':
       return {
-        word: 'Rodando',
+        word: t('status.daemon.running.word'),
         tone: status.restricted ? 'attention' : 'success',
         pulse: false,
-        detail: 'Daemon iniciado pelo Nanachi',
+        detail: t('status.daemon.running.detail'),
       };
     case 'attached':
       return {
-        word: 'Conectado',
+        word: t('status.daemon.attached.word'),
         tone: status.restricted ? 'attention' : 'running',
         pulse: false,
-        detail: 'Daemon que já estava rodando; o Nanachi só se conecta a ele',
+        detail: t('status.daemon.attached.detail'),
       };
     case 'starting':
-      return { word: 'Iniciando', tone: 'attention', pulse: true, detail: 'Esperando o daemon responder' };
+      return { word: t('status.daemon.starting.word'), tone: 'attention', pulse: true, detail: t('status.daemon.starting.detail') };
     case 'stopped':
-      return { word: 'Parado', tone: 'muted', pulse: false, detail: 'O daemon não está rodando' };
+      return { word: t('status.daemon.stopped.word'), tone: 'muted', pulse: false, detail: t('status.daemon.stopped.detail') };
     case 'error':
-      return { word: 'Erro', tone: 'destructive', pulse: false, detail: status.message ?? 'O daemon não conseguiu iniciar' };
+      return { word: t('status.daemon.error.word'), tone: 'destructive', pulse: false, detail: status.message ?? t('status.daemon.error.detail') };
   }
 }
 
-export function tailscaleSummary(status: TailscaleStatus): StatusSummary {
+export function tailscaleSummary(status: TailscaleStatus, t: T): StatusSummary {
   switch (status.state) {
     case 'off':
-      return { word: 'Desligado', tone: 'muted', pulse: false, detail: 'O nó do Tailscale embutido não está ligado' };
+      return { word: t('status.tailscale.off.word'), tone: 'muted', pulse: false, detail: t('status.tailscale.off.detail') };
     case 'starting':
-      return { word: 'Iniciando', tone: 'attention', pulse: true, detail: 'Conectando à sua tailnet' };
+      return { word: t('status.tailscale.starting.word'), tone: 'attention', pulse: true, detail: t('status.tailscale.starting.detail') };
     case 'needs_login':
-      return { word: 'Precisa entrar', tone: 'attention', pulse: false, detail: 'Entre com a sua conta para continuar' };
+      return { word: t('status.tailscale.needsLogin.word'), tone: 'attention', pulse: false, detail: t('status.tailscale.needsLogin.detail') };
     case 'running':
-      return { word: 'Ligado', tone: 'success', pulse: false, detail: status.dnsName };
+      return { word: t('status.tailscale.running.word'), tone: 'success', pulse: false, detail: status.dnsName };
     case 'error':
-      return { word: 'Erro', tone: 'destructive', pulse: false, detail: status.message };
+      return { word: t('status.tailscale.error.word'), tone: 'destructive', pulse: false, detail: status.message };
   }
 }

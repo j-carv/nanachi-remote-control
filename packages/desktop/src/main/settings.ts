@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { isLanguage, languageFromLocale, type Language } from '../common/i18n/index.js';
 
 /** Where the control center window was, so it opens the same way next time. */
 export interface ControlWindowBounds {
@@ -17,6 +18,13 @@ export interface DesktopSettings {
   tailscaleEnabled: boolean;
   /** Absent until the control center window has been opened and moved or resized. */
   controlWindow?: ControlWindowBounds;
+  /** The language of Desktop. Absent only before the first run has picked one from the system locale. */
+  language?: Language;
+  /**
+   * The language Desktop last wrote into the embedded PWA's own storage (`nanachi.language`). While it equals `language` the
+   * PWA keeps whatever the user chose inside it; Desktop writes again only when its own language moved.
+   */
+  pwaLanguage?: Language;
 }
 
 export const DEFAULT_SETTINGS: Readonly<DesktopSettings> = { tailscaleEnabled: false };
@@ -47,14 +55,51 @@ export function loadSettings(file: string): DesktopSettings {
   try {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
     if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_SETTINGS };
-    const { tailscaleEnabled, controlWindow } = raw as Record<string, unknown>;
+    const { tailscaleEnabled, controlWindow, language, pwaLanguage } = raw as Record<string, unknown>;
     const settings: DesktopSettings = { tailscaleEnabled: tailscaleEnabled === true };
     const bounds = readBounds(controlWindow);
     if (bounds !== undefined) settings.controlWindow = bounds;
+    if (isLanguage(language)) settings.language = language;
+    if (isLanguage(pwaLanguage)) settings.pwaLanguage = pwaLanguage;
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
+}
+
+/** Whether `file` holds Desktop's settings (a JSON object). A Desktop that ran before keeps one; a first run has none. */
+export function settingsFileExists(file: string): boolean {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    return typeof raw === 'object' && raw !== null && !Array.isArray(raw);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The language Desktop starts in. A stored one wins. With none stored, a settings file that already exists means this is an
+ * upgrade from a Desktop that only had Portuguese (the languages came later): it stays in Portuguese (`legacy`) instead of
+ * suddenly following the system, and main marks the PWA's language as already written so the language the user may have chosen
+ * inside the PWA is not replaced. With no file it is a first run, and the language of the system is taken.
+ */
+export function resolveStartupLanguage(input: {
+  stored: Language | undefined;
+  hadSettingsFile: boolean;
+  locale: string | null | undefined;
+}): { language: Language; legacy: boolean } {
+  if (input.stored !== undefined) return { language: input.stored, legacy: false };
+  if (input.hadSettingsFile) return { language: 'pt-BR', legacy: true };
+  return { language: languageFromLocale(input.locale), legacy: false };
+}
+
+/**
+ * The language of the installer and of the uninstaller, read from Desktop's settings file without changing it: the one
+ * Desktop is set to (Portuguese for an upgrade that never chose, as Desktop itself will start), the system's when there is no
+ * Desktop settings file yet.
+ */
+export function languageForSettingsFile(file: string, locale: string | null | undefined): Language {
+  return resolveStartupLanguage({ stored: loadSettings(file).language, hadSettingsFile: settingsFileExists(file), locale }).language;
 }
 
 /** Writes through a temp file and a rename, so a crash never leaves half a file. */
@@ -65,6 +110,15 @@ export function saveSettings(file: string, settings: DesktopSettings): void {
   renameSync(temp, file);
 }
 
+/**
+ * The language to hand the embedded PWA at this load, or null. Desktop writes `nanachi.language` into the PWA's storage on the
+ * first load and after Desktop's own language changed (`written` is what it wrote last); while they agree the PWA keeps whatever
+ * the user chose inside it.
+ */
+export function pendingPwaLanguage(language: Language, written: Language | undefined): Language | null {
+  return written === language ? null : language;
+}
+
 export interface SettingsStore {
   get(): DesktopSettings;
   update(patch: Partial<DesktopSettings>): DesktopSettings;
@@ -73,6 +127,8 @@ export interface SettingsStore {
 function copyOf(settings: DesktopSettings): DesktopSettings {
   const copy: DesktopSettings = { tailscaleEnabled: settings.tailscaleEnabled };
   if (settings.controlWindow !== undefined) copy.controlWindow = { ...settings.controlWindow };
+  if (settings.language !== undefined) copy.language = settings.language;
+  if (settings.pwaLanguage !== undefined) copy.pwaLanguage = settings.pwaLanguage;
   return copy;
 }
 

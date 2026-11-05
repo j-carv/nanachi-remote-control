@@ -5,7 +5,6 @@ import {
   decideWindowOpen,
   isPermissionAllowed,
   isSameOrigin,
-  PANEL_SIZE,
   panelWebPreferences,
   shouldAllowNavigation,
 } from '../src/main/panel-policy.js';
@@ -88,8 +87,7 @@ describe('window settings', () => {
     });
   });
 
-  it('uses the contract window size and the theme background', () => {
-    expect(PANEL_SIZE).toEqual({ width: 1100, height: 760, minWidth: 420, minHeight: 640 });
+  it('uses the theme background', () => {
     expect(backgroundColor(true)).not.toBe(backgroundColor(false));
   });
 });
