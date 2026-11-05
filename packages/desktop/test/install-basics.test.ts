@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseInstallFlags } from '../src/install/args.js';
 import { DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME } from '../src/install/constants.js';
@@ -10,7 +11,13 @@ import { assertInsideInstall, checkDataFolder, checkInstallTarget, isInside, sam
 import { buildPayloadMeta, parsePayloadMeta, readPayload } from '../src/install/payload.js';
 import { parseProcessList, scanPrefix } from '../src/install/processes.js';
 import { buildUninstallEntry, buildUninstallRemoval, commandExecutable, parseRegQueryValue, readRegValue } from '../src/install/registry.js';
-import { assertSafeForCmd, buildRemovalScript, removalCommandArgs } from '../src/install/removal.js';
+import {
+  assertSafeRemovalPath,
+  REMOVAL_SCRIPT,
+  removalArgs,
+  scheduleRemoval,
+  wscriptPath,
+} from '../src/install/removal.js';
 import { isOwnWindowCaller } from '../src/install/sender.js';
 import { removeDir } from './remove-dir.js';
 
@@ -224,20 +231,6 @@ describe('process scan and scheduled removal', () => {
     expect(scanPrefix('C:\\Apps\\Nanachi\\')).toBe('C:\\Apps\\Nanachi\\');
   });
 
-  it('builds a retrying rmdir loop per folder and quotes paths with spaces', () => {
-    const script = buildRemovalScript(['C:\\Users\\ana\\AppData\\Local\\Programs\\Nanachi', 'C:\\Temp\\two words']);
-    expect(script).toContain('for /l %i in (1,1,30) do if exist "C:\\Users\\ana\\AppData\\Local\\Programs\\Nanachi" (rmdir /s /q "C:\\Users\\ana\\AppData\\Local\\Programs\\Nanachi"');
-    expect(script).toContain('rmdir /s /q "C:\\Temp\\two words"');
-    expect(script.split(' & for /l').length).toBe(2);
-  });
-
-  it('refuses a path cmd.exe would expand or break out of', () => {
-    for (const path of ['C:\\100%\\x', 'C:\\a"b', 'C:\\a\nb']) {
-      expect(() => assertSafeForCmd(path), JSON.stringify(path)).toThrow(/não suportado/);
-      expect(() => buildRemovalScript([path])).toThrow();
-    }
-    expect(() => assertSafeForCmd('C:\\Área de Trabalho\\Nanachi & co')).not.toThrow();
-  });
 });
 
 describe('reg.exe arguments', () => {
@@ -388,19 +381,87 @@ describe('reading the registry', () => {
   });
 });
 
-describe('scheduled removal command line', () => {
-  it('runs cmd with delayed expansion off, no AutoRun and the quoted script', () => {
-    const args = removalCommandArgs(['C:\\Temp\\Nanachi']);
-    expect(args.slice(0, 4)).toEqual(['/v:off', '/d', '/s', '/c']);
-    expect(args[4]).toBe(`"${buildRemovalScript(['C:\\Temp\\Nanachi'])}"`);
+describe('scheduled removal', () => {
+  it('runs one fixed JScript that is plain ASCII and reads its folders from the arguments', () => {
+    expect(REMOVAL_SCRIPT).toMatch(/^[\u0000-\u007f]*$/);
+    expect(REMOVAL_SCRIPT).not.toMatch(/\bcmd\b|\bping\b|rmdir/i);
+    expect(REMOVAL_SCRIPT).toContain("new ActiveXObject('Scripting.FileSystemObject')");
+    expect(REMOVAL_SCRIPT).toContain('WScript.Arguments.Item(i)');
+    expect(REMOVAL_SCRIPT).toContain('var ATTEMPTS = 30;');
+    expect(REMOVAL_SCRIPT).toContain('WScript.Sleep(INTERVAL_MS)');
+    expect(REMOVAL_SCRIPT).toContain('fso.DeleteFile(WScript.ScriptFullName');
   });
 
-  it('refuses a path with ! (delayed expansion), % or a quote', () => {
-    for (const path of ['C:\\Users\\Jo!\\Nanachi', 'C:\\Users\\%USERNAME%\\Nanachi', 'C:\\Users\\x"y']) {
-      expect(() => removalCommandArgs([path]), path).toThrow(/não suportado/);
+  it('never hands a tree that holds a junction or link to DeleteFolder, which would delete the target contents', () => {
+    expect(REMOVAL_SCRIPT).toContain('var REPARSE_POINT = 1024;');
+    const guard = REMOVAL_SCRIPT.indexOf('holdsLink(fso.GetFolder(path))');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(REMOVAL_SCRIPT.indexOf('fso.DeleteFolder(path, true)'));
+  });
+
+  it('passes the engine, the no-dialog flag, the script and the folders as separate arguments', () => {
+    expect(removalArgs('C:\\Temp\\nanachi-removal.js', ['C:\\Temp\\Nanachi', 'C:\\Temp\\two words'])).toEqual([
+      '//E:jscript',
+      '//B',
+      '//Nologo',
+      'C:\\Temp\\nanachi-removal.js',
+      'C:\\Temp\\Nanachi',
+      'C:\\Temp\\two words',
+    ]);
+  });
+
+  it('refuses a folder with a quote, CR, LF or NUL, which cannot travel as one argument', () => {
+    for (const path of ['C:\\a"b', 'C:\\a\nb', 'C:\\a\rb', 'C:\\a\0b']) {
+      expect(() => assertSafeRemovalPath(path), JSON.stringify(path)).toThrow(/não suportado/);
+      expect(() => removalArgs('C:\\Temp\\nanachi-removal.js', [path]), JSON.stringify(path)).toThrow(/não suportado/);
     }
   });
+
+  it('accepts % ! and & in a folder name: cmd.exe expanded or split on them, wscript does not', () => {
+    for (const path of ['C:\\100%\\x', 'C:\\Users\\Jo!\\Nanachi', 'C:\\Área de Trabalho\\Nanachi & co']) {
+      expect(() => assertSafeRemovalPath(path), path).not.toThrow();
+    }
+  });
+
+  it('starts wscript.exe from System32 by its absolute path, never by a bare name', () => {
+    expect(wscriptPath({ SystemRoot: 'C:\\Windows' })).toBe('C:\\Windows\\System32\\wscript.exe');
+    expect(wscriptPath({ SystemRoot: 'D:\\WinNT' })).toBe('D:\\WinNT\\System32\\wscript.exe');
+    expect(wscriptPath({ windir: 'E:\\Win' })).toBe('E:\\Win\\System32\\wscript.exe');
+    expect(wscriptPath({})).toBe('C:\\Windows\\System32\\wscript.exe');
+  });
+
+  describe.skipIf(process.platform !== 'win32')('through the real wscript.exe', () => {
+    it('deletes a folder with spaces, an ampersand and accents', async () => {
+      const folder = join(dir, 'Pasta com espaços & Área');
+      mkdirSync(join(folder, 'nested'), { recursive: true });
+      writeFileSync(join(folder, 'nested', 'file.txt'), 'x');
+      scheduleRemoval([folder]);
+      expect(await waitUntil(() => !existsSync(folder), 8_000)).toBe(true);
+    });
+
+    it('does not follow a junction: the folder it points to keeps its contents', async () => {
+      const outside = join(dir, 'outside');
+      const victim = join(dir, 'victim');
+      mkdirSync(outside);
+      mkdirSync(victim);
+      writeFileSync(join(outside, 'sentinel.txt'), 'keep');
+      symlinkSync(outside, join(victim, 'link'), 'junction');
+      scheduleRemoval([victim]);
+      // A recursive DeleteFolder that followed the junction deleted the sentinel on its first attempt, within milliseconds.
+      await delay(4_000);
+      expect(existsSync(join(outside, 'sentinel.txt'))).toBe(true);
+    });
+  });
 });
+
+async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) return false;
+    await delay(100);
+  }
+  return true;
+}
 
 describe('isOwnWindowCaller', () => {
   const frame = (url: string, parent: unknown = null) => ({ url, parent });
