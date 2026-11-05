@@ -142,3 +142,39 @@ describe('the language handed to the embedded PWA', () => {
     expect(pendingPwaLanguage('en', 'en')).toBeNull();
   });
 });
+
+describe('the PWA build Desktop last cleared the embedded service worker for', () => {
+  const build = { origin: 'http://127.0.0.1:7780', fingerprint: 'a'.repeat(64) };
+
+  it('is absent by default, so the first load after an install clears the cache', () => {
+    expect('pwaBuild' in loadSettings(join(dir, 'missing.json'))).toBe(false);
+  });
+
+  it('round-trips with the other settings and survives an update of another key', () => {
+    const file = join(dir, 'settings.json');
+    const store = createSettingsStore(file);
+    store.update({ pwaBuild: build });
+    store.update({ tailscaleEnabled: true });
+    expect(createSettingsStore(file).get()).toEqual({ tailscaleEnabled: true, pwaBuild: build });
+  });
+
+  it.each([
+    ['a fingerprint that is not hex', { ...build, fingerprint: 'z'.repeat(64) }],
+    ['a fingerprint that is too short', { ...build, fingerprint: 'a'.repeat(63) }],
+    ['a missing origin', { fingerprint: build.fingerprint }],
+    ['an origin that is not text', { ...build, origin: 7780 }],
+    ['something that is not an object', 'build'],
+  ])('is dropped for %s, without losing the other settings', (_label, bad) => {
+    const file = join(dir, 'settings.json');
+    writeFileSync(file, JSON.stringify({ tailscaleEnabled: true, pwaBuild: bad }));
+    expect(loadSettings(file)).toEqual({ tailscaleEnabled: true });
+  });
+
+  it('is handed out as a copy', () => {
+    const store = createSettingsStore(join(dir, 'settings.json'));
+    store.update({ pwaBuild: build });
+    const snapshot = store.get();
+    if (snapshot.pwaBuild !== undefined) snapshot.pwaBuild.origin = 'http://127.0.0.1:1';
+    expect(store.get().pwaBuild?.origin).toBe(build.origin);
+  });
+});

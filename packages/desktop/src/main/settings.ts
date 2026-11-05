@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { isLanguage, languageFromLocale, type Language } from '../common/i18n/index.js';
+import { isFingerprint, type PwaBuild } from './pwa-cache.js';
 
 /** Where the control center window was, so it opens the same way next time. */
 export interface ControlWindowBounds {
@@ -25,6 +26,11 @@ export interface DesktopSettings {
    * PWA keeps whatever the user chose inside it; Desktop writes again only when its own language moved.
    */
   pwaLanguage?: Language;
+  /**
+   * The PWA build the embedded PWA's service worker and Cache Storage were last cleared for (the daemon origin and the fingerprint
+   * of its page). Absent until the first load; a different build or origin clears them again (see `pwa-cache.ts`).
+   */
+  pwaBuild?: PwaBuild;
 }
 
 export const DEFAULT_SETTINGS: Readonly<DesktopSettings> = { tailscaleEnabled: false };
@@ -35,6 +41,13 @@ const MAX_WINDOW_OFFSET = 100_000;
 
 function inRange(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+}
+
+function readPwaBuild(value: unknown): PwaBuild | undefined {
+  if (typeof value !== 'object' || value === null || !('origin' in value) || !('fingerprint' in value)) return undefined;
+  const { origin, fingerprint } = value;
+  if (typeof origin !== 'string' || !isFingerprint(fingerprint)) return undefined;
+  return { origin, fingerprint };
 }
 
 function readBounds(value: unknown): ControlWindowBounds | undefined {
@@ -55,12 +68,14 @@ export function loadSettings(file: string): DesktopSettings {
   try {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
     if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_SETTINGS };
-    const { tailscaleEnabled, controlWindow, language, pwaLanguage } = raw as Record<string, unknown>;
+    const { tailscaleEnabled, controlWindow, language, pwaLanguage, pwaBuild } = raw as Record<string, unknown>;
     const settings: DesktopSettings = { tailscaleEnabled: tailscaleEnabled === true };
     const bounds = readBounds(controlWindow);
     if (bounds !== undefined) settings.controlWindow = bounds;
     if (isLanguage(language)) settings.language = language;
     if (isLanguage(pwaLanguage)) settings.pwaLanguage = pwaLanguage;
+    const build = readPwaBuild(pwaBuild);
+    if (build !== undefined) settings.pwaBuild = build;
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -129,6 +144,7 @@ function copyOf(settings: DesktopSettings): DesktopSettings {
   if (settings.controlWindow !== undefined) copy.controlWindow = { ...settings.controlWindow };
   if (settings.language !== undefined) copy.language = settings.language;
   if (settings.pwaLanguage !== undefined) copy.pwaLanguage = settings.pwaLanguage;
+  if (settings.pwaBuild !== undefined) copy.pwaBuild = { ...settings.pwaBuild };
   return copy;
 }
 
