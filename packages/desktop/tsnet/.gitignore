@@ -1,0 +1,2 @@
+# Stray build outputs; the packaged binary goes to <build dir>/stage/bin (see ../src/main/build-dir.ts), outside the repo
+*.exe

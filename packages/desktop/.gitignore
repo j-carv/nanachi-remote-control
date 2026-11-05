@@ -1,0 +1,5 @@
+# Build outputs and tool state: they must never show up in the OneDrive working tree's git status.
+/dist/
+/stage/
+/release/
+.vitest/

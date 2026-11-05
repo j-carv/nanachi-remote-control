@@ -13,7 +13,7 @@ import {
 } from './autostart.js';
 import { resolveNanachiHome } from './config.js';
 import { openDatabase } from './db.js';
-import { createPairCode, PAIR_CODE_TTL_MS } from './pairing.js';
+import { createDevice, createPairCode, PAIR_CODE_TTL_MS } from './pairing.js';
 import { listDevices, revokeDevice } from './repository.js';
 import { loadOrCreateVapid } from './vapid.js';
 
@@ -22,7 +22,11 @@ export interface CliIO {
   err(line: string): void;
 }
 
-const USAGE = 'uso: pair | devices | revoke <id> | vapid show | autostart install|uninstall|status|start|stop';
+const USAGE =
+  'uso: pair [--json] | device add --name <nome> [--json] | devices | revoke <id> | vapid show | autostart install|uninstall|status|start|stop';
+const DEVICE_USAGE = 'uso: device add --name <nome> [--json]';
+/** Mesmo limite do `deviceName` de POST /api/pair. */
+const DEVICE_NAME_MAX = 64;
 const AUTOSTART_USAGE = 'uso: autostart install | uninstall | status | start | stop';
 
 /** Ação do `autostart` -> resultado. Cada uma recebe o ambiente real (ou um falso, nos testes). */
@@ -76,6 +80,23 @@ async function runAutostart(args: readonly string[], home: string, appData: stri
   return result.ok ? 0 : 1;
 }
 
+/** Lê `--name <nome>` e `--json` do `device add`; null quando falta algo, sobra algo ou o nome não serve. */
+function parseDeviceAdd(args: readonly string[]): { name: string; json: boolean } | null {
+  let name: string | undefined;
+  let json = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--json') json = true;
+    else if (arg === '--name' && name === undefined) {
+      name = args[index + 1];
+      index += 1;
+    } else return null;
+  }
+  const trimmed = name?.trim();
+  if (trimmed === undefined || trimmed === '' || trimmed.length > DEVICE_NAME_MAX || /[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  return { name: trimmed, json };
+}
+
 /** Executa um subcomando e devolve o código de saída. Comandos que mexem no banco abrem e fecham o banco a cada chamada. */
 export async function runCli(argv: readonly string[], env: NodeJS.ProcessEnv, io: CliIO): Promise<number> {
   const [command, ...args] = argv;
@@ -99,8 +120,34 @@ export async function runCli(argv: readonly string[], env: NodeJS.ProcessEnv, io
   try {
     switch (command) {
       case 'pair': {
-        const code = createPairCode(db, Date.now());
-        io.out(`Código de pareamento: ${code} (uso único, válido por ${PAIR_CODE_TTL_MS / 60_000} min)`);
+        // `--json` é para o Nanachi Desktop: uma linha `{"code","expiresAt"}`, sem texto em volta.
+        const json = args.length === 1 && args[0] === '--json';
+        if (args.length > 0 && !json) {
+          io.err('uso: pair [--json]');
+          return 2;
+        }
+        const now = Date.now();
+        const code = createPairCode(db, now);
+        if (json) {
+          io.out(JSON.stringify({ code, expiresAt: now + PAIR_CODE_TTL_MS }));
+        } else {
+          io.out(`Código de pareamento: ${code} (uso único, válido por ${PAIR_CODE_TTL_MS / 60_000} min)`);
+        }
+        return 0;
+      }
+      case 'device': {
+        // `device add` é para o Nanachi Desktop: cria o device com um token novo SEM gerar código de pareamento.
+        // `pair` derruba os códigos que ainda valem, então parear o Desktop por ele estragaria o código que o
+        // usuário está digitando no celular. Local, como o resto da CLI: quem roda já lê o banco.
+        const [action, ...rest] = args;
+        const parsed = action === 'add' ? parseDeviceAdd(rest) : null;
+        if (parsed === null) {
+          io.err(DEVICE_USAGE);
+          return 2;
+        }
+        const { token, deviceId } = createDevice(db, { deviceName: parsed.name, now: Date.now(), pairMethod: 'code' });
+        if (parsed.json) io.out(JSON.stringify({ deviceId, token }));
+        else io.out(`Dispositivo ${deviceId} criado (${parsed.name}). Token: ${token}`);
         return 0;
       }
       case 'devices': {

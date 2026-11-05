@@ -32,8 +32,11 @@ export function createPairCode(db: Database.Database, now: number): string {
   throw new Error('não foi possível gerar um código de pareamento único');
 }
 
-/** Cria o device com um token novo e devolve o token (só ele vê o texto puro; o banco guarda o hash). */
-function createDevice(
+/**
+ * Cria o device com um token novo e devolve o token (só ele vê o texto puro; o banco guarda o hash).
+ * Exportada para o `device add` da CLI, que cria o device sem passar por código de pareamento.
+ */
+export function createDevice(
   db: Database.Database,
   input: { deviceName: string; now: number; pairMethod: PairMethod },
 ): { token: string; deviceId: string } {
