@@ -1,6 +1,8 @@
-/** Contagem de arquivos alterados no workspace, em pt-BR. */
+import { t } from '../i18n/index.js';
+
+/** Count of changed files in the workspace, in the current language ("sem alterações", "1 alteração", "3 alterações"). */
 export function changesLabel(count: number): string {
-  if (count === 0) return 'sem alterações';
-  if (count === 1) return '1 alteração';
-  return `${count} alterações`;
+  // Zero is explicit: Portuguese plural rules treat 0 like 1, which would read "0 alteração".
+  if (count === 0) return t('workspace:infoBar.noChanges');
+  return t('workspace:infoBar.changes', { count });
 }

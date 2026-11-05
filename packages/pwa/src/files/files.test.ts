@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { formatBytes, isImageMime } from './format.js';
 import { canShareFiles } from './share.js';
 
@@ -41,5 +42,14 @@ describe('canShareFiles', () => {
   it('canShare que recusa o tipo de arquivo não pode', () => {
     const nav = { share: () => Promise.resolve(), canShare: () => false };
     expect(canShareFiles(nav, file)).toBe(false);
+  });
+});
+
+describe('formatBytes in English', () => {
+  it('uses a decimal point', () => {
+    setLanguage('en');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB');
+    expect(formatBytes(1_500_000)).toBe('1.4 MB');
   });
 });

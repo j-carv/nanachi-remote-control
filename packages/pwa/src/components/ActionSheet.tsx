@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Check, Ellipsis } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
@@ -51,6 +52,7 @@ interface ActionSheetPanelProps {
  * markup estático.
  */
 export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2 px-3 pt-1 pb-[max(env(safe-area-inset-bottom),12px)]">
       <div className="overflow-hidden rounded-xl bg-card">
@@ -102,7 +104,7 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
           className="flex min-h-14 w-full items-center justify-center px-4 text-base font-semibold text-foreground transition-colors hover:bg-accent active:bg-accent"
           onClick={onClose}
         >
-          Cancelar
+          {t('actions.cancel')}
         </button>
       </div>
     </div>

@@ -4,9 +4,6 @@ import { ApiError } from './api.js';
 import {
   appendListing,
   conflictSessionId,
-  formatDateTime,
-  listedTitle,
-  listingText,
   resumableAgents,
   sessionAgeText,
 } from './resume.js';
@@ -34,30 +31,6 @@ describe('resumableAgents', () => {
   });
 });
 
-describe('formatDateTime', () => {
-  it('dd/mm/aaaa às hh:mm, com zeros à esquerda, no relógio local', () => {
-    expect(formatDateTime(local(2026, 11, 3, 9, 5))).toBe('03/11/2026 às 09:05');
-  });
-});
-
-describe('listedTitle', () => {
-  it('usa o título da sessão quando existe', () => {
-    expect(listedTitle(summary('a', 'Refatorar o parser', local(2026, 11, 2, 8, 0)))).toBe(
-      'Refatorar o parser',
-    );
-  });
-
-  it('sem título: "Sessão de <data e hora>"', () => {
-    expect(listedTitle(summary('a', null, local(2026, 11, 2, 18, 40)))).toBe(
-      'Sessão de 02/11/2026 às 18:40',
-    );
-  });
-
-  it('sem título e sem data: "Sessão sem título"', () => {
-    expect(listedTitle(summary('a', null, null))).toBe('Sessão sem título');
-  });
-});
-
 describe('sessionAgeText', () => {
   it('tempo relativo quando há data', () => {
     const now = local(2026, 11, 3, 12, 0);
@@ -66,12 +39,6 @@ describe('sessionAgeText', () => {
 
   it('sem data não mostra nada', () => {
     expect(sessionAgeText(null, local(2026, 11, 3, 12, 0))).toBeNull();
-  });
-});
-
-describe('listingText', () => {
-  it('avisa que o agente sobe no PC e pode demorar', () => {
-    expect(listingText('Oh My Pi')).toBe('Abrindo o Oh My Pi no PC… pode levar alguns segundos');
   });
 });
 

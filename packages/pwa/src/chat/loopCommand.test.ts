@@ -1,5 +1,6 @@
 import { LOOP_PROMPT_MAX } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { loopCommandFor } from './loopCommand.js';
 
 describe('loopCommandFor', () => {
@@ -53,5 +54,23 @@ describe('loopCommandFor', () => {
     expect(loopCommandFor('/loops 5m x', false)).toEqual({ kind: 'none' });
     expect(loopCommandFor('/mcp', false)).toEqual({ kind: 'none' });
     expect(loopCommandFor('', false)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('loopCommandFor in English', () => {
+  it('says what to fix, in English', () => {
+    setLanguage('en');
+    expect(loopCommandFor('/loop 5s eco', false)).toEqual({
+      kind: 'invalid',
+      message: 'Interval between 30 s and 24 h, followed by the prompt. E.g. /loop 5m review the tests.',
+    });
+    expect(loopCommandFor('/loop 5m eco', true)).toEqual({
+      kind: 'invalid',
+      message: "Loop doesn't accept attachments. Send the file in a regular message.",
+    });
+    expect(loopCommandFor(`/loop ${'x'.repeat(LOOP_PROMPT_MAX + 1)}`, false)).toEqual({
+      kind: 'invalid',
+      message: `The loop prompt is over ${LOOP_PROMPT_MAX} characters.`,
+    });
   });
 });

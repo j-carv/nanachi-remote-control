@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import Markdown from 'react-markdown';
+import { useTranslation } from 'react-i18next';
 import remarkGfm from 'remark-gfm';
 import { stripAnsi } from '../chat/ansi.js';
 import { splitMarkdownBlocks } from './markdownBlocks.js';
@@ -38,7 +39,8 @@ interface ImageProps {
  * Vira um link de texto que abre em outra aba.
  */
 function ImageAsLink({ src, alt }: ImageProps) {
-  const label = alt === undefined || alt.length === 0 ? 'imagem' : `imagem: ${alt}`;
+  const { t } = useTranslation('chat');
+  const label = alt === undefined || alt.length === 0 ? t('markdown.image') : t('markdown.imageWithAlt', { alt });
   return (
     <a href={src || undefined} rel="noopener noreferrer" target="_blank">
       {label}

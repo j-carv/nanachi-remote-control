@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ResetEntry } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { ApiError } from '../api.js';
 import type { RedeemState, ResetsListState } from './resetsFlow.js';
 import { RedeemResultNotice, ResetConfirmActions, ResetsSection } from './ResetsSection.js';
@@ -246,5 +247,42 @@ describe('ResetConfirmActions', () => {
     expect(html).toContain('data-slot="reset-cancel"');
     expect(html).toContain('data-slot="reset-confirm"');
     expect(html.indexOf('Cancelar')).toBeLessThan(html.indexOf('Usar reset'));
+  });
+});
+
+describe('ResetsSection in English', () => {
+  it('the heading, the row and its button', () => {
+    setLanguage('en');
+    const html = render(ready([entry()]));
+    expect(html).toContain('Saved resets');
+    expect(html).toContain('2 saved · 1 available now');
+    expect(html).toContain('expires in 3 days');
+    expect(html).toContain('aria-label="Use reset for fake@example.com · Org"');
+    expect(html).toContain('Use reset');
+    expect(html).not.toContain('Usar reset');
+  });
+
+  it('an empty list says so, or shows the message of the daemon as it comes', () => {
+    setLanguage('en');
+    expect(render(ready([]))).toContain('No saved resets.');
+    expect(render(ready([], 'No provider accounts found. Use /login to add one.'))).toContain(
+      'No provider accounts found. Use /login to add one.',
+    );
+  });
+
+  it('the loading placeholder and the confirmation buttons', () => {
+    setLanguage('en');
+    expect(render({ status: 'loading' })).toContain('aria-label="Loading resets"');
+    const actions = renderToStaticMarkup(createElement(ResetConfirmActions, { onCancel: noop, onConfirm: noop }));
+    expect(actions).toContain('Cancel');
+    expect(actions).toContain('Use reset');
+  });
+
+  it('the reply of a redeem has a dismiss button', () => {
+    setLanguage('en');
+    const html = renderToStaticMarkup(
+      createElement(RedeemResultNotice, { result: { tone: 'success', message: 'Reset applied.' }, onDismiss: noop }),
+    );
+    expect(html).toContain('aria-label="Dismiss message"');
   });
 });

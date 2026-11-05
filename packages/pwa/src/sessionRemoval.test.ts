@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import type { Session, SessionStatus } from '@nanachi/shared';
 import { removalConfirmText, removalInterruptNotice, visibleSessions } from './sessionRemoval.js';
 
@@ -63,5 +64,24 @@ describe('visibleSessions', () => {
 
   it('lista vazia e nada removido devolve lista vazia', () => {
     expect(visibleSessions([], {}, new Set())).toEqual([]);
+  });
+});
+
+describe('removal texts in English', () => {
+  it('the confirmation names the agent', () => {
+    setLanguage('en');
+    expect(removalConfirmText('Oh My Pi')).toBe(
+      'Remove this session from the app? The history stays in Oh My Pi, and you can bring it back from Resume from PC.',
+    );
+  });
+
+  it('the notice depends on what the session is doing', () => {
+    setLanguage('en');
+    expect(removalInterruptNotice('running')).toBe('The session is working. Removing it now interrupts the work.');
+    expect(removalInterruptNotice('awaiting_permission')).toBe(
+      'The session is waiting for your permission. Removing it now interrupts the work.',
+    );
+    expect(removalInterruptNotice('starting')).toBe('The session is starting. Removing it now interrupts the start.');
+    expect(removalInterruptNotice('idle')).toBeNull();
   });
 });

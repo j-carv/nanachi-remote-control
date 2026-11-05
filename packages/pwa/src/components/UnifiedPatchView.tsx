@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { diffBodyClass, DiffLine, type DiffLineKind } from './DiffLine.js';
 import { parseUnifiedPatch } from './unifiedPatch.js';
@@ -12,10 +13,11 @@ const MARK: Partial<Record<DiffLineKind, string>> = { add: '+', del: '−', ctx:
 
 /** Patch unificado com as mesmas cores do DiffView: adições verdes, remoções vermelhas. */
 export function UnifiedPatchView({ patch }: UnifiedPatchViewProps) {
+  const { t } = useTranslation('workspace');
   const lines = useMemo(() => parseUnifiedPatch(patch), [patch]);
 
   if (lines.length === 0) {
-    return <p className="text-sm text-muted-foreground">Sem diff de texto (arquivo binário ou vazio).</p>;
+    return <p className="text-sm text-muted-foreground">{t('diff.noText')}</p>;
   }
 
   return (

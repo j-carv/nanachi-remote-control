@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.js';
+
 /**
  * Matemática do recorte, sem DOM: o componente desenha a moldura na imagem exibida, e isto converte o retângulo
  * para os pixels do arquivo original, escolhe o formato de saída e o nome do arquivo.
@@ -19,7 +21,14 @@ export type CropPresetId = 'free' | 'square' | 'standard' | 'wide';
 
 /** Presets do recorte, na ordem da barra. `ratio` é largura/altura; `undefined` deixa a moldura livre. */
 export const CROP_PRESETS: readonly { id: CropPresetId; label: string; ratio: number | undefined }[] = [
-  { id: 'free', label: 'Livre', ratio: undefined },
+  {
+    id: 'free',
+    // A getter: the word follows the current language every time the preset is read.
+    get label() {
+      return t('files:crop.free');
+    },
+    ratio: undefined,
+  },
   { id: 'square', label: '1:1', ratio: 1 },
   { id: 'standard', label: '4:3', ratio: 4 / 3 },
   { id: 'wide', label: '16:9', ratio: 16 / 9 },
@@ -59,10 +68,10 @@ export function cropOutputMime(sourceMime: string): CropOutputMime {
   return normalized === 'image/jpeg' || normalized === 'image/jpg' ? 'image/jpeg' : 'image/png';
 }
 
-/** Nome do recorte: o nome original com `-recorte` e a extensão do formato de saída. */
+/** Nome do recorte: o nome original com `-recorte` (`-cropped` em inglês) e a extensão do formato de saída. */
 export function croppedFileName(name: string, outputMime: string): string {
   const dot = name.lastIndexOf('.');
   const base = dot > 0 ? name.slice(0, dot) : name;
   const extension = outputMime === 'image/jpeg' ? 'jpg' : 'png';
-  return `${base}-recorte.${extension}`;
+  return `${base}-${t('files:crop.suffix')}.${extension}`;
 }

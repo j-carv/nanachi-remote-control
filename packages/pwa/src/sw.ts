@@ -17,7 +17,7 @@ import {
   type SessionTarget,
 } from './push/notificationRoute.js';
 import { notificationFromPush } from './push/payload.js';
-import { isRefillPrecacheRequest } from './updates/forceUpdate.js';
+import { isRefillPrecacheRequest } from './updates/refillMessage.js';
 
 // `self.__WB_MANIFEST` é o ponto de injeção do vite-plugin-pwa (lista do precache).
 declare let self: ServiceWorkerGlobalScope & { __WB_MANIFEST: (PrecacheEntry | string)[] };

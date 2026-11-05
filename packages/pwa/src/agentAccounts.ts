@@ -1,4 +1,5 @@
 import type { AgentAccount, AgentProfile, SessionStatus } from '@nanachi/shared';
+import { t } from './i18n/index.js';
 import { formatRelativeTime } from './relativeTime.js';
 
 /** Cor da bolinha de status: ok = verde, warn = amarelo, muted = cinza. */
@@ -11,23 +12,26 @@ export interface AccountView {
   help: string | null;
 }
 
-export const LOGIN_HELP = 'Faça login no terminal do PC (ex.: claude, codex login, agy).';
+/** What to do when an agent is signed out: the login happens in the PC's terminal. */
+export function loginHelp(): string {
+  return t('accounts:status.loginHelp');
+}
 
 /** Rótulo, cor e ajuda de um estado de conta. */
 export function accountView(account: Pick<AgentAccount, 'status'>): AccountView {
   switch (account.status) {
     case 'logged_in':
-      return { statusLabel: 'Logado', tone: 'ok', help: null };
+      return { statusLabel: t('accounts:status.logged_in'), tone: 'ok', help: null };
     case 'logged_out':
-      return { statusLabel: 'Deslogado', tone: 'warn', help: LOGIN_HELP };
+      return { statusLabel: t('accounts:status.logged_out'), tone: 'warn', help: loginHelp() };
     case 'unknown':
-      return { statusLabel: 'Não verificado', tone: 'muted', help: null };
+      return { statusLabel: t('accounts:status.unknown'), tone: 'muted', help: null };
   }
 }
 
-/** "Verificado há 2 min", "Verificado agora", ou a data, conforme `formatRelativeTime`. */
+/** "Verificado há 2 min" / "Checked 2 min ago", "Verificado agora" / "Checked now", or the date, as `formatRelativeTime` says. */
 export function checkedText(checkedAt: number, now: number): string {
-  return `Verificado ${formatRelativeTime(checkedAt, now)}`;
+  return t('accounts:section.checked', { time: formatRelativeTime(checkedAt, now) });
 }
 
 /** Id of the principal account of every agent (the agent's normal home). It has no row of its own in the daemon. */
@@ -103,7 +107,7 @@ export function createLoginReloads(reload: () => void): LoginReloads {
 
 /** Text of the confirmation to remove an extra account. */
 export function removeAccountText(agentLabel: string, accountLabel: string): string {
-  return `Remover "${accountLabel}" de ${agentLabel}? O login desta conta neste PC é apagado e as sessões que a usavam voltam para a conta principal. A conta em si não é afetada.`;
+  return t('accounts:remove.text', { account: accountLabel, agent: agentLabel });
 }
 
 const LABEL_MAX = 40;
@@ -111,8 +115,8 @@ const LABEL_MAX = 40;
 /** Problem with the name of an account, or null. The daemon takes 1 to 40 characters after trimming. */
 export function validateAccountLabel(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed === '') return 'Digite um nome.';
-  if (trimmed.length > LABEL_MAX) return `Nome longo demais (máx. ${LABEL_MAX} caracteres).`;
+  if (trimmed === '') return t('accounts:validation.empty');
+  if (trimmed.length > LABEL_MAX) return t('accounts:validation.tooLong', { max: LABEL_MAX });
   return null;
 }
 
@@ -152,7 +156,10 @@ export function sessionAccount(selector: AccountSelector, accountId: string | nu
   return hasProfile(selector, id) ? id : PRINCIPAL_ACCOUNT_ID;
 }
 
-export const ACCOUNT_LOCKED_HINT = 'Troque quando o agente terminar';
+/** The line under the account row while the agent is busy. */
+export function accountLockedHint(): string {
+  return t('accounts:select.lockedHint');
+}
 
 /** The daemon refuses to move a session while its agent is starting, working or waiting for a permission (409). */
 export function accountChangeLocked(status: SessionStatus): boolean {

@@ -1,0 +1,26 @@
+{
+  "title": "Parear máquina",
+  "intro": "Gere um código de 6 dígitos no PC e digite aqui. Ele vale por 5 minutos.",
+  "introTailscale": "Entre sem código pela sua conta Tailscale, ou use um código de 6 dígitos gerado no PC.",
+  "fields": {
+    "address": "Endereço do PC",
+    "deviceName": "Nome deste dispositivo",
+    "code": "Código"
+  },
+  "tailscale": {
+    "signIn": "Entrar com Tailscale",
+    "signingIn": "Entrando…",
+    "connectedAs": "Conectado como {{login}}",
+    "or": "ou use um código de pareamento"
+  },
+  "submit": "Parear",
+  "submitting": "Pareando…",
+  "errors": {
+    "invalidInput": "Revise o endereço, o código (6 dígitos) e o nome do dispositivo.",
+    "addressScheme": "O endereço precisa começar com http:// ou https://.",
+    "https": "Use https:// no endereço do PC (ex.: https://pc-sala.seu-tailnet.ts.net). http:// só vale para localhost, 127.0.0.1 ou a própria origem desta app.",
+    "codeLength": "O código tem 6 dígitos.",
+    "tailscaleUnavailable": "Entrar com Tailscale não está liberado para esta conta neste PC. Use um código de pareamento.",
+    "unexpected": "Erro inesperado ao parear."
+  }
+}

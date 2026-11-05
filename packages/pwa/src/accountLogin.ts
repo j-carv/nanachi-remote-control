@@ -1,5 +1,6 @@
 import type { AccountLoginState } from '@nanachi/shared';
 import { ApiError, type ApiClient } from './api.js';
+import { t } from './i18n/index.js';
 
 /** How often the login sheet asks the daemon for the state of the login. */
 export const LOGIN_POLL_MS = 1500;
@@ -13,8 +14,6 @@ export type LoginStep =
   | { kind: 'success'; account: string | null }
   | { kind: 'failure'; error: string; output: string }
   | { kind: 'cancelled' };
-
-const GENERIC_FAILURE = 'o login falhou';
 
 /** The sheet's step for the daemon's login state (`null`: the first answer has not arrived). */
 export function loginStepOf(login: AccountLoginState | null): LoginStep {
@@ -31,7 +30,7 @@ export function loginStepOf(login: AccountLoginState | null): LoginStep {
     case 'succeeded':
       return { kind: 'success', account: login.account };
     case 'failed':
-      return { kind: 'failure', error: login.error ?? GENERIC_FAILURE, output: login.output };
+      return { kind: 'failure', error: login.error ?? t('accounts:login.step.genericFailure'), output: login.output };
     case 'cancelled':
       return { kind: 'cancelled' };
   }
@@ -45,17 +44,19 @@ function capitalized(text: string): string {
 export function loginStatusText(step: LoginStep): string {
   switch (step.kind) {
     case 'starting':
-      return 'Preparando…';
+      return t('accounts:login.step.starting');
     case 'link':
-      return step.codeSent ? 'Código enviado. Aguardando o login terminar…' : 'Aguardando você entrar…';
+      return step.codeSent ? t('accounts:login.step.codeSent') : t('accounts:login.step.waiting');
     case 'verifying':
-      return 'Verificando…';
+      return t('accounts:login.step.verifying');
     case 'success':
-      return step.account === null ? 'Conta conectada' : `Conta conectada: ${step.account}`;
+      return step.account === null
+        ? t('accounts:login.step.success')
+        : t('accounts:login.step.successAs', { account: step.account });
     case 'failure':
       return capitalized(step.error);
     case 'cancelled':
-      return 'Login cancelado.';
+      return t('accounts:login.step.cancelled');
   }
 }
 

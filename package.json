@@ -28,7 +28,9 @@
     "e2e:terminal": "node e2e/run-terminal.mjs",
     "e2e:tailscale": "node e2e/run-tailscale-pair.mjs",
     "e2e:loop": "node e2e/run-loop.mjs",
-    "e2e:force-update": "node e2e/run-force-update.mjs"
+    "e2e:force-update": "node e2e/run-force-update.mjs",
+    "e2e:i18n": "node e2e/run-i18n.mjs",
+    "e2e:desktop-install": "node e2e/run-desktop-install.mjs"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2",

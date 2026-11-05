@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +49,7 @@ export function NameSheet({
   onCancel,
   onSubmit,
 }: NameSheetProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   const problem = validate(name);
   const trimmed = name.trim();
@@ -75,7 +77,7 @@ export function NameSheet({
           </DrawerHeader>
           <div className="flex flex-col gap-2 px-5 pt-4">
             <Label htmlFor="entry-name" className="text-sm text-muted-foreground">
-              Nome
+              {t('fields.name')}
             </Label>
             <Input
               id="entry-name"
@@ -100,14 +102,14 @@ export function NameSheet({
           </div>
           <DrawerFooter className="flex-row">
             <Button type="button" variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               type="submit"
               className="flex-1"
               disabled={busy || problem !== null || unchanged}
             >
-              {busy ? 'Aguarde…' : submitLabel}
+              {busy ? t('states.wait') : submitLabel}
             </Button>
           </DrawerFooter>
         </form>

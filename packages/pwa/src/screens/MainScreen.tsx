@@ -1,4 +1,5 @@
 import { ChevronsUpDown, FolderOpen, Link2, Plus, Settings, ShieldExclamationPoint, Trash } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ConnectionStatus } from '../connection.js';
 import type { SessionTarget } from '../push/notificationRoute.js';
 import type { Machine } from '../machines.js';
@@ -31,28 +32,17 @@ interface MainScreenProps {
   onOpenSession(target: SessionTarget): void;
 }
 
-interface StatusText {
-  label: string;
-  hint: string;
+interface StatusLook {
   tone: StatusTone;
   pulse: boolean;
 }
 
-const STATUS_TEXT: Record<ConnectionStatus, StatusText> = {
-  online: { label: 'Online', hint: 'Conectado ao daemon desta máquina.', tone: 'success', pulse: false },
-  connecting: { label: 'Conectando…', hint: 'Abrindo a conexão com o PC.', tone: 'muted', pulse: true },
-  offline: {
-    label: 'Offline',
-    hint: 'Sem conexão com o PC. Tentando de novo automaticamente.',
-    tone: 'muted',
-    pulse: false,
-  },
-  unauthorized: {
-    label: 'Não autorizado',
-    hint: 'Este celular não tem mais acesso a esta máquina. Pareie de novo com um código novo.',
-    tone: 'danger',
-    pulse: false,
-  },
+/** Tone and pulse of each connection state; the texts are in `machines.json` under `status.<state>`. */
+const STATUS_LOOK: Record<ConnectionStatus, StatusLook> = {
+  online: { tone: 'success', pulse: false },
+  connecting: { tone: 'muted', pulse: true },
+  offline: { tone: 'muted', pulse: false },
+  unauthorized: { tone: 'danger', pulse: false },
 };
 
 /** Nome da máquina no título, com as outras máquinas num menu (uma delas é a selecionada). */
@@ -62,13 +52,13 @@ function MachineSwitcher({
   statuses,
   onSelect,
 }: Pick<MainScreenProps, 'machines' | 'selected' | 'statuses' | 'onSelect'>) {
-  const selectedStatus = statuses[selected.id] ?? 'connecting';
+  const selectedStatus = STATUS_LOOK[statuses[selected.id] ?? 'connecting'];
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="-ml-3 max-w-full justify-start px-3 text-xl font-semibold tracking-tight">
-          <StatusDot tone={STATUS_TEXT[selectedStatus].tone} pulse={STATUS_TEXT[selectedStatus].pulse} />
+          <StatusDot tone={selectedStatus.tone} pulse={selectedStatus.pulse} />
           <span className="truncate">{selected.name}</span>
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         </Button>
@@ -76,7 +66,7 @@ function MachineSwitcher({
       <DropdownMenuContent align="start" className="min-w-64">
         <DropdownMenuRadioGroup value={selected.id} onValueChange={onSelect}>
           {machines.map((machine) => {
-            const status = STATUS_TEXT[statuses[machine.id] ?? 'connecting'];
+            const status = STATUS_LOOK[statuses[machine.id] ?? 'connecting'];
             return (
               <DropdownMenuRadioItem key={machine.id} value={machine.id}>
                 <StatusDot tone={status.tone} pulse={status.pulse} />
@@ -102,8 +92,9 @@ export function MainScreen({
   onOpenSettings,
   onOpenSession,
 }: MainScreenProps) {
+  const { t } = useTranslation('machines');
   const status = statuses[selected.id] ?? 'connecting';
-  const text = STATUS_TEXT[status];
+  const look = STATUS_LOOK[status];
   const overviews = useMachineOverviews(machines);
   const now = Date.now();
   const summary = summarize(machines.map((machine) => ({ machineId: machine.id, overview: overviews[machine.id] })));
@@ -129,24 +120,24 @@ export function MainScreen({
         </h1>
         <div className="flex shrink-0 items-center gap-1">
           <ForceUpdateAction />
-          <Button variant="ghost" size="icon" aria-label="Ajustes" onClick={onOpenSettings}>
+          <Button variant="ghost" size="icon" aria-label={t('main.settings')} onClick={onOpenSettings}>
             <Settings aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Adicionar máquina" onClick={onAdd}>
+          <Button variant="ghost" size="icon" aria-label={t('main.addMachine')} onClick={onAdd}>
             <Plus aria-hidden="true" />
           </Button>
         </div>
       </header>
 
-      <section aria-label="Estado da máquina" className="flex flex-col gap-2">
-        <p aria-live="polite" className={cn('flex items-center gap-2 text-sm font-medium', TONE_TEXT[text.tone])}>
-          <StatusDot tone={text.tone} pulse={text.pulse} />
-          {text.label}
+      <section aria-label={t('main.machineStatus')} className="flex flex-col gap-2">
+        <p aria-live="polite" className={cn('flex items-center gap-2 text-sm font-medium', TONE_TEXT[look.tone])}>
+          <StatusDot tone={look.tone} pulse={look.pulse} />
+          {t(`status.${status}.label`)}
         </p>
-        <p className="text-base leading-6 text-muted-foreground">{text.hint}</p>
+        <p className="text-base leading-6 text-muted-foreground">{t(`status.${status}.hint`)}</p>
       </section>
 
-      <section aria-label="Resumo das máquinas" className="flex flex-col gap-3">
+      <section aria-label={t('main.summary')} className="flex flex-col gap-3">
         <div aria-live="polite" className="flex min-h-11 flex-wrap items-center gap-x-1 text-base">
           {labels.running !== null && <span>{labels.running}</span>}
           {labels.running !== null && labels.awaiting !== null && (
@@ -170,11 +161,11 @@ export function MainScreen({
               </Button>
             ))}
           {labels.running === null && labels.awaiting === null && (
-            <span className="text-muted-foreground">Nenhuma sessão rodando</span>
+            <span className="text-muted-foreground">{t('main.noneRunning')}</span>
           )}
         </div>
 
-        <ul aria-label="Máquinas" className="flex flex-col gap-3">
+        <ul aria-label={t('main.machines')} className="flex flex-col gap-3">
           {machines.map((machine) => (
             <MachineCard
               key={machine.id}
@@ -194,17 +185,17 @@ export function MainScreen({
         {status === 'unauthorized' ? (
           <Button size="wide" onClick={() => onRepair(selected)}>
             <Link2 aria-hidden="true" />
-            Parear de novo
+            {t('actions.pairAgain', { ns: 'common' })}
           </Button>
         ) : (
           <Button size="wide" onClick={onOpenWorkspaces}>
             <FolderOpen aria-hidden="true" />
-            Workspaces
+            {t('main.workspaces')}
           </Button>
         )}
         <Button variant="destructive-ghost" size="wide" onClick={() => onRemove(selected)}>
           <Trash aria-hidden="true" />
-          Remover máquina
+          {t('main.removeMachine')}
         </Button>
       </div>
     </Screen>

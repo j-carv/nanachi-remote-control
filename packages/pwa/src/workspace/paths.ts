@@ -1,3 +1,5 @@
+import { currentLanguage, t } from '../i18n/index.js';
+
 /** Caminho do pai ("" para quem está na raiz). Caminhos usam `/`, como a API responde. */
 export function parentOf(path: string): string {
   const index = path.lastIndexOf('/');
@@ -33,21 +35,22 @@ const DEVICE_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
  */
 export function validateEntryName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed === '') return 'Digite um nome.';
-  if (trimmed.length > 255) return 'Nome longo demais (máx. 255 caracteres).';
-  if (/[/\\]/.test(trimmed)) return 'Use um nome sem barras.';
-  if (trimmed === '.' || trimmed === '..') return 'Este nome não é permitido.';
-  if (/[<>:"|?*\u0000-\u001f]/.test(trimmed)) return 'Este nome não é permitido.';
-  if (/[. ]$/.test(trimmed)) return 'Este nome não é permitido.';
-  if (DEVICE_NAME.test(trimmed)) return 'Este nome não é permitido.';
+  if (trimmed === '') return t('workspace:entryName.empty');
+  if (trimmed.length > 255) return t('workspace:entryName.tooLong');
+  if (/[/\\]/.test(trimmed)) return t('workspace:entryName.noSlashes');
+  if (trimmed === '.' || trimmed === '..') return t('workspace:entryName.notAllowed');
+  if (/[<>:"|?*\u0000-\u001f]/.test(trimmed)) return t('workspace:entryName.notAllowed');
+  if (/[. ]$/.test(trimmed)) return t('workspace:entryName.notAllowed');
+  if (DEVICE_NAME.test(trimmed)) return t('workspace:entryName.notAllowed');
   return null;
 }
 
-/** Tamanho em pt-BR: "512 B", "1,5 KB", "3,0 MB". */
+/** Tamanho no idioma atual: "512 B", "1,5 KB", "3,0 MB" (pt-BR) ou "1.5 KB", "3.0 MB" (en). */
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
+  const options = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KB`;
+  if (kb < 1024) return `${kb.toLocaleString(currentLanguage(), options)} KB`;
   const mb = kb / 1024;
-  return `${mb.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
+  return `${mb.toLocaleString(currentLanguage(), options)} MB`;
 }

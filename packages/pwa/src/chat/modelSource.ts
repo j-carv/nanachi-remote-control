@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.js';
+
 /**
  * Where a model comes from. Oh My Pi sends one flat `model` select whose values are `<provider>/<model id>` (and
  * `<provider>/~<vendor>/<model>` for OpenRouter), so the same display name shows up under several providers. Claude
@@ -63,8 +65,6 @@ export const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   vertex: 'Vertex AI',
 };
 
-const OTHERS_LABEL = 'Outros';
-
 function labelOf(id: string): string {
   return Object.hasOwn(PROVIDER_LABELS, id) ? (PROVIDER_LABELS[id] ?? id) : id;
 }
@@ -95,7 +95,7 @@ export function isModelOption(option: ModelOptionLike): boolean {
 }
 
 /**
- * Options grouped by provider, in first-appearance order, with the options that have no provider last under "Outros".
+ * Options grouped by provider, in first-appearance order, with the options that have no provider last under "Outros" ("Other" in English).
  * Undefined when fewer than two providers come out: a single-provider or provider-less list renders as before.
  */
 export function providerGroups<T extends ModelChoice>(options: readonly T[]): ProviderGroup<T>[] | undefined {
@@ -120,7 +120,7 @@ export function providerGroups<T extends ModelChoice>(options: readonly T[]): Pr
   }
   if (groups.size < 2) return undefined;
   const out = [...groups.values()];
-  if (others.length > 0) out.push({ providerId: '', providerLabel: OTHERS_LABEL, options: others });
+  if (others.length > 0) out.push({ providerId: '', providerLabel: t('chat:model.others'), options: others });
   return out;
 }
 

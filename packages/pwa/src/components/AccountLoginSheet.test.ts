@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import type { LoginStep } from '../accountLogin.js';
 import { AccountLoginBody } from './AccountLoginSheet.js';
 
@@ -213,5 +214,37 @@ describe('AccountLoginBody: problemas', () => {
       null,
     ];
     for (const step of steps) expect(render(step)).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+});
+
+describe('AccountLoginBody in English', () => {
+  it('Claude: the link, the note about the PC tab and the code field', () => {
+    setLanguage('en');
+    const html = render(claudeLink());
+    expect(html).toContain('Open the link and sign in with the account you want to add');
+    expect(html).toContain('Open link');
+    expect(html).toContain('aria-label="Copy link"');
+    expect(html).toContain('The PC may also open a login tab; you can ignore it.');
+    expect(html).toContain('After signing in, copy the code that appears and paste it here');
+    expect(html).toContain('>Send</button>');
+    expect(html).not.toContain('Abrir link');
+  });
+
+  it('Codex: the one-time code with its copy button', () => {
+    setLanguage('en');
+    const html = render(codexLink);
+    expect(html).toContain('Enter this code on the page');
+    expect(html).toContain('aria-label="Copy code"');
+    expect(html).toContain('0HKH-0YU99');
+  });
+
+  it('status lines and the failure output', () => {
+    setLanguage('en');
+    expect(render({ kind: 'starting' })).toContain('Getting ready…');
+    expect(render({ kind: 'verifying' })).toContain('Verifying…');
+    expect(render({ kind: 'success', account: 'a@example.com' })).toContain('Account connected: a@example.com');
+    const failed = render({ kind: 'failure', error: 'the login failed', output: 'boom' });
+    expect(failed).toContain('The login failed');
+    expect(failed).toContain('Show the login output');
   });
 });

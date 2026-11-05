@@ -1,4 +1,5 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, CircleStop, Info, Pause, Play, Repeat, Sparkles, Timer, Zap, type LucideIcon } from 'lucide-react';
 import type { Loop, LoopMode, LoopRequest } from '@nanachi/shared';
 import { describeLoopError } from '../errorMessages.js';
@@ -36,7 +37,7 @@ export interface LoopSheetProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   loop: Loop | null;
-  /** The first loop state has arrived. Until then the sheet shows "Carregando". */
+  /** The first loop state has arrived. Until then the sheet shows "Loading". */
   loaded: boolean;
   /** A loop action is running (disables the buttons). */
   busy: boolean;
@@ -65,18 +66,19 @@ const PHASE_TONE: Record<LoopPhase, StatusTone> = {
  * create or replace it. The form's validation and request building live in `loopForm.ts`.
  */
 export function LoopSheet(props: LoopSheetProps) {
+  const { t } = useTranslation('chat');
   return (
     <Drawer open={props.open} onOpenChange={props.onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Modo Loop</DrawerTitle>
-          <DrawerDescription>Repete um prompt nesta sessão, mesmo com o celular fechado.</DrawerDescription>
+          <DrawerTitle>{t('loop.sheet.title')}</DrawerTitle>
+          <DrawerDescription>{t('loop.sheet.description')}</DrawerDescription>
         </DrawerHeader>
         <div className="min-h-0 overflow-y-auto px-4 pt-3 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
           {props.loaded ? (
             <LoopBody {...props} />
           ) : (
-            <p className="py-8 text-center text-[15px] text-muted-foreground">Carregando o loop…</p>
+            <p className="py-8 text-center text-[15px] text-muted-foreground">{t('loop.sheet.loading')}</p>
           )}
         </div>
       </DrawerContent>
@@ -86,6 +88,7 @@ export function LoopSheet(props: LoopSheetProps) {
 
 /** Body, rendered once the state is loaded. Form values start from the current loop and reset on every open. */
 function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNativeSend, onOpenChange }: LoopSheetProps) {
+  const { t } = useTranslation('chat');
   const now = useLoopClock(loop !== null);
   const [values, setValues] = useState<LoopFormValues>(() => formValuesOf(loop));
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +128,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
     void run(
       () => actions.saveLoop(checked.request),
       () => {
-        onNotice(editing ? 'Alterações salvas' : 'Loop iniciado');
+        onNotice(editing ? t('loop.saved') : t('loop.started'));
         onOpenChange(false);
       },
     );
@@ -154,7 +157,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
       {loop !== null && (
         <section aria-labelledby="loop-current-title" className="flex flex-col gap-2">
           <SectionHeading icon={Repeat} id="loop-current-title">
-            Loop atual
+            {t('loop.sheet.current')}
           </SectionHeading>
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -164,11 +167,14 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
-              {loopRoundsText(loop)} · {loop.intervalMs === null ? 'Automático' : `Intervalo de ${durationLabel(loop.intervalMs)}`}
+              {loopRoundsText(loop)} ·{' '}
+              {loop.intervalMs === null
+                ? t('loop.sheet.automatic')
+                : t('loop.sheet.every', { interval: durationLabel(loop.intervalMs) })}
             </p>
             {loop.lastError !== null && (
               <div role="alert" className="flex flex-col gap-1 rounded-lg bg-destructive/10 px-3.5 py-3 text-sm text-destructive [overflow-wrap:anywhere]">
-                <p className="font-medium">Último erro</p>
+                <p className="font-medium">{t('loop.sheet.lastError')}</p>
                 <p>{loop.lastError}</p>
               </div>
             )}
@@ -176,25 +182,25 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
               {paused ? (
                 <Button variant="secondary" disabled={disabled} onClick={() => void run(actions.resumeLoop)}>
                   <Play aria-hidden="true" />
-                  Retomar
+                  {t('loop.sheet.resume')}
                 </Button>
               ) : (
                 <Button variant="secondary" disabled={disabled} onClick={() => void run(actions.pauseLoop)}>
                   <Pause aria-hidden="true" />
-                  Pausar
+                  {t('loop.sheet.pause')}
                 </Button>
               )}
               <Button variant="secondary" disabled={disabled} onClick={() => void run(actions.runLoopNow)}>
                 <Zap aria-hidden="true" />
-                Rodar agora
+                {t('loop.sheet.runNow')}
               </Button>
             </div>
           {confirming ? (
-            <div role="group" aria-label="Confirmar parada" className="-mx-4 -mb-4 flex flex-col gap-3 border-t border-border p-4">
-              <p className="text-sm">Parar o loop? Uma rodada em andamento termina, e nenhuma outra começa.</p>
+            <div role="group" aria-label={t('loop.sheet.confirmStop')} className="-mx-4 -mb-4 flex flex-col gap-3 border-t border-border p-4">
+              <p className="text-sm">{t('loop.sheet.confirmStopText')}</p>
               <div className="flex gap-2">
                 <Button variant="secondary" className="flex-1" disabled={disabled} onClick={() => setConfirming(false)}>
-                  Cancelar
+                  {t('actions.cancel', { ns: 'common' })}
                 </Button>
                 <Button
                   variant="destructive"
@@ -202,12 +208,12 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
                   disabled={disabled}
                   onClick={() =>
                     void run(actions.stopLoop, () => {
-                      onNotice('Loop parado');
+                      onNotice(t('loop.stopped'));
                       onOpenChange(false);
                     })
                   }
                 >
-                  Parar loop
+                  {t('loop.sheet.stop')}
                 </Button>
               </div>
             </div>
@@ -220,7 +226,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
                 onClick={() => setConfirming(true)}
               >
                 <CircleStop aria-hidden="true" />
-                Parar loop
+                {t('loop.sheet.stop')}
               </Button>
             </div>
           )}
@@ -228,14 +234,14 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
         </section>
       )}
 
-      <form className="flex flex-col gap-6" onSubmit={submit} aria-label={editing ? 'Alterar o loop' : 'Novo loop'}>
+      <form className="flex flex-col gap-6" onSubmit={submit} aria-label={editing ? t('loop.sheet.formEdit') : t('loop.sheet.formNew')}>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="loop-prompt">Prompt</Label>
+          <Label htmlFor="loop-prompt">{t('loop.sheet.prompt')}</Label>
           <textarea
             id="loop-prompt"
             rows={3}
             value={values.prompt}
-            placeholder="Ex.: /review ou revise os testes que falharam"
+            placeholder={t('loop.sheet.promptPlaceholder')}
             onChange={(event) => patch({ prompt: event.target.value })}
             className="min-h-24 resize-none rounded-md border border-input bg-card px-3 py-2.5 text-base leading-snug text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
           />
@@ -243,7 +249,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
 
         <div className="flex flex-col gap-2">
           <span id="loop-mode-label" className="text-sm font-medium">
-            Quando rodar
+            {t('loop.sheet.when')}
           </span>
           <div role="radiogroup" aria-labelledby="loop-mode-label" onKeyDown={moveMode} className="flex flex-col gap-2">
             {MODE_CARDS.map((card) => (
@@ -254,7 +260,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
 
         {values.mode === 'interval' && (
           <div className="flex flex-col gap-3">
-            <span className="text-sm font-medium">Intervalo</span>
+            <span className="text-sm font-medium">{t('loop.sheet.interval')}</span>
             <div className="grid grid-cols-5 gap-1.5">
               {LOOP_PRESETS_MS.map((ms) => {
                 const selected = interval.ok && interval.intervalMs === ms;
@@ -276,14 +282,14 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="loop-interval" className="font-normal text-muted-foreground">
-                Outro intervalo
+                {t('loop.sheet.otherInterval')}
               </Label>
               <Input
                 id="loop-interval"
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
-                placeholder="Ex.: 90s, 10m, 1h30m"
+                placeholder={t('loop.sheet.intervalPlaceholder')}
                 value={values.interval}
                 aria-invalid={!interval.ok}
                 aria-describedby="loop-interval-hint"
@@ -291,21 +297,21 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
               />
               <p id="loop-interval-hint" className={cn('text-sm', interval.ok ? 'text-muted-foreground' : 'text-destructive')}>
                 {interval.ok
-                  ? `Roda a cada ${durationLabel(interval.intervalMs)}, contando do fim de cada rodada.`
+                  ? t('loop.sheet.intervalHint', { interval: durationLabel(interval.intervalMs) })
                   : interval.message}
               </p>
             </div>
           </div>
         )}
 
-        <ListGroup label="Opções do loop">
+        <ListGroup label={t('loop.sheet.options')}>
           <li className={listRowClass}>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <Label htmlFor="loop-rounds" className="font-normal text-[15px]">
-                Limite de rodadas
+                {t('loop.sheet.rounds')}
               </Label>
               <p id="loop-rounds-hint" className="text-sm leading-snug text-muted-foreground">
-                O loop para sozinho depois desse número de rodadas.
+                {t('loop.sheet.roundsHint')}
               </p>
             </div>
             <Input
@@ -314,7 +320,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
               inputMode="numeric"
               min={1}
               step={1}
-              placeholder="Sem limite"
+              placeholder={t('loop.sheet.roundsPlaceholder')}
               aria-describedby="loop-rounds-hint"
               value={values.rounds}
               className="h-11 w-28 text-right"
@@ -324,7 +330,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
           <li className={listRowClass}>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <Label htmlFor="loop-run-now" className="font-normal text-[15px]">
-                Primeira rodada agora
+                {t('loop.sheet.firstRound')}
               </Label>
               <p id="loop-run-now-hint" className="text-sm leading-snug text-muted-foreground">
                 {firstRoundHelpText(values.mode)}
@@ -354,9 +360,9 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
         <div className="flex flex-col gap-3">
           <Button type="submit" size="wide" disabled={disabled}>
             <Repeat aria-hidden="true" />
-            {editing ? 'Salvar alterações' : 'Iniciar loop'}
+            {editing ? t('loop.sheet.save') : t('loop.sheet.start')}
           </Button>
-          {editing && <p className="text-center text-sm text-muted-foreground">Salvar reinicia a contagem de rodadas.</p>}
+          {editing && <p className="text-center text-sm text-muted-foreground">{t('loop.sheet.saveNote')}</p>}
           {nativeClaude && (
             <div className="flex flex-col gap-2">
               <Button
@@ -366,9 +372,9 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
                 disabled={native === undefined || !canSend || disabled}
                 onClick={sendNative}
               >
-                Usar /loop nativo do Claude
+                {t('loop.sheet.native')}
               </Button>
-              <p className="text-center text-sm text-muted-foreground">Manda o comando como mensagem comum ao Claude.</p>
+              <p className="text-center text-sm text-muted-foreground">{t('loop.sheet.nativeNote')}</p>
             </div>
           )}
         </div>
@@ -378,7 +384,7 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 text-[15px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
             <Info className="size-5 text-muted-foreground" aria-hidden="true" />
-            Como funciona
+            {t('loop.sheet.howTitle')}
           </span>
           <ChevronDown
             className="size-5 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
@@ -386,9 +392,9 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
           />
         </summary>
         <ul className="flex list-disc flex-col gap-2 border-t border-border py-3 pr-4 pl-9 text-sm leading-snug text-muted-foreground">
-          <li>Roda no PC, mesmo com o celular fechado.</li>
-          <li>Espera se o agente estiver ocupado ou pedindo permissão.</li>
-          <li>Pausa e te avisa no celular se der erro.</li>
+          <li>{t('loop.sheet.how1')}</li>
+          <li>{t('loop.sheet.how2')}</li>
+          <li>{t('loop.sheet.how3')}</li>
         </ul>
       </details>
     </div>
@@ -398,41 +404,25 @@ function LoopBody({ loop, busy, canSend, nativeClaude, actions, onNotice, onNati
 /** Arrow keys of the "Quando rodar" radio group. */
 const ARROW_KEYS: ReadonlySet<string> = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
-/** Copy of the two "Quando rodar" options, in display order. Plain language with one concrete example each. */
+/** The two "When to run" options, in display order. Their copy (title, description, example) is in `chat.json`. */
 const MODE_CARDS: readonly Omit<ModeCardProps, 'checked' | 'onSelect'>[] = [
-  {
-    mode: 'interval',
-    icon: Timer,
-    title: 'Intervalo fixo',
-    description:
-      'Repete o prompt sempre no mesmo intervalo. O tempo conta a partir do fim da resposta anterior, então nunca roda duas vezes ao mesmo tempo.',
-    example: 'Ex.: a cada 15 min, rodar os testes e consertar o que falhar.',
-  },
-  {
-    mode: 'dynamic',
-    icon: Sparkles,
-    title: 'Automático',
-    description:
-      'O agente decide quando rodar de novo: no fim de cada resposta ele diz quanto esperar (de 30 s a 24 h) ou que terminou, e o loop para sozinho. Sem resposta, espera 10 min.',
-    example: 'Ex.: continuar uma refatoração até acabar.',
-  },
+  { mode: 'interval', icon: Timer },
+  { mode: 'dynamic', icon: Sparkles },
 ];
 
 interface ModeCardProps {
   mode: LoopMode;
   icon: LucideIcon;
-  title: string;
-  description: string;
-  example: string;
   checked: boolean;
   onSelect(): void;
 }
 
 /**
- * One "Quando rodar" option: a radio (`aria-checked`) named by its title, described by its text and example. Monochrome:
- * the selected card gets the foreground border and a filled indicator.
+ * One "When to run" option: a radio (`aria-checked`) named by its title, described by its text and one concrete example.
+ * Monochrome: the selected card gets the foreground border and a filled indicator.
  */
-function ModeCard({ mode, icon: Icon, title, description, example, checked, onSelect }: ModeCardProps) {
+function ModeCard({ mode, icon: Icon, checked, onSelect }: ModeCardProps) {
+  const { t } = useTranslation('chat');
   const titleId = useId();
   const textId = useId();
   return (
@@ -455,11 +445,11 @@ function ModeCard({ mode, icon: Icon, title, description, example, checked, onSe
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span id={titleId} className="text-[15px] font-medium">
-          {title}
+          {t(`loop.modes.${mode}.title`)}
         </span>
         <span id={textId} className="text-sm leading-snug text-muted-foreground">
-          {description}
-          <span className="block pt-1 text-foreground">{example}</span>
+          {t(`loop.modes.${mode}.description`)}
+          <span className="block pt-1 text-foreground">{t(`loop.modes.${mode}.example`)}</span>
         </span>
       </span>
       <span

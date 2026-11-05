@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentAccount, AgentProfile } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { AgentAccountGroup } from './AgentAccountsSection.js';
 
 const NOW = 1_700_000_000_000;
@@ -106,5 +107,19 @@ describe('AgentAccountGroup', () => {
     const html = render({ ...AGENT, profiles: [PRINCIPAL, { ...WORK, label: '<b>x</b>' }] });
     expect(html).not.toContain('<b>x</b>');
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+});
+
+describe('AgentAccountGroup in English', () => {
+  it('names the badge, the status, the add row and the time of the check', () => {
+    setLanguage('en');
+    const html = render();
+    expect(html).toContain('In use');
+    expect(html).toContain('Add account');
+    expect(html).toContain('Checked now');
+    expect(rowOf(html, 'a-2')).toContain('Signed out');
+    expect(rowOf(html, 'a-1')).toContain('trabalho@exemplo.com');
+    expect(html).not.toContain('Adicionar conta');
+    expect(html).not.toContain('Em uso');
   });
 });

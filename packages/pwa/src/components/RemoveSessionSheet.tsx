@@ -1,4 +1,5 @@
 import type { SessionStatus } from '@nanachi/shared';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import {
   Drawer,
@@ -22,6 +23,7 @@ interface RemoveSessionSheetProps {
 
 /** Confirmação de "Remover do app": folha inferior. Não fecha durante a remoção. */
 export function RemoveSessionSheet({ agentLabel, status, busy, error, onCancel, onConfirm }: RemoveSessionSheetProps) {
+  const { t } = useTranslation('accounts');
   const notice = removalInterruptNotice(status);
 
   return (
@@ -34,7 +36,7 @@ export function RemoveSessionSheet({ agentLabel, status, busy, error, onCancel, 
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Remover do app</DrawerTitle>
+          <DrawerTitle>{t('removeSession.title')}</DrawerTitle>
           <DrawerDescription className="text-base leading-6 text-foreground/80">
             {removalConfirmText(agentLabel)}
           </DrawerDescription>
@@ -45,10 +47,10 @@ export function RemoveSessionSheet({ agentLabel, status, busy, error, onCancel, 
         </div>
         <DrawerFooter className="flex-row">
           <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={busy}>
-            Cancelar
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
           <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Removendo…' : 'Remover'}
+            {busy ? t('removeSession.removing') : t('removeSession.confirm')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

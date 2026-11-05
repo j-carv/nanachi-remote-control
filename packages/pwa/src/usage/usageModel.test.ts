@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import type { ParsedUsage, UsageAccount, UsageWindow } from './parseUsage.js';
 import {
   accountName,
@@ -131,5 +132,20 @@ describe('formatTokens', () => {
 describe('totalTokens', () => {
   it('adds the four counts', () => {
     expect(totalTokens({ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 })).toBe(10);
+  });
+});
+
+describe('in English', () => {
+  it('counts several accounts', () => {
+    setLanguage('en');
+    expect(headerSubtitle([{ id: '1', label: 'a@example.com' }, { id: '2', label: 'b@example.com' }])).toBe('2 accounts');
+  });
+
+  it('formats cost and token counts with the language of the app', () => {
+    setLanguage('en');
+    expect(formatCost(0.42)).toBe('$0.42');
+    expect(formatTokens(999)).toBe('999');
+    expect(formatTokens(1200)).toBe('1.2K');
+    expect(formatTokens(2_100_000)).toBe('2.1M');
   });
 });

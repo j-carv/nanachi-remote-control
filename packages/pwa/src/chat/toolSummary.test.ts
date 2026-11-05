@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import type { ChatItem } from './reducer.js';
 import { summarizeTool } from './toolSummary.js';
 
@@ -68,5 +69,21 @@ describe('summarizeTool', () => {
     expect(summarizeTool(tool({ status: null })).statusText).toBe('Ferramenta');
     expect(summarizeTool(tool({ status: 'in_progress' })).statusText).toBe('Em andamento');
     expect(summarizeTool(tool({ status: 'failed' })).statusText).toBe('Falhou');
+  });
+});
+
+describe('summarizeTool in English', () => {
+  it('writes the status and the fallback title in English', () => {
+    setLanguage('en');
+    expect(summarizeTool(tool({ status: 'completed' })).statusText).toBe('Completed');
+    expect(summarizeTool(tool({ status: 'in_progress' })).statusText).toBe('In progress');
+    expect(summarizeTool(tool({ status: 'failed' })).statusText).toBe('Failed');
+    expect(summarizeTool(tool({ status: null })).statusText).toBe('Tool');
+    expect(summarizeTool(tool({ title: '', locations: [] })).title).toBe('Tool');
+  });
+
+  it('keeps the title the agent sent', () => {
+    setLanguage('en');
+    expect(summarizeTool(tool({ title: 'Leu arquivo' })).title).toBe('Leu arquivo');
   });
 });

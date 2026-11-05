@@ -1,6 +1,7 @@
 import type { SessionStatus } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
-import { sessionStatusText, sessionTitle } from './sessionText.js';
+import { setLanguage } from './i18n/index.js';
+import { displaySessionTitle, sessionStatusText, sessionTitle } from './sessionText.js';
 
 describe('sessionStatusText', () => {
   it('sessão ACP em execução diz "Trabalhando"', () => {
@@ -44,5 +45,30 @@ describe('sessionTitle', () => {
 
   it('sessão ACP sem título mantém "Nova sessão" (só terminal ganha o rótulo)', () => {
     expect(sessionTitle({ title: 'Nova sessão', kind: 'acp' }, 'Oh My Pi')).toBe('Nova sessão');
+  });
+});
+
+describe('displaySessionTitle', () => {
+  it('keeps every title as it is in Portuguese', () => {
+    expect(displaySessionTitle('Nova sessão')).toBe('Nova sessão');
+    expect(displaySessionTitle('Corrigir build')).toBe('Corrigir build');
+  });
+});
+
+describe('session texts in English', () => {
+  it('translates the status texts, with the terminal variants', () => {
+    setLanguage('en');
+    expect(sessionStatusText('running', 'acp')).toBe('Working');
+    expect(sessionStatusText('running', 'pty')).toBe('Running');
+    expect(sessionStatusText('awaiting_permission', 'acp')).toBe('Awaiting permission');
+    expect(sessionStatusText('stopped', 'acp')).toBe('Stopped');
+  });
+
+  it('translates only the placeholder title the daemon gives, not the sessions own titles', () => {
+    setLanguage('en');
+    expect(displaySessionTitle('Nova sessão')).toBe('New session');
+    expect(displaySessionTitle('Corrigir build')).toBe('Corrigir build');
+    expect(sessionTitle({ title: 'Nova sessão', kind: 'acp' }, 'Oh My Pi')).toBe('New session');
+    expect(sessionTitle({ title: 'Nova sessão', kind: 'pty' }, 'Antigravity')).toBe('Antigravity · terminal');
   });
 });

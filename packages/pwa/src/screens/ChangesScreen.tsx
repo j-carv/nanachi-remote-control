@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, RefreshCw } from 'lucide-react';
-import type { SessionDiffResponse, Session, Workspace } from '@nanachi/shared';
+import { useTranslation } from 'react-i18next';
+import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
 import { ErrorNotice } from '../components/ErrorNotice.js';
 import { ListGroup, listRowClass } from '../components/ListGroup.js';
@@ -22,15 +23,6 @@ interface ChangesScreenProps {
   onRepair(): void;
 }
 
-type ChangedFile = SessionDiffResponse['files'][number];
-
-const FILE_STATUS_TEXT: Record<ChangedFile['status'], string> = {
-  added: 'Novo',
-  modified: 'Alterado',
-  deleted: 'Excluído',
-  renamed: 'Renomeado',
-};
-
 /**
  * Alterações da sessão (`git diff HEAD` no cwd dela). A lista mostra status e +/−; tocar num
  * arquivo abre o patch dele logo abaixo. "Atualizar" refaz a consulta.
@@ -43,6 +35,7 @@ export function ChangesScreen({
   nav,
   onRepair,
 }: ChangesScreenProps) {
+  const { t } = useTranslation('workspace');
   const diff = useAsync(() => api.sessionDiff(session.id), [api, session.id]);
   const [openPath, setOpenPath] = useState<string | null>(null);
   const files = diff.data?.files ?? [];
@@ -50,11 +43,11 @@ export function ChangesScreen({
   return (
     <Screen>
       <ScreenHeader
-        title="Alterações"
+        title={t('changesScreen.title')}
         subtitle={`${workspace.name} · ${machineName}`}
         onBack={() => nav.back()}
         actions={
-          <Button variant="ghost" size="icon" aria-label="Atualizar alterações" onClick={diff.reload}>
+          <Button variant="ghost" size="icon" aria-label={t('changesScreen.refresh')} onClick={diff.reload}>
             <RefreshCw aria-hidden="true" />
           </Button>
         }
@@ -64,17 +57,17 @@ export function ChangesScreen({
 
       {diff.data?.truncated === true && (
         <p role="status" className="pl-1 text-sm text-muted-foreground">
-          A lista foi cortada no limite de 1 MB. Os arquivos que faltam não aparecem aqui.
+          {t('changesScreen.truncated')}
         </p>
       )}
 
-      {diff.data === null && diff.error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
+      {diff.data === null && diff.error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
       {diff.data !== null && files.length === 0 && (
-        <p className="pl-1 text-muted-foreground">Nenhuma alteração nesta sessão.</p>
+        <p className="pl-1 text-muted-foreground">{t('changesScreen.empty')}</p>
       )}
 
       {files.length > 0 && (
-        <ListGroup label="Arquivos alterados">
+        <ListGroup label={t('changesScreen.listLabel')}>
           {files.map((file) => {
             const open = openPath === file.path;
             return (
@@ -91,7 +84,7 @@ export function ChangesScreen({
                 >
                   <span className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <span className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{FILE_STATUS_TEXT[file.status]}</Badge>
+                      <Badge variant="outline">{t(`changesScreen.status.${file.status}`)}</Badge>
                       <span className="font-mono text-sm font-medium tabular-nums">
                         +{file.additions} <span className="text-muted-foreground">−{file.deletions}</span>
                       </span>

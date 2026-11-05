@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ShieldExclamationPoint } from 'lucide-react';
 import type { PendingPermission } from './reducer.js';
 import type { ApiClient } from '../api.js';
@@ -14,6 +15,7 @@ interface PermissionCardProps {
 
 /** Pedido de permissão: um botão por opção. Some quando o daemon confirma (permission_resolved). */
 export function PermissionCard({ api, request, onRespond }: PermissionCardProps) {
+  const { t } = useTranslation('chat');
   const [answering, setAnswering] = useState(false);
 
   function respond(optionId: string) {
@@ -21,7 +23,7 @@ export function PermissionCard({ api, request, onRespond }: PermissionCardProps)
   }
 
   return (
-    <section data-slot="permission-card" aria-label="Pedido de permissão" className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <section data-slot="permission-card" aria-label={t('permission.label')} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-start gap-2.5">
         <ShieldExclamationPoint className="mt-0.5 size-5 shrink-0 text-attention" aria-hidden="true" />
         <div className="flex min-w-0 flex-col gap-0.5">

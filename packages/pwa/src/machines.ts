@@ -46,7 +46,7 @@ const MachineSchema = z.object({
   name: z.string().min(1),
   baseUrl: z
     .string()
-    .refine((value) => normalizeBaseUrl(value) !== null, 'baseUrl precisa ser http(s)'),
+    .refine((value) => normalizeBaseUrl(value) !== null, 'baseUrl must be http(s)'),
   token: z.string().min(1),
 });
 
@@ -87,7 +87,7 @@ export function parseStoredMachines(raw: string | null): StoredMachines {
     seen.add(parsed.data.id);
     machines.push(parsed.data);
   }
-  if (dropped > 0) console.warn(`nanachi: ${dropped} acesso(s) salvo(s) inválido(s) descartado(s).`);
+  if (dropped > 0) console.warn(`nanachi: dropped ${dropped} invalid saved machine(s).`);
   return { status: 'ok', machines };
 }
 

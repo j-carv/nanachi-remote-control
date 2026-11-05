@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import type { AvailableCommand } from '@nanachi/shared';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ interface SlashMenuProps {
  * não tira o foco do campo, assim o teclado do iOS continua aberto.
  */
 export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
+  const { t } = useTranslation('chat');
   const matches = filterCommands(commands, query);
   // Mousedown com preventDefault: o campo (ou a busca) mantém o foco e o teclado não fecha.
   const keepFocus = (event: MouseEvent) => event.preventDefault();
@@ -27,15 +29,15 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
   return (
     <section
       data-slot="slash-menu"
-      aria-label="Comandos do agente"
+      aria-label={t('slash.label')}
       className="flex flex-col gap-1 rounded-xl border border-border bg-card p-1.5"
     >
       {search !== undefined && (
         <div className="flex items-center gap-1">
           <Input
             type="search"
-            aria-label="Buscar comando"
-            placeholder="Buscar comando"
+            aria-label={t('slash.search')}
+            placeholder={t('slash.search')}
             autoFocus
             value={query}
             className="bg-background"
@@ -44,7 +46,7 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Fechar comandos"
+            aria-label={t('slash.close')}
             onMouseDown={keepFocus}
             onClick={search.onClose}
           >
@@ -56,11 +58,11 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
       <div className="max-h-[min(40dvh,240px)] overflow-y-auto overscroll-contain">
         {commands.length === 0 ? (
           <p data-slot="slash-empty" className="px-2 py-2.5 text-sm text-muted-foreground">
-            Este agente não anunciou comandos.
+            {t('slash.none')}
           </p>
         ) : matches.length === 0 ? (
           <p data-slot="slash-empty" className="px-2 py-2.5 text-sm text-muted-foreground">
-            Nenhum comando combina com “{query.trim()}”.
+            {t('slash.noMatch', { query: query.trim() })}
           </p>
         ) : (
           <ul className="flex flex-col">

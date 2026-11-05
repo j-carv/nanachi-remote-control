@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from './api.js';
+import { ApiError, type ApiErrorKind } from './api.js';
+import { setLanguage } from './i18n/index.js';
 import {
   describeAccountError,
   describeError,
@@ -8,8 +9,8 @@ import {
   describeRedeemError,
   describeResetsError,
   describeSessionAccountError,
+  describeWorkspaceError,
   describeUsageError,
-  ERROR_TEXT,
   redeemOutcomeUnknown,
   usageNeedsResume,
 } from './errorMessages.js';
@@ -59,8 +60,39 @@ describe('describeError', () => {
     expect(describeError(new Error('x'))).toBe('Erro inesperado.');
   });
 
-  it('todo tipo de erro tem texto (ERROR_TEXT completo)', () => {
-    for (const text of Object.values(ERROR_TEXT)) expect(text.length).toBeGreaterThan(0);
+  it('todo tipo de erro tem texto, nos dois idiomas', () => {
+    // A new ApiErrorKind fails to compile here until it is listed (and its text goes in errors.json).
+    const kinds: Record<ApiErrorKind, true> = {
+      invalid_input: true,
+      invalid_code: true,
+      unauthorized: true,
+      forbidden: true,
+      outside_roots: true,
+      not_found: true,
+      not_a_directory: true,
+      not_resumable: true,
+      already_running: true,
+      already_linked: true,
+      busy: true,
+      agent_timeout: true,
+      agent_failed: true,
+      too_many_sessions: true,
+      too_large: true,
+      rate_limited: true,
+      network: true,
+      not_git: true,
+      no_commits: true,
+      worktree_dirty: true,
+      unexpected: true,
+    };
+    for (const language of ['pt-BR', 'en'] as const) {
+      setLanguage(language);
+      for (const kind of Object.keys(kinds) as ApiErrorKind[]) {
+        const text = describeError(new ApiError(kind));
+        expect(text.length, `${language} ${kind}`).toBeGreaterThan(0);
+        expect(text, `${language} ${kind}`).not.toMatch(/^errors:|^api\./);
+      }
+    }
   });
 });
 
@@ -98,13 +130,13 @@ describe('describeUsageError', () => {
   it('outros erros caem no texto geral (describeError)', () => {
     const error = new ApiError('network');
     expect(describeUsageError(error)).toBe(describeError(error));
-    expect(describeUsageError(new ApiError('not_found', 404))).toBe(ERROR_TEXT.not_found);
+    expect(describeUsageError(new ApiError('not_found', 404))).toBe(describeError(new ApiError('not_found')));
     expect(describeUsageError(new Error('x'))).toBe('Erro inesperado.');
   });
 
   it('o texto de uso não substitui o geral: session_busy fora do uso segue genérico', () => {
     const error = new ApiError('unexpected', 409, null, 'session_busy');
-    expect(describeError(error)).toBe(ERROR_TEXT.unexpected);
+    expect(describeError(error)).toBe(describeError(new ApiError('unexpected')));
     expect(describeUsageError(error)).not.toBe(describeError(error));
   });
 
@@ -125,8 +157,8 @@ describe('describeResetsError (lista de resets)', () => {
     expect(describeResetsError(new ApiError('agent_timeout', 504, null, 'agent_timeout'))).toBe(
       'O agente demorou para responder. Tente de novo.',
     );
-    expect(describeResetsError(new ApiError('agent_failed', 502, null, 'agent_failed'))).toBe(ERROR_TEXT.agent_failed);
-    expect(describeResetsError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeResetsError(new ApiError('agent_failed', 502, null, 'agent_failed'))).toBe(describeError(new ApiError('agent_failed')));
+    expect(describeResetsError(new ApiError('network'))).toBe(describeError(new ApiError('network')));
     expect(describeResetsError(new Error('x'))).toBe('Erro inesperado.');
   });
 });
@@ -193,7 +225,7 @@ describe('describeRedeemError (resgate de reset)', () => {
 
   it('404 diz o texto geral de não encontrado', () => {
     const error = new ApiError('not_found', 404, null, 'not_found');
-    expect(describeRedeemError(error)).toBe(ERROR_TEXT.not_found);
+    expect(describeRedeemError(error)).toBe(describeError(new ApiError('not_found')));
     expect(redeemOutcomeUnknown(error)).toBe(false);
   });
 
@@ -220,7 +252,7 @@ describe('describeLoopError', () => {
   });
 
   it('sem código de loop cai no texto geral do erro', () => {
-    expect(describeLoopError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeLoopError(new ApiError('network'))).toBe(describeError(new ApiError('network')));
     expect(describeLoopError(new Error('x'))).toBe('Erro inesperado.');
   });
 });
@@ -263,9 +295,9 @@ describe('describeAccountError', () => {
   });
 
   it('sem código de conta cai no texto geral do erro', () => {
-    expect(describeAccountError(new ApiError('network'))).toBe(ERROR_TEXT.network);
-    expect(describeAccountError(new ApiError('unauthorized', 401))).toBe(ERROR_TEXT.unauthorized);
-    expect(describeAccountError(new ApiError('unexpected', 409, null, 'outro_codigo'))).toBe(ERROR_TEXT.unexpected);
+    expect(describeAccountError(new ApiError('network'))).toBe(describeError(new ApiError('network')));
+    expect(describeAccountError(new ApiError('unauthorized', 401))).toBe(describeError(new ApiError('unauthorized')));
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'outro_codigo'))).toBe(describeError(new ApiError('unexpected')));
     expect(describeAccountError(new Error('x'))).toBe('Erro inesperado.');
   });
 });
@@ -282,7 +314,7 @@ describe('describeSessionAccountError', () => {
     expect(describeSessionAccountError(new ApiError('unexpected', 409, null, 'session_busy'))).toBe(
       'O agente está trabalhando. Troque a conta quando ele terminar.',
     );
-    expect(describeSessionAccountError(new ApiError('network'))).toBe(ERROR_TEXT.network);
+    expect(describeSessionAccountError(new ApiError('network'))).toBe(describeError(new ApiError('network')));
     expect(describeSessionAccountError(new Error('x'))).toBe('Erro inesperado.');
   });
 });
@@ -299,7 +331,51 @@ describe('describeLoginPollError', () => {
   });
 
   it('o resto usa os textos de conta', () => {
-    expect(describeLoginPollError(new ApiError('unauthorized', 401))).toBe(ERROR_TEXT.unauthorized);
+    expect(describeLoginPollError(new ApiError('unauthorized', 401))).toBe(describeError(new ApiError('unauthorized')));
     expect(describeLoginPollError(new Error('x'))).toBe('Erro inesperado.');
+  });
+});
+
+describe('error texts in English', () => {
+  it('translates the API kinds and the generic text', () => {
+    setLanguage('en');
+    expect(describeError(new ApiError('too_many_sessions', 429))).toBe('Limit of 8 active sessions; stop one.');
+    expect(describeError(new ApiError('network'))).toBe(
+      'Could not reach the PC. Check the address and that Tailscale is connected.',
+    );
+    expect(describeError(new Error('x'))).toBe('Unexpected error.');
+  });
+
+  it('translates the codes read from the body, and falls back to the API kind for unknown ones', () => {
+    setLanguage('en');
+    expect(describeWorkspaceError(new ApiError('unexpected', 409, null, 'branch_exists'))).toBe(
+      'A branch with that name already exists.',
+    );
+    expect(describeWorkspaceError(new ApiError('network', null, null, 'something_else'))).toBe(
+      describeError(new ApiError('network')),
+    );
+    expect(describeLoopError(new ApiError('unexpected', 409, null, 'loop_busy'))).toBe(
+      'A loop round is in progress. Wait for it to finish and try again.',
+    );
+    expect(describeAccountError(new ApiError('unexpected', 409, null, 'account_in_use'))).toBe(
+      'A session is working on this account. Wait for it to finish and try again.',
+    );
+  });
+
+  it('translates the usage, reset and login texts', () => {
+    setLanguage('en');
+    expect(describeUsageError(new ApiError('unexpected', 409, null, 'session_not_active'))).toBe(
+      'Resume the session to see usage.',
+    );
+    expect(describeResetsError(new ApiError('invalid_input', 400, null, 'resets_unsupported'))).toBe(
+      'This agent has no saved resets',
+    );
+    expect(describeRedeemError(new ApiError('network'))).toBe(
+      'Could not confirm whether the reset was used. Check usage before trying again.',
+    );
+    expect(describeSessionAccountError(new ApiError('not_found', 404))).toBe(
+      'Could not find this session on the PC. It may have been removed.',
+    );
+    expect(describeLoginPollError(new ApiError('network'))).toBe('No response from the PC. Trying again…');
   });
 });

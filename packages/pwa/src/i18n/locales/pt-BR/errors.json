@@ -1,0 +1,82 @@
+{
+  "generic": "Erro inesperado.",
+  "api": {
+    "invalid_input": "Revise os campos preenchidos e tente de novo.",
+    "invalid_code": "Código inválido, expirado ou já usado. Gere outro no PC com `npm run pair -w @nanachi/daemon`.",
+    "unauthorized": "Este celular não tem mais acesso a esta máquina. Pareie de novo com um código novo.",
+    "forbidden": "O daemon recusou o acesso (checagem do Tailscale). Confira allowedTailscaleLogins.",
+    "outside_roots": "Esta pasta está fora das pastas permitidas no daemon (allowedRoots).",
+    "not_found": "Não encontrei isso no PC. Pode ter sido removido.",
+    "not_a_directory": "Isso não é uma pasta.",
+    "not_resumable": "Este agente não permite retomar; abra uma sessão nova.",
+    "already_running": "Esta sessão já está em execução.",
+    "already_linked": "Esta sessão já está no app, parada. Abra e retome.",
+    "busy": "Já há uma listagem em andamento para este agente. Espere uns segundos e tente de novo.",
+    "agent_timeout": "O agente não respondeu no PC a tempo. Tente de novo.",
+    "agent_failed": "O agente não subiu no PC. Confira se ele está instalado e logado.",
+    "too_many_sessions": "Limite de 8 sessões ativas; pare alguma.",
+    "too_large": "Arquivo maior que 50 MB.",
+    "rate_limited": "Muitas tentativas erradas. Aguarde um minuto e tente de novo.",
+    "network": "Não consegui falar com o PC. Confira o endereço e se o Tailscale está conectado.",
+    "not_git": "Esta pasta não é um repositório git.",
+    "no_commits": "O repositório ainda não tem commits.",
+    "worktree_dirty": "O worktree tem alterações não commitadas; ele foi mantido.",
+    "unexpected": "O servidor respondeu de forma inesperada. O daemon está atualizado?"
+  },
+  "workspace": {
+    "not_a_git_repo": "Esta pasta não é um repositório git.",
+    "sessions_running": "Há sessões rodando neste workspace. Espere terminarem ou encerre-as.",
+    "dirty_worktree": "Há alterações não commitadas. Guarde ou commite antes de trocar de branch.",
+    "branch_in_use": "Esta branch está aberta em outro worktree.",
+    "invalid_branch": "Nome de branch inválido.",
+    "branch_exists": "Já existe uma branch com esse nome.",
+    "branch_not_found": "Essa branch não existe mais no PC.",
+    "invalid_path": "Nome ou caminho inválido.",
+    "outside_workspace": "Este caminho sai do workspace.",
+    "not_a_file": "Isso não é um arquivo.",
+    "file_exists": "Já existe um arquivo com esse nome.",
+    "already_exists": "Já existe um item com esse nome.",
+    "file_changed": "O arquivo mudou no PC desde que você abriu.",
+    "dir_not_empty": "A pasta não está vazia. Apague o conteúdo primeiro.",
+    "binary_file": "Arquivo binário: não dá para editar aqui.",
+    "file_too_large": "Arquivo grande demais para o editor (máx. 2 MB).",
+    "too_many_writes": "Muitas alterações seguidas. Aguarde um minuto e tente de novo."
+  },
+  "usage": {
+    "session_not_active": "Retome a sessão para ver o uso.",
+    "session_busy": "O agente está ocupado; tente quando ele terminar.",
+    "usage_unsupported": "Este agente não informa uso.",
+    "timeout": "O agente demorou para responder. Tente de novo."
+  },
+  "resets": {
+    "unsupported": "Este agente não tem resets salvos"
+  },
+  "redeem": {
+    "unconfirmed": "Não deu para confirmar se o reset foi usado. Confira o uso antes de tentar de novo.",
+    "reset_in_progress": "Já tem um reset em andamento.",
+    "invalid_request": "Esse reset não está mais na lista. Atualize o uso e tente de novo."
+  },
+  "loop": {
+    "loop_not_found": "Esta sessão não tem loop. Crie um novo.",
+    "loop_finished": "Este loop já terminou. Crie um novo para voltar a rodar.",
+    "loop_busy": "Uma rodada do loop está em andamento. Espere ela terminar e tente de novo.",
+    "not_acp": "O loop só roda em sessões de agente, não em terminal."
+  },
+  "account": {
+    "accounts_unsupported": "Este agente não tem contas extras.",
+    "account_in_use": "Uma sessão está trabalhando nesta conta. Espere terminar e tente de novo.",
+    "too_many_accounts": "Limite de 10 contas extras por agente. Remova alguma antes de adicionar outra.",
+    "login_in_progress": "Já há um login em andamento para este agente. Termine ou cancele esse primeiro.",
+    "invalid_state": "O login não está esperando um código agora.",
+    "session_busy": "O agente está trabalhando. Troque a conta quando ele terminar.",
+    "not_resumable": "Este agente não retoma sessões: abra uma sessão nova na conta que você quer usar.",
+    "not_found": "Não encontrei esta conta no PC. Atualize a lista."
+  },
+  "sessionAccount": {
+    "not_found": "Não encontrei esta sessão no PC. Pode ter sido removida."
+  },
+  "loginPoll": {
+    "not_found": "O PC não lembra mais deste login. Feche e tente de novo.",
+    "network": "Sem resposta do PC. Tentando de novo…"
+  }
+}

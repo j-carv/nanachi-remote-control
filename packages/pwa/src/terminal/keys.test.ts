@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { TERMINAL_KEYS, type TerminalKey } from './keys.js';
 
 function sendOf(key: TerminalKey): string | null {
@@ -46,5 +47,30 @@ describe('TERMINAL_KEYS', () => {
       expect(key.ariaLabel.length).toBeGreaterThan(0);
     }
     expect(TERMINAL_KEYS.find((key) => key.id === 'ctrl')?.ariaLabel).toContain('próxima tecla');
+  });
+});
+
+describe('TERMINAL_KEYS in English', () => {
+  const byId = (id: string): TerminalKey | undefined => TERMINAL_KEYS.find((key) => key.id === id);
+
+  it('follows the language without rebuilding the list', () => {
+    expect(byId('paste')?.label).toBe('Colar');
+    setLanguage('en');
+    expect(byId('paste')?.label).toBe('Paste');
+    expect(byId('paste')?.ariaLabel).toBe('Paste from the clipboard');
+    expect(byId('ctrl')?.ariaLabel).toContain('the next key');
+    expect(byId('up')?.ariaLabel).toBe('Up arrow');
+  });
+
+  it('keycaps that name a key on every keyboard stay as they are', () => {
+    setLanguage('en');
+    expect(TERMINAL_KEYS.filter((key) => key.id !== 'paste').map((key) => key.label)).toEqual([
+      'Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→', '|', '~', '/', '-', 'Home', 'End', 'PgUp', 'PgDn', 'Enter',
+    ]);
+  });
+
+  it('every key has a non-empty accessible name in English', () => {
+    setLanguage('en');
+    for (const key of TERMINAL_KEYS) expect(key.ariaLabel.length).toBeGreaterThan(0);
   });
 });

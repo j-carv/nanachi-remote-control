@@ -1,0 +1,240 @@
+{
+  "offline": "No connection to the PC. Try again when it's back.",
+  "header": {
+    "usage": "Agent usage",
+    "loop": "Loop mode",
+    "changes": "Changes",
+    "configure": "Session settings",
+    "moreActions": "More session actions",
+    "removeFromApp": "Remove from app",
+    "backgroundWork": "Background work: {{count}}"
+  },
+  "working": {
+    "starting": "Starting the agent…",
+    "running": "Working…",
+    "awaiting_permission": "Waiting for your permission",
+    "stopped": "Session ended",
+    "error": "The session hit an error",
+    "resuming": "Resuming…"
+  },
+  "placeholder": {
+    "starting": "Waiting for the agent",
+    "idle": "Message",
+    "running": "Wait for the agent",
+    "awaiting_permission": "See the permission request",
+    "stopped": "Resume and send",
+    "error": "Resume and send",
+    "resuming": "Resuming…"
+  },
+  "timeline": {
+    "loading": "Loading conversation…",
+    "loadEarlier": "Load earlier messages",
+    "jumpToEnd": "Jump to latest"
+  },
+  "composer": {
+    "send": "Send",
+    "sending": "Sending…",
+    "uploading": "Sending… {{percent}}%",
+    "uploadProgress": "Upload progress",
+    "attach": "Attach file",
+    "commands": "Agent commands",
+    "previous": "Previous message",
+    "next": "Next message",
+    "stop": "Stop",
+    "resume": "Resume",
+    "attachmentLimit": "Up to {{limit}} attachments per message.",
+    "useCrop": "Use crop",
+    "newSession": "+ New session"
+  },
+  "configSheet": {
+    "title": "Session settings",
+    "account": "Session account",
+    "options": "Session options",
+    "more": "More options"
+  },
+  "commandSheet": {
+    "configLabel": "/{{name}} options",
+    "choicesLabel": "/{{name}} subcommands",
+    "sendToAgent": "Send /{{name}} to the agent",
+    "noArgument": "No argument",
+    "typeArguments": "Type arguments…"
+  },
+  "slash": {
+    "label": "Agent commands",
+    "search": "Search commands",
+    "close": "Close commands",
+    "none": "This agent hasn't announced any commands.",
+    "noMatch": "No command matches “{{query}}”."
+  },
+  "attachments": {
+    "label": "Attachments",
+    "crop": "Crop {{name}}",
+    "remove": "Remove {{name}}"
+  },
+  "permission": {
+    "label": "Permission request"
+  },
+  "plan": {
+    "title": "Plan"
+  },
+  "status": {
+    "pending": "Pending",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "tool": {
+    "fallbackTitle": "Tool",
+    "noStatus": "Tool",
+    "linesAdded_one": "{{count}} line added",
+    "linesAdded_other": "{{count}} lines added",
+    "linesRemoved_one": "{{count}} removed",
+    "linesRemoved_other": "{{count}} removed",
+    "innerActions_one": "{{count}} inner action",
+    "innerActions_other": "{{count}} inner actions",
+    "innerWithLast": "{{summary}} · latest: {{title}}"
+  },
+  "background": {
+    "title": "Background",
+    "empty": "Nothing running in the background.",
+    "untitled": "Untitled",
+    "subagents": "Subagents",
+    "commands": "Commands",
+    "jobs": "Jobs",
+    "startedAgo": "Started {{time}} ago",
+    "lasted": "Took {{time}}",
+    "state": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "stopped": "Stopped",
+      "unknown": "Unknown state"
+    }
+  },
+  "item": {
+    "loopRound": "Loop #{{number}}",
+    "thought": "Thinking",
+    "thoughtSize_one": "{{count}} character",
+    "thoughtSize_other": "{{count}} characters",
+    "accountChanged": "Switched to account {{label}}"
+  },
+  "markdown": {
+    "image": "image",
+    "imageWithAlt": "image: {{alt}}"
+  },
+  "model": {
+    "others": "Other"
+  },
+  "agentConfig": {
+    "mode": "Access",
+    "model": "Model",
+    "thought_level": "Effort"
+  },
+  "loop": {
+    "started": "Loop started",
+    "stopped": "Loop stopped",
+    "saved": "Changes saved",
+    "chip": {
+      "error": "Loop · error",
+      "paused": "Loop paused",
+      "running": "Loop · running",
+      "queued": "Loop · queued",
+      "countdown": "Loop · next in {{time}}",
+      "countdownShort": "Loop · {{time}}",
+      "open": "{{label}}. Open Loop mode"
+    },
+    "status": {
+      "stopped": "Ended",
+      "paused": "Paused",
+      "pausedError": "Paused after an error",
+      "running": "Running now",
+      "queued": "Queued: waiting for the agent to be free",
+      "next": "Next round in {{time}}",
+      "endedByAgent": "Loop ended by the agent"
+    },
+    "rounds": {
+      "none": "No rounds yet",
+      "count": "Rounds: {{count}}",
+      "countOf": "Rounds: {{count}} of {{limit}}"
+    },
+    "command": {
+      "intervalHelp": "Interval between 30 s and 24 h, followed by the prompt. E.g. /loop 5m review the tests.",
+      "noAttachments": "Loop doesn't accept attachments. Send the file in a regular message.",
+      "promptTooLong": "The loop prompt is over {{max}} characters."
+    },
+    "form": {
+      "intervalEmpty": "Enter an interval, like 5m or 1h30m.",
+      "intervalFormat": "Use a format like 90s, 10m or 1h30m.",
+      "intervalRange": "The interval must be between 30 s and 24 h.",
+      "promptEmpty": "Write the prompt the loop will repeat.",
+      "promptTooLong": "The prompt is over {{max}} characters.",
+      "roundsInvalid": "Round limit: use a whole number, 1 or more.",
+      "firstRoundDynamic": "If off, it starts in {{time}}.",
+      "firstRoundInterval": "If off, the first round waits for the interval."
+    },
+    "summary": {
+      "interval": "Will send {{prompt}} {{first}}, then every {{every}}, {{limit}}.",
+      "intervalNow": "now",
+      "intervalLater": "in {{time}}",
+      "noLimit": "with no round limit",
+      "upTo_one": "up to {{count}} round",
+      "upTo_other": "up to {{count}} rounds",
+      "dynamic": "Will send {{prompt}} {{first}}; then the agent decides when to repeat, {{stop}}.",
+      "dynamicNow": "now",
+      "dynamicLater": "in {{time}}",
+      "untilDone": "until it says it's done",
+      "untilDoneOrUpTo_one": "until it says it's done or reaches {{count}} round",
+      "untilDoneOrUpTo_other": "until it says it's done or reaches {{count}} rounds"
+    },
+    "sheet": {
+      "title": "Loop mode",
+      "description": "Repeats a prompt in this session, even with your phone closed.",
+      "loading": "Loading the loop…",
+      "current": "Current loop",
+      "automatic": "Automatic",
+      "every": "Every {{interval}}",
+      "lastError": "Last error",
+      "resume": "Resume",
+      "pause": "Pause",
+      "runNow": "Run now",
+      "confirmStop": "Confirm stop",
+      "confirmStopText": "Stop the loop? A round in progress finishes, and no other starts.",
+      "stop": "Stop loop",
+      "formEdit": "Edit the loop",
+      "formNew": "New loop",
+      "prompt": "Prompt",
+      "promptPlaceholder": "E.g. /review or review the tests that failed",
+      "when": "When to run",
+      "interval": "Interval",
+      "otherInterval": "Custom interval",
+      "intervalPlaceholder": "E.g. 90s, 10m, 1h30m",
+      "intervalHint": "Runs every {{interval}}, counted from the end of each round.",
+      "options": "Loop options",
+      "rounds": "Round limit",
+      "roundsHint": "The loop stops by itself after this many rounds.",
+      "roundsPlaceholder": "No limit",
+      "firstRound": "First round now",
+      "save": "Save changes",
+      "start": "Start loop",
+      "saveNote": "Saving restarts the round count.",
+      "native": "Use Claude's native /loop",
+      "nativeNote": "Sends the command to Claude as a regular message.",
+      "howTitle": "How it works",
+      "how1": "Runs on the PC, even with your phone closed.",
+      "how2": "Waits if the agent is busy or asking for permission.",
+      "how3": "Pauses and notifies your phone if something goes wrong."
+    },
+    "modes": {
+      "interval": {
+        "title": "Fixed interval",
+        "description": "Repeats the prompt at the same interval every time. The time counts from the end of the previous reply, so it never runs twice at once.",
+        "example": "E.g. every 15 min, run the tests and fix whatever fails."
+      },
+      "dynamic": {
+        "title": "Automatic",
+        "description": "The agent decides when to run again: at the end of each reply it says how long to wait (30 s to 24 h) or that it's done, and the loop stops by itself. With no answer, it waits 10 min.",
+        "example": "E.g. keep refactoring until it's finished."
+      }
+    }
+  }
+}

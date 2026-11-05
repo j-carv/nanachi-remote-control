@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { MarkdownText } from './MarkdownText.js';
 
 const render = (text: string): string => renderToStaticMarkup(createElement(MarkdownText, { text }));
@@ -35,5 +36,13 @@ describe('MarkdownText: imagens', () => {
 
     expect(html).toContain('<strong>oi</strong>');
     expect(html).toContain('<a href="https://exemplo.com"');
+  });
+});
+
+describe('MarkdownText: images in English', () => {
+  it('names the link "image"', () => {
+    setLanguage('en');
+    expect(render('See ![cat](https://example.com/cat.png)')).toContain('>image: cat</a>');
+    expect(render('![](https://example.com/x.png)')).toContain('>image</a>');
   });
 });

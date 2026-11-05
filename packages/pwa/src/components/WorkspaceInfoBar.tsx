@@ -1,4 +1,5 @@
 import { FileText, GitBranch } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { WorkspaceInfoResponse } from '@nanachi/shared';
 import { Badge } from '@/components/ui/badge';
 import { changesLabel } from './changesLabel.js';
@@ -12,13 +13,14 @@ interface WorkspaceInfoBarProps {
 
 /** Branch, alterações e arquivos de instrução do workspace (chips). Não-git sem instruções = nada. */
 export function WorkspaceInfoBar({ info, showBranch = true }: WorkspaceInfoBarProps) {
+  const { t } = useTranslation('workspace');
   if (info === null) return null;
   const hasBranch = showBranch && info.branch !== null;
   const hasChanges = info.changedFiles !== null;
   if (!hasBranch && !hasChanges && info.instructions.length === 0) return null;
 
   return (
-    <ul className="flex flex-wrap gap-2" aria-label="Estado do workspace">
+    <ul className="flex flex-wrap gap-2" aria-label={t('infoBar.label')}>
       {hasBranch && (
         <li>
           <Badge variant="outline" className="h-7 gap-1.5 px-2.5 font-mono text-xs text-foreground">

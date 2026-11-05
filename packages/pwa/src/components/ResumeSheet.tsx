@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { AgentSessionSummary, Session, Workspace } from '@nanachi/shared';
 import { ApiError, type ApiClient } from '../api.js';
-import {
-  appendListing,
-  conflictSessionId,
-  IMPORTING_TEXT,
-  listedTitle,
-  listingText,
-  resumableAgents,
-  sessionAgeText,
-} from '../resume.js';
+import { appendListing, conflictSessionId, resumableAgents, sessionAgeText } from '../resume.js';
 import { useAsync } from '../useAsync.js';
+import { listedSessionTitle } from '../workspace/resumeText.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,6 +41,7 @@ interface Listing {
  * workspace e importa a que o usuário tocar. Quem já está no app aparece com o selo "já no app".
  */
 export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProps) {
+  const { t } = useTranslation('workspace');
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const resumable = resumableAgents(agents.data ?? []);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -134,7 +129,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
         workspaceId: workspace.id,
         agent: chosen,
         resumeAcpSessionId: item.acpSessionId,
-        resumeTitle: listedTitle(item),
+        resumeTitle: listedSessionTitle(item),
       });
       onOpen(session);
     } catch (caught) {
@@ -164,15 +159,15 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Retomar do PC</DrawerTitle>
-          <DrawerDescription>{workspace.name} · sessões criadas no terminal desta pasta</DrawerDescription>
+          <DrawerTitle>{t('resume.title')}</DrawerTitle>
+          <DrawerDescription>{t('resume.hint', { name: workspace.name })}</DrawerDescription>
         </DrawerHeader>
 
         <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-5 pt-4 pb-2">
           <ErrorNotice error={shownError} />
 
           <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">Agente</legend>
+            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">{t('agent')}</legend>
             <ListGroup>
               {resumable.map((agent) => {
                 const pressed = agent.id === chosen;
@@ -196,22 +191,22 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
               })}
             </ListGroup>
             {agents.data !== null && resumable.length === 0 && (
-              <p className="pl-1 text-sm text-muted-foreground">Nenhum agente de chat configurado no daemon.</p>
+              <p className="pl-1 text-sm text-muted-foreground">{t('resume.noAgents')}</p>
             )}
           </fieldset>
 
           {chosen !== null && (
             <div className="flex flex-col gap-3">
-              {importing && <p className="pl-1 text-sm text-muted-foreground">{IMPORTING_TEXT}</p>}
-              {loadingFirst && <p className="pl-1 text-sm text-muted-foreground">{listingText(chosenLabel)}</p>}
+              {importing && <p className="pl-1 text-sm text-muted-foreground">{t('resume.importing')}</p>}
+              {loadingFirst && <p className="pl-1 text-sm text-muted-foreground">{t('resume.opening', { agent: chosenLabel })}</p>}
               {listing !== null && !listing.supported && (
-                <p className="pl-1 text-sm text-muted-foreground">Este agente não lista sessões.</p>
+                <p className="pl-1 text-sm text-muted-foreground">{t('resume.unsupported')}</p>
               )}
               {listing !== null && listing.supported && listing.items.length === 0 && (
-                <p className="pl-1 text-sm text-muted-foreground">Nenhuma sessão deste agente nesta pasta.</p>
+                <p className="pl-1 text-sm text-muted-foreground">{t('resume.none')}</p>
               )}
               {listing !== null && listing.items.length > 0 && (
-                <ListGroup label="Sessões do PC">
+                <ListGroup label={t('resume.listLabel')}>
                   {listing.items.map((item) => {
                     const age = sessionAgeText(item.updatedAt, now);
                     return (
@@ -223,9 +218,9 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
                           onClick={() => void importItem(item)}
                         >
                           <span className="flex min-w-0 flex-1 flex-col gap-1">
-                            <span className="truncate text-base">{listedTitle(item)}</span>
+                            <span className="truncate text-base">{listedSessionTitle(item)}</span>
                             <span className="flex flex-wrap items-center gap-2">
-                              {item.linkedSessionId !== null && <Badge>já no app</Badge>}
+                              {item.linkedSessionId !== null && <Badge>{t('resume.linked')}</Badge>}
                               {age !== null && <span className="text-sm text-muted-foreground">{age}</span>}
                             </span>
                           </span>
@@ -241,7 +236,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
                   disabled={loadingMore || importing}
                   onClick={() => void loadMore()}
                 >
-                  {loadingMore ? 'Carregando…' : 'Carregar mais'}
+                  {loadingMore ? t('states.loading', { ns: 'common' }) : t('resume.loadMore')}
                 </Button>
               )}
             </div>
@@ -250,7 +245,7 @@ export function ResumeSheet({ api, workspace, onOpen, onClose }: ResumeSheetProp
 
         <DrawerFooter className="flex-row">
           <Button variant="ghost" className="flex-1" onClick={close} disabled={importing}>
-            Fechar
+            {t('resume.close')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

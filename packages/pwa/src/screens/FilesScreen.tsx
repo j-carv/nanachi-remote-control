@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   File,
@@ -50,9 +52,9 @@ interface FilesScreenProps {
 }
 
 /** Texto de uma linha: pasta, link, ou tamanho do arquivo. "Ignorado pelo git" fica na mesma linha. */
-function metaOf(entry: Entry): string {
-  const base = entry.type === 'dir' ? 'Pasta' : entry.type === 'symlink' ? 'Link' : formatSize(entry.size);
-  return entry.ignored ? `${base} · ignorado pelo git` : base;
+function metaOf(entry: Entry, t: TFunction<'workspace'>): string {
+  const base = entry.type === 'dir' ? t('files.folder') : entry.type === 'symlink' ? t('files.link') : formatSize(entry.size);
+  return entry.ignored ? t('files.ignored', { kind: base }) : base;
 }
 
 /** Ícone de uma linha: pasta, link, ou a família do arquivo (ver `fileIconKindFor`). */
@@ -83,6 +85,7 @@ function slotOf(entry: Entry): IconSlot {
  * qualquer nível acima sem empilhar telas.
  */
 export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreenProps) {
+  const { t } = useTranslation('workspace');
   const list = useAsync(() => api.fsList(workspace.id, path), [api, workspace.id, path]);
   const [actionError, setActionError] = useState<unknown>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -92,7 +95,7 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
 
   const entries = list.data ?? [];
   const crumbs = breadcrumbs(path, workspace.name);
-  const title = path === '' ? 'Arquivos' : (crumbs[crumbs.length - 1]?.label ?? workspace.name);
+  const title = path === '' ? t('files.title') : (crumbs[crumbs.length - 1]?.label ?? workspace.name);
   const folderLabel = path === '' ? workspace.name : path;
   const error = actionError ?? list.error;
 
@@ -144,14 +147,20 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
         onBack={() => nav.back()}
         actions={
           <>
-            <Button variant="ghost" size="icon" aria-label="Atualizar" title="Atualizar" onClick={() => list.reload()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('files.refresh')}
+              title={t('files.refresh')}
+              onClick={() => list.reload()}
+            >
               <RefreshCw aria-hidden="true" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Novo arquivo"
-              title="Novo arquivo"
+              aria-label={t('files.newFile')}
+              title={t('files.newFile')}
               onClick={() => setSheet({ kind: 'newFile' })}
             >
               <FilePlus aria-hidden="true" />
@@ -159,8 +168,8 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Nova pasta"
-              title="Nova pasta"
+              aria-label={t('files.newFolder')}
+              title={t('files.newFolder')}
               onClick={() => setSheet({ kind: 'newDir' })}
             >
               <FolderPlus aria-hidden="true" />
@@ -169,7 +178,7 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
         }
       />
 
-      <nav aria-label="Caminho da pasta" className="-mx-1 flex min-w-0 items-center overflow-x-auto">
+      <nav aria-label={t('files.path')} className="-mx-1 flex min-w-0 items-center overflow-x-auto">
         {crumbs.map((crumb, index) => {
           const current = index === crumbs.length - 1;
           return (
@@ -195,13 +204,13 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
       </nav>
 
       <ErrorNotice error={error} onRepair={onRepair} />
-      {copied !== null && <p className="pl-1 text-sm text-muted-foreground">Caminho copiado: {copied}</p>}
+      {copied !== null && <p className="pl-1 text-sm text-muted-foreground">{t('files.copied', { path: copied })}</p>}
 
-      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">Carregando…</p>}
-      {list.data !== null && entries.length === 0 && <p className="pl-1 text-muted-foreground">Pasta vazia.</p>}
+      {list.data === null && error === null && <p className="pl-1 text-muted-foreground">{t('states.loading', { ns: 'common' })}</p>}
+      {list.data !== null && entries.length === 0 && <p className="pl-1 text-muted-foreground">{t('files.empty')}</p>}
 
       {entries.length > 0 && (
-        <ListGroup label={`Conteúdo de ${folderLabel}`}>
+        <ListGroup label={t('files.contents', { folder: folderLabel })}>
           {entries.map((entry) => {
             const slot = slotOf(entry);
             const Icon = SLOT_ICONS[slot];
@@ -222,23 +231,23 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
                       <span className={`truncate text-base ${entry.ignored ? 'text-muted-foreground' : ''}`}>
                         {entry.name}
                       </span>
-                      <span className="truncate text-sm text-muted-foreground tabular-nums">{metaOf(entry)}</span>
+                      <span className="truncate text-sm text-muted-foreground tabular-nums">{metaOf(entry, t)}</span>
                     </span>
                   </button>
                   <ActionSheetButton
-                    label={`Mais ações de ${entry.name}`}
+                    label={t('files.moreActions', { name: entry.name })}
                     title={entry.name}
                     items={[
-                      { label: 'Renomear', onSelect: () => setSheet({ kind: 'rename', entry }) },
+                      { label: t('files.rename'), onSelect: () => setSheet({ kind: 'rename', entry }) },
                       {
-                        label: 'Excluir',
+                        label: t('files.delete'),
                         tone: 'danger',
                         onSelect: () => {
                           setSheetError(null);
                           setSheet({ kind: 'delete', entry });
                         },
                       },
-                      { label: 'Copiar caminho', onSelect: () => void copyPath(entry) },
+                      { label: t('files.copyPath'), onSelect: () => void copyPath(entry) },
                     ]}
                   />
                 </div>
@@ -250,9 +259,9 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
 
       {sheet?.kind === 'newFile' && (
         <NameSheet
-          title="Novo arquivo"
-          description={`Na pasta ${folderLabel}. O arquivo abre no editor logo depois de criado.`}
-          submitLabel="Criar"
+          title={t('files.newFile')}
+          description={t('files.newFileHint', { folder: folderLabel })}
+          submitLabel={t('files.create')}
           initialName=""
           busy={busy}
           error={sheetError}
@@ -270,9 +279,9 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
 
       {sheet?.kind === 'newDir' && (
         <NameSheet
-          title="Nova pasta"
-          description={`Dentro de ${folderLabel}.`}
-          submitLabel="Criar"
+          title={t('files.newFolder')}
+          description={t('files.newFolderHint', { folder: folderLabel })}
+          submitLabel={t('files.create')}
           initialName=""
           busy={busy}
           error={sheetError}
@@ -285,9 +294,9 @@ export function FilesScreen({ workspace, path, api, nav, onRepair }: FilesScreen
 
       {sheet?.kind === 'rename' && (
         <NameSheet
-          title="Renomear"
-          description={`Nome atual: ${sheet.entry.name}.`}
-          submitLabel="Renomear"
+          title={t('files.rename')}
+          description={t('files.renameHint', { name: sheet.entry.name })}
+          submitLabel={t('files.rename')}
           initialName={sheet.entry.name}
           busy={busy}
           error={sheetError}

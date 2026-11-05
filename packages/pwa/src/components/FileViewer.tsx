@@ -1,5 +1,6 @@
 import { useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { CircleExclamationPoint, Crop, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
 import type { FileInfo } from '@nanachi/shared';
@@ -43,6 +44,7 @@ const DOUBLE_TAP_STEP = 1.5;
  * Fundo preto nos dois temas: a foto é o que importa, como no visualizador de fotos do iOS.
  */
 export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileViewerProps) {
+  const { t } = useTranslation('files');
   const [mode, setMode] = useState<ViewerMode>('view');
   const [scale, setScale] = useState(1);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -164,7 +166,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
         src={url}
         name={file.name}
         mime={blob.type}
-        confirmLabel="Ver recorte"
+        confirmLabel={t('viewer.viewCrop')}
         onCancel={() => setMode('view')}
         onConfirm={acceptCrop}
       />
@@ -179,7 +181,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
             variant="ghost"
             size="icon"
             className="text-white hover:bg-white/15"
-            aria-label={mode === 'view' ? 'Recortar' : 'Recortar de novo'}
+            aria-label={mode === 'view' ? t('viewer.crop') : t('viewer.cropAgain')}
             onClick={() => setMode('crop')}
           >
             <Crop aria-hidden="true" />
@@ -189,7 +191,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
             variant="ghost"
             size="icon"
             className="text-white hover:bg-white/15"
-            aria-label="Fechar"
+            aria-label={t('viewer.close')}
             onClick={onClose}
           >
             <X aria-hidden="true" />
@@ -212,12 +214,12 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
                   shareOrDownload(blob, file).catch(setError);
                 }}
               >
-                Compartilhar
+                {t('viewer.share')}
               </Button>
             ) : (
               <Button asChild variant="secondary" size="wide" className="bg-white/15 text-white hover:bg-white/25">
                 <a href={url} download={file.name}>
-                  Salvar
+                  {t('viewer.save')}
                 </a>
               </Button>
             )}
@@ -235,7 +237,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
                   onClose();
                 }}
               >
-                Anexar ao chat
+                {t('viewer.attachToChat')}
               </Button>
             )}
             <div className="flex gap-2">
@@ -249,7 +251,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
                     shareOrSaveFile(cropped).catch(setError);
                   }}
                 >
-                  Compartilhar
+                  {t('viewer.share')}
                 </Button>
               )}
               {cropped !== null && (
@@ -259,7 +261,7 @@ export function FileViewer({ file, blob, url, onClose, onAttachToChat }: FileVie
                   className="flex-1 bg-white/15 text-white hover:bg-white/25"
                   onClick={() => downloadBlob(cropped, cropped.name)}
                 >
-                  Salvar
+                  {t('viewer.save')}
                 </Button>
               )}
             </div>

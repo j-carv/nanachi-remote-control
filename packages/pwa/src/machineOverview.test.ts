@@ -1,5 +1,6 @@
 import type { AgentAccount, HealthResponse, Session, Workspace } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import type { Machine } from './machines.js';
 import {
   countSessions,
@@ -14,7 +15,7 @@ import {
   type OverviewClient,
 } from './machineOverview.js';
 
-const MACHINE: Machine = { id: 'm1', name: 'FL4K', baseUrl: 'http://100.64.0.1:7777', token: 'tok' };
+const MACHINE: Machine = { id: 'm1', name: 'OFFICE-PC', baseUrl: 'http://100.64.0.1:7777', token: 'tok' };
 
 function session(overrides: Partial<Session> & Pick<Session, 'id' | 'status' | 'updatedAt'>): Session {
   return {
@@ -160,10 +161,18 @@ describe('summaryLabels', () => {
     });
     expect(summaryLabels({ running: 0, awaiting: 0, awaitingTarget: null })).toEqual({ running: null, awaiting: null });
   });
+
+  it('writes the counts in English', () => {
+    setLanguage('en');
+    expect(summaryLabels({ running: 2, awaiting: 1, awaitingTarget: null })).toEqual({
+      running: '2 running',
+      awaiting: '1 waiting for you',
+    });
+  });
 });
 
 describe('loadMachineOverview', () => {
-  const health: HealthResponse = { ok: true, machineId: 'm1', machineName: 'FL4K', version: '1.0.0' };
+  const health: HealthResponse = { ok: true, machineId: 'm1', machineName: 'OFFICE-PC', version: '1.0.0' };
 
   /** Relógio que avança 30 ms por chamada: a primeira leitura é o início e a segunda fecha a medida. */
   function clock(): () => number {

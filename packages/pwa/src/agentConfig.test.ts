@@ -1,5 +1,6 @@
 import type { SessionConfigOption } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import type { StorageLike } from './machines.js';
 import {
   agentConfigKey,
@@ -180,5 +181,14 @@ describe('splitOptions', () => {
 
   it('sem opções primárias devolve primary vazio', () => {
     expect(splitOptions([]).primary).toEqual([]);
+  });
+});
+
+describe('splitOptions in English', () => {
+  it('names the fixed selectors in English', () => {
+    setLanguage('en');
+    const effort: SessionConfigOption = { ...MODEL, id: 'effort', category: 'thought_level' };
+    const { primary } = splitOptions([MODEL, MODE, effort]);
+    expect(primary.map((control) => control.label)).toEqual(['Access', 'Model', 'Effort']);
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, CircleCheck, ExternalLink, LoaderCircle } from 'lucide-react';
 import type { AccountLoginState } from '@nanachi/shared';
 import {
@@ -67,6 +68,7 @@ function LoginStatus({ step }: { step: LoginStep }) {
 
 /** What the login sheet shows for a step. Kept apart from the sheet so the markup can be rendered without a Drawer. */
 export function AccountLoginBody({ step, code, sending, codeProblem, problem, onCodeChange, onSendCode }: AccountLoginBodyProps) {
+  const { t } = useTranslation('accounts');
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step !== null && canSendLoginCode(step, code) && !sending) onSendCode();
@@ -76,40 +78,40 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
     <div data-slot="login-body" className="flex min-h-0 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-2">
       {step?.kind === 'link' && (
         <>
-          <p className="text-base leading-6 text-foreground/90">Abra o link e entre com a conta que você quer adicionar</p>
+          <p className="text-base leading-6 text-foreground/90">{t('login.openLinkPrompt')}</p>
           <div className="flex flex-col gap-2">
             {isSecureLoginUrl(step.url) && (
               <div className="flex gap-2">
                 <Button asChild className="flex-1">
                   <a data-slot="login-link" href={step.url} target="_blank" rel="noopener noreferrer">
                     <ExternalLink aria-hidden="true" />
-                    Abrir link
+                    {t('login.openLink')}
                   </a>
                 </Button>
-                <CopyButton text={step.url} label="Copiar link" />
+                <CopyButton text={step.url} label={t('login.copyLink')} />
               </div>
             )}
             {step.needsCode && (
-              <p className="text-sm text-muted-foreground">O PC também pode abrir uma aba de login; pode ignorar.</p>
+              <p className="text-sm text-muted-foreground">{t('login.pcTabNote')}</p>
             )}
           </div>
 
           {step.userCode !== null && (
             <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="text-sm text-muted-foreground">Digite este código na página</span>
+                <span className="text-sm text-muted-foreground">{t('login.enterCode')}</span>
                 <span data-slot="login-user-code" className="font-mono text-3xl font-semibold tracking-widest select-all">
                   {step.userCode}
                 </span>
               </div>
-              <CopyButton text={step.userCode} label="Copiar código" />
+              <CopyButton text={step.userCode} label={t('login.copyCode')} />
             </div>
           )}
 
           {step.needsCode && !step.codeSent && (
             <form onSubmit={submit} className="flex flex-col gap-2">
               <Label htmlFor="login-code" className="text-base leading-6 font-normal text-foreground/90">
-                Depois de entrar, copie o código que aparece e cole aqui
+                {t('login.pasteCodePrompt')}
               </Label>
               <div className="flex gap-2">
                 <Input
@@ -126,7 +128,7 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
                   onChange={(event) => onCodeChange(event.target.value)}
                 />
                 <Button type="submit" disabled={sending || !canSendLoginCode(step, code)}>
-                  {sending ? 'Enviando…' : 'Enviar'}
+                  {sending ? t('login.sending') : t('login.send')}
                 </Button>
               </div>
               {codeProblem !== null && <ErrorNotice message={codeProblem} />}
@@ -141,7 +143,7 @@ export function AccountLoginBody({ step, code, sending, codeProblem, problem, on
           {step.output.trim() !== '' && (
             <details data-slot="login-output" className="group text-sm">
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-muted-foreground [&::-webkit-details-marker]:hidden">
-                Ver a saída do login
+                {t('login.showOutput')}
                 <ChevronDown
                   className="size-4 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
                   aria-hidden="true"
@@ -183,6 +185,7 @@ interface AccountLoginSheetProps {
  * closed. A finished login closes by itself after success.
  */
 export function AccountLoginSheet({ api, agentId, agentLabel, accountId, accountLabel, onSucceeded, onClose }: AccountLoginSheetProps) {
+  const { t } = useTranslation('accounts');
   const [login, setLogin] = useState<AccountLoginState | null>(null);
   /** The error of the start or of the last poll. Cleared by the next state that arrives. */
   const [error, setError] = useState<unknown>(null);
@@ -298,7 +301,7 @@ export function AccountLoginSheet({ api, agentId, agentLabel, accountId, account
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Entrar na conta</DrawerTitle>
+          <DrawerTitle>{t('login.title')}</DrawerTitle>
           <DrawerDescription>
             {agentLabel} · {accountLabel}
           </DrawerDescription>
@@ -315,11 +318,11 @@ export function AccountLoginSheet({ api, agentId, agentLabel, accountId, account
         <DrawerFooter className="flex-row">
           {closable ? (
             <Button variant="secondary" className="flex-1" onClick={closeSheet}>
-              Fechar
+              {t('login.close')}
             </Button>
           ) : (
             <Button variant="secondary" className="flex-1" disabled={cancelling} onClick={() => void cancel()}>
-              {cancelling ? 'Cancelando…' : 'Cancelar'}
+              {cancelling ? t('login.cancelling') : t('actions.cancel', { ns: 'common' })}
             </Button>
           )}
         </DrawerFooter>

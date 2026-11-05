@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ConfigValue, Session, SessionConfigOption, Workspace } from '@nanachi/shared';
 import {
   applyConfigValue,
@@ -51,6 +52,7 @@ export function NewSessionSheet({
   onCreated,
   onClose,
 }: NewSessionSheetProps) {
+  const { t } = useTranslation('workspace');
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const [chosen, setChosen] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, SessionConfigOption[]>>({});
@@ -114,7 +116,7 @@ export function NewSessionSheet({
     >
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Nova sessão</DrawerTitle>
+          <DrawerTitle>{t('newSession.title')}</DrawerTitle>
           <DrawerDescription>{workspace.name}</DrawerDescription>
         </DrawerHeader>
 
@@ -122,7 +124,7 @@ export function NewSessionSheet({
           <ErrorNotice error={error} />
 
           <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">Agente</legend>
+            <legend className="mb-2 pl-1 text-sm font-medium text-muted-foreground">{t('agent')}</legend>
             <ListGroup>
               {agentList.map((agent) => {
                 const pressed = agent.id === agentId;
@@ -139,7 +141,7 @@ export function NewSessionSheet({
                     >
                       <span className="flex min-w-0 flex-1 items-center gap-2">
                         <span className="truncate">{agent.label}</span>
-                        {agent.kind === 'pty' && <Badge variant="outline">terminal</Badge>}
+                        {agent.kind === 'pty' && <Badge variant="outline">{t('terminalBadge')}</Badge>}
                       </span>
                       {pressed && <Check className="size-5 shrink-0" aria-hidden="true" />}
                     </button>
@@ -148,12 +150,12 @@ export function NewSessionSheet({
               })}
             </ListGroup>
             {agents.data !== null && agentList.length === 0 && (
-              <p className="pl-1 text-sm text-muted-foreground">Nenhum agente configurado no daemon.</p>
+              <p className="pl-1 text-sm text-muted-foreground">{t('newSession.noAgents')}</p>
             )}
           </fieldset>
 
           {accountSelector !== null && agentId !== null && accountId !== null && (
-            <ListGroup label="Conta" className="shrink-0">
+            <ListGroup label={t('newSession.account')} className="shrink-0">
               <AccountSelect
                 profiles={accountSelector.profiles}
                 value={accountId}
@@ -167,9 +169,9 @@ export function NewSessionSheet({
             <ListGroup className="shrink-0">
               <li className={listRowClass}>
                 <label className="flex min-w-0 flex-1 flex-col gap-0.5" htmlFor="new-session-worktree">
-                  <span className="text-base">Em worktree separado</span>
+                  <span className="text-base">{t('newSession.worktreeTitle')}</span>
                   <span className="text-sm text-muted-foreground">
-                    Cria um branch e uma pasta próprios para esta sessão; o seu checkout fica intacto.
+                    {t('newSession.worktreeHint')}
                   </span>
                 </label>
                 <Switch id="new-session-worktree" checked={worktree} onCheckedChange={setWorktree} />
@@ -179,13 +181,12 @@ export function NewSessionSheet({
 
           {!isTerminal && (
             <section className="flex flex-col gap-2">
-              <h3 className="pl-1 text-sm font-medium text-muted-foreground">Opções</h3>
+              <h3 className="pl-1 text-sm font-medium text-muted-foreground">{t('newSession.options')}</h3>
               {options.length > 0 ? (
                 <ConfigControls options={options} onChange={change} />
               ) : (
                 <p className="pl-1 text-sm text-muted-foreground">
-                  Ainda sem opções lembradas para este agente. Elas aparecem no chat depois da primeira
-                  sessão e passam a ser usadas aqui.
+                  {t('newSession.noOptions')}
                 </p>
               )}
             </section>
@@ -194,10 +195,10 @@ export function NewSessionSheet({
 
         <DrawerFooter className="flex-row">
           <Button variant="ghost" className="flex-1" onClick={onClose}>
-            Cancelar
+            {t('actions.cancel', { ns: 'common' })}
           </Button>
           <Button className="flex-1" disabled={agentId === null || creating} onClick={() => void create()}>
-            {creating ? 'Criando…' : 'Criar sessão'}
+            {creating ? t('newSession.creating') : t('newSession.create')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

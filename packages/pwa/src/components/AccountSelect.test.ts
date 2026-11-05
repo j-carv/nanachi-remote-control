@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentProfile } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { AccountSelect } from './AccountSelect.js';
 
 const PRINCIPAL: AgentProfile = {
@@ -78,5 +79,15 @@ describe('AccountSelect', () => {
     const html = render({ value: 'default', disabled: true });
     expect(html).toMatch(/<select[^>]* disabled=""/);
     expect(html).not.toContain('Troque quando o agente terminar');
+  });
+});
+
+describe('AccountSelect in English', () => {
+  it('names the row, the removed account and the hint', () => {
+    setLanguage('en');
+    const html = render({ value: 'sumiu', disabled: true, showHint: true });
+    expect(html).toContain('aria-label="Account"');
+    expect(html).toContain('Removed account');
+    expect(html).toContain('Switch when the agent is done');
   });
 });

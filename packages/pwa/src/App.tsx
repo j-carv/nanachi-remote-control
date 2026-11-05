@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { PairResponse } from '@nanachi/shared';
 import { createApiClient } from './api.js';
 import { getBrowserStorage } from './browserStorage.js';
@@ -51,8 +52,8 @@ import { SettingsScreen } from './screens/SettingsScreen.js';
 import { useConnectionPool } from './useConnectionPool.js';
 import { UpdateBar } from './updates/UpdateBar.js';
 
-export const SAVE_FAILED_TEXT = 'Não foi possível salvar o acesso neste aparelho';
-export const READ_FAILED_TEXT = 'Não foi possível ler os acessos salvos neste aparelho. Pareie de novo para continuar.';
+/** What the access notice at the top says. Kept as a kind, not a text, so it follows the language when it changes. */
+type AccessNotice = 'save_failed' | 'read_failed';
 
 /** Pedido de persistência do storage (token), só se o navegador tiver `navigator.storage.persist`. */
 function persistRequest(storage: StorageLike) {
@@ -66,11 +67,13 @@ function persistRequest(storage: StorageLike) {
 }
 
 function AppRoutes() {
+  // Subscribes to the language: a change re-renders here, and `key` below remounts the screen (see renderScreen).
+  const { t, i18n } = useTranslation();
   const storage = useMemo(() => getBrowserStorage(), []);
   const [initialStored] = useState(() => readStoredMachines(storage));
   const [machines, setMachines] = useState<Machine[]>(() => readMachines(storage));
-  const [accessNotice, setAccessNotice] = useState<string | null>(() =>
-    initialStored.status === 'unreadable' ? READ_FAILED_TEXT : null,
+  const [accessNotice, setAccessNotice] = useState<AccessNotice | null>(() =>
+    initialStored.status === 'unreadable' ? 'read_failed' : null,
   );
   const [selectedId, setSelectedId] = useState<string | null>(() => readSelectedId(storage));
   const [nav, setNav] = useState<NavState>(() =>
@@ -223,7 +226,7 @@ function AppRoutes() {
   /** Grava a lista. Se o storage recusar, o aviso aparece e a lista segue só nesta sessão. */
   function commitMachines(next: Machine[]): void {
     const saved = writeMachines(storage, next);
-    setAccessNotice(saved ? null : SAVE_FAILED_TEXT);
+    setAccessNotice(saved ? null : 'save_failed');
     setMachines(next);
   }
 
@@ -262,7 +265,7 @@ function AppRoutes() {
   }
 
   function handleRemove(machine: Machine): void {
-    if (!window.confirm(`Remover "${machine.name}" deste celular?`)) return;
+    if (!window.confirm(t('removeMachineConfirm', { name: machine.name }))) return;
     if (forgetMachine(machine) === undefined) router.replace({ kind: 'pair', baseUrl: null });
   }
 
@@ -334,13 +337,15 @@ function AppRoutes() {
         <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-[calc(env(safe-area-inset-top,0px)+8px)]">
           <div className="pointer-events-auto w-full max-w-[560px]">
             <ErrorNotice
-              message={accessNotice}
-              action={{ label: 'Entendi', onClick: () => setAccessNotice(null) }}
+              message={accessNotice === 'save_failed' ? t('access.saveFailed') : t('access.readFailed')}
+              action={{ label: t('actions.gotIt'), onClick: () => setAccessNotice(null) }}
             />
           </div>
         </div>
       )}
-      {renderScreen(route)}
+      {/* Keyed on the language: switching it remounts the screen, so helpers that call `t` while rendering
+          (status texts, relative times) pick it up. The navigation state lives above and is kept. */}
+      <Fragment key={i18n.language}>{renderScreen(route)}</Fragment>
     </>
   );
 }

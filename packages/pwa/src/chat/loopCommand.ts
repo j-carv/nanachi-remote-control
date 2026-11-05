@@ -1,4 +1,5 @@
 import { LOOP_PROMPT_MAX, parseLoopArgs, type LoopRequest } from '@nanachi/shared';
+import { t } from '../i18n/index.js';
 import { splitCommand } from './commands.js';
 
 /**
@@ -15,8 +16,6 @@ export type LoopCommandDecision =
   /** `/loop` with arguments that do not work: nothing is sent; the message says what to fix. */
   | { kind: 'invalid'; message: string };
 
-const INTERVAL_HELP = 'Intervalo entre 30 s e 24 h, seguido do prompt. Ex.: /loop 5m revise os testes.';
-
 /** Decides what sending `text` from the composer does. `hasAttachments`: the draft has attachments. */
 export function loopCommandFor(text: string, hasAttachments: boolean): LoopCommandDecision {
   const parts = splitCommand(text.trim());
@@ -24,12 +23,12 @@ export function loopCommandFor(text: string, hasAttachments: boolean): LoopComma
 
   const args = parts.rest.trim();
   if (args === '') return { kind: 'sheet' };
-  if (hasAttachments) return { kind: 'invalid', message: 'Loop não aceita anexos. Mande o arquivo numa mensagem comum.' };
+  if (hasAttachments) return { kind: 'invalid', message: t('chat:loop.command.noAttachments') };
 
   const parsed = parseLoopArgs(args);
-  if (parsed === undefined) return { kind: 'invalid', message: INTERVAL_HELP };
+  if (parsed === undefined) return { kind: 'invalid', message: t('chat:loop.command.intervalHelp') };
   if (parsed.prompt.length > LOOP_PROMPT_MAX) {
-    return { kind: 'invalid', message: `O prompt do loop passa de ${LOOP_PROMPT_MAX} caracteres.` };
+    return { kind: 'invalid', message: t('chat:loop.command.promptTooLong', { max: LOOP_PROMPT_MAX }) };
   }
 
   if (parsed.intervalMs === undefined) {

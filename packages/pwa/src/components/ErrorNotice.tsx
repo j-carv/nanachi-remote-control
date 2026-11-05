@@ -1,4 +1,5 @@
 import { CircleExclamationPoint } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ApiError } from '../api.js';
 import { describeWorkspaceError } from '../errorMessages.js';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ interface ErrorNoticeProps {
 
 /** Erro inline: fundo vermelho tingido, ícone e texto. Sem borda colorida. */
 export function ErrorNotice({ error, message, onRepair, action }: ErrorNoticeProps) {
+  const { t } = useTranslation();
   if (message === undefined && (error === undefined || error === null)) return null;
   const canRepair =
     message === undefined && error instanceof ApiError && error.kind === 'unauthorized' && onRepair !== undefined;
@@ -29,7 +31,7 @@ export function ErrorNotice({ error, message, onRepair, action }: ErrorNoticePro
         <div className="flex flex-wrap gap-2">
           {canRepair && (
             <Button size="default" onClick={onRepair}>
-              Parear de novo
+              {t('actions.pairAgain')}
             </Button>
           )}
           {action !== undefined && (

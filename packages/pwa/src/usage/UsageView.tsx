@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Bot, ChevronDown, Gauge, Timer } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -25,8 +27,9 @@ const BAR_TONE: Record<UsageTone, string> = {
 
 /** Placeholder for the loading state: the same card and tile shapes as the loaded panel. */
 export function UsageSkeleton() {
+  const { t } = useTranslation('usage');
   return (
-    <div role="status" aria-label="Carregando uso" className="flex flex-col gap-5 py-1">
+    <div role="status" aria-label={t('loading.usage')} className="flex flex-col gap-5 py-1">
       <div className="grid grid-cols-2 gap-3">
         {[0, 1].map((key) => (
           <div key={key} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
@@ -51,6 +54,7 @@ export function SkeletonBlock({ className }: { className: string }) {
 }
 
 function WindowCard({ window }: { window: UsageWindow }) {
+  const { t } = useTranslation('usage');
   const tone = usageTone(window.usedPercent);
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-4">
@@ -58,7 +62,7 @@ function WindowCard({ window }: { window: UsageWindow }) {
         <h3 className="min-w-0 truncate text-sm font-medium text-muted-foreground">{window.label}</h3>
         {window.inUse === true && (
           <Badge variant="outline" className="shrink-0">
-            em uso
+            {t('windows.inUse')}
           </Badge>
         )}
       </div>
@@ -68,7 +72,7 @@ function WindowCard({ window }: { window: UsageWindow }) {
       {window.usedPercent !== null && (
         <div
           role="progressbar"
-          aria-label={`Uso: ${window.label}`}
+          aria-label={t('windows.usageOf', { label: window.label })}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(barWidth(window.usedPercent))}
@@ -84,17 +88,18 @@ function WindowCard({ window }: { window: UsageWindow }) {
         </div>
       )}
       {window.resetsAt !== undefined && (
-        <p className="text-sm text-muted-foreground">{`Renova ${window.resetsAt}`}</p>
+        <p className="text-sm text-muted-foreground">{t('windows.resetsAt', { when: window.resetsAt })}</p>
       )}
     </div>
   );
 }
 
 function SessionTiles({ session }: { session: UsageSession }) {
+  const { t } = useTranslation('usage');
   const tiles: { label: string; value: string }[] = [];
-  if (session.costUsd !== undefined) tiles.push({ label: 'Custo', value: formatCost(session.costUsd) });
-  if (session.tokens !== undefined) tiles.push({ label: 'Tokens', value: formatTokens(totalTokens(session.tokens)) });
-  if (session.durationText !== undefined) tiles.push({ label: 'Tempo ativo', value: session.durationText });
+  if (session.costUsd !== undefined) tiles.push({ label: t('session.cost'), value: formatCost(session.costUsd) });
+  if (session.tokens !== undefined) tiles.push({ label: t('session.tokens'), value: formatTokens(totalTokens(session.tokens)) });
+  if (session.durationText !== undefined) tiles.push({ label: t('session.activeTime'), value: session.durationText });
 
   return (
     <ul className="grid grid-cols-3 gap-2">
@@ -114,15 +119,15 @@ interface InfoRow {
   mono?: boolean;
 }
 
-function infoRows(usage: ParsedUsage): InfoRow[] {
+function infoRows(usage: ParsedUsage, t: TFunction<'usage'>): InfoRow[] {
   const rows: InfoRow[] = [];
-  if (usage.model !== undefined) rows.push({ label: 'Modelo', value: usage.model, mono: true });
+  if (usage.model !== undefined) rows.push({ label: t('info.model'), value: usage.model, mono: true });
   const tokens = usage.session?.tokens;
   if (tokens !== undefined) {
-    rows.push({ label: 'Entrada', value: formatTokens(tokens.input) });
-    rows.push({ label: 'Saída', value: formatTokens(tokens.output) });
-    rows.push({ label: 'Cache (leitura)', value: formatTokens(tokens.cacheRead) });
-    rows.push({ label: 'Cache (escrita)', value: formatTokens(tokens.cacheWrite) });
+    rows.push({ label: t('info.input'), value: formatTokens(tokens.input) });
+    rows.push({ label: t('info.output'), value: formatTokens(tokens.output) });
+    rows.push({ label: t('info.cacheRead'), value: formatTokens(tokens.cacheRead) });
+    rows.push({ label: t('info.cacheWrite'), value: formatTokens(tokens.cacheWrite) });
   }
   for (const extra of usage.extras) rows.push({ label: extra.label, value: extra.value });
   return rows;
@@ -145,10 +150,11 @@ function InfoList({ rows }: { rows: InfoRow[] }) {
 
 /** The raw reply for whatever the parser did not understand. Open when nothing else was understood. */
 function Details({ text, open }: { text: string; open: boolean }) {
+  const { t } = useTranslation('usage');
   return (
     <details open={open} className="group rounded-xl border border-border bg-card">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 text-sm font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        Detalhes
+        {t('drawer.details')}
         <ChevronDown className="size-4 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
       </summary>
       <div className="border-t border-border px-4 py-3 text-sm">
@@ -163,9 +169,10 @@ function Details({ text, open }: { text: string; open: boolean }) {
  * the model and extras, then the raw details.
  */
 export function UsageBody({ usage, resets }: { usage: ParsedUsage; resets?: ReactNode }) {
+  const { t } = useTranslation('usage');
   const groups = windowGroups(usage);
   const several = usage.accounts.length > 1;
-  const rows = infoRows(usage);
+  const rows = infoRows(usage, t);
   const hasUnderstood = usage.windows.length > 0 || usage.session !== undefined || rows.length > 0;
   const showDetails = usage.unparsed.trim() !== '';
 
@@ -173,7 +180,7 @@ export function UsageBody({ usage, resets }: { usage: ParsedUsage; resets?: Reac
     <div className="flex flex-col gap-5">
       {groups.map((group, index) => {
         const id = `usage-group-${index}`;
-        const title = several && group.account !== null ? accountName(group.account) : 'Limites';
+        const title = several && group.account !== null ? accountName(group.account) : t('windows.limits');
         return (
           <section key={group.account?.id ?? 'other'} aria-labelledby={id} className="flex flex-col gap-2">
             <SectionHeading id={id} icon={several ? Bot : Gauge}>
@@ -193,7 +200,7 @@ export function UsageBody({ usage, resets }: { usage: ParsedUsage; resets?: Reac
       {usage.session !== undefined && (
         <section aria-labelledby="usage-session" className="flex flex-col gap-2">
           <SectionHeading id="usage-session" icon={Timer}>
-            Sessão
+            {t('session.title')}
           </SectionHeading>
           <SessionTiles session={usage.session} />
         </section>

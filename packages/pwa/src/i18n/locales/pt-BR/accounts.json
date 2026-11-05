@@ -1,0 +1,88 @@
+{
+  "section": {
+    "title": "Contas dos agentes",
+    "description": "Login de cada agente em {{machine}}.",
+    "refresh": "Atualizar contas",
+    "refreshing": "Atualizando contas",
+    "checking": "Verificando…",
+    "checked": "Verificado {{time}}"
+  },
+  "status": {
+    "logged_in": "Logado",
+    "logged_out": "Deslogado",
+    "unknown": "Não verificado",
+    "loginHelp": "Faça login no terminal do PC (ex.: claude, codex login, agy)."
+  },
+  "badge": {
+    "inUse": "Em uso"
+  },
+  "actions": {
+    "label": "Ações da conta",
+    "use": "Usar em novas sessões",
+    "login": "Entrar",
+    "rename": "Renomear",
+    "remove": "Remover"
+  },
+  "add": {
+    "title": "Adicionar conta",
+    "description": "Dê um nome para a nova conta de {{agent}}. Depois você entra com ela.",
+    "submit": "Criar"
+  },
+  "rename": {
+    "title": "Renomear conta",
+    "description": "Novo nome para {{account}} em {{agent}}.",
+    "submit": "Salvar"
+  },
+  "remove": {
+    "title": "Remover conta",
+    "text": "Remover \"{{account}}\" de {{agent}}? O login desta conta neste PC é apagado e as sessões que a usavam voltam para a conta principal. A conta em si não é afetada.",
+    "confirm": "Remover",
+    "removing": "Removendo…"
+  },
+  "validation": {
+    "empty": "Digite um nome.",
+    "tooLong": "Nome longo demais (máx. {{max}} caracteres)."
+  },
+  "select": {
+    "label": "Conta",
+    "removed": "Conta removida",
+    "lockedHint": "Troque quando o agente terminar"
+  },
+  "login": {
+    "title": "Entrar na conta",
+    "openLinkPrompt": "Abra o link e entre com a conta que você quer adicionar",
+    "openLink": "Abrir link",
+    "copyLink": "Copiar link",
+    "pcTabNote": "O PC também pode abrir uma aba de login; pode ignorar.",
+    "enterCode": "Digite este código na página",
+    "copyCode": "Copiar código",
+    "pasteCodePrompt": "Depois de entrar, copie o código que aparece e cole aqui",
+    "send": "Enviar",
+    "sending": "Enviando…",
+    "showOutput": "Ver a saída do login",
+    "close": "Fechar",
+    "cancelling": "Cancelando…",
+    "step": {
+      "starting": "Preparando…",
+      "waiting": "Aguardando você entrar…",
+      "codeSent": "Código enviado. Aguardando o login terminar…",
+      "verifying": "Verificando…",
+      "success": "Conta conectada",
+      "successAs": "Conta conectada: {{account}}",
+      "cancelled": "Login cancelado.",
+      "genericFailure": "o login falhou"
+    }
+  },
+  "copy": {
+    "copied": "Copiado"
+  },
+  "removeSession": {
+    "title": "Remover do app",
+    "text": "Remover esta sessão do app? O histórico continua no {{agent}} e você pode trazê-la de volta em Retomar do PC.",
+    "running": "A sessão está trabalhando. Remover agora interrompe o trabalho.",
+    "awaiting_permission": "A sessão está esperando sua permissão. Remover agora interrompe o trabalho.",
+    "starting": "A sessão está iniciando. Remover agora interrompe o início.",
+    "confirm": "Remover",
+    "removing": "Removendo…"
+  }
+}

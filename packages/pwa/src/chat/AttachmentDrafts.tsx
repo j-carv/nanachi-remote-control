@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Crop, X } from 'lucide-react';
 import type { DraftAttachment } from './useAttachmentDrafts.js';
 import { formatBytes } from '../files/format.js';
@@ -14,10 +15,11 @@ interface AttachmentDraftsProps {
  * tem recorte (canto inferior esquerdo).
  */
 export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsProps) {
+  const { t } = useTranslation('chat');
   if (drafts.length === 0) return null;
   return (
     // Padding on all sides keeps the remove and crop buttons, which overhang each item, inside the scroll box.
-    <ul data-slot="draft-list" aria-label="Anexos" className="-mx-2 flex gap-2 overflow-x-auto px-2 pt-2 pb-2">
+    <ul data-slot="draft-list" aria-label={t('attachments.label')} className="-mx-2 flex gap-2 overflow-x-auto px-2 pt-2 pb-2">
       {drafts.map(({ id, file, previewUrl }) => (
         <li key={id} className="relative shrink-0">
           {previewUrl !== null ? (
@@ -34,7 +36,7 @@ export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsP
             <button
               type="button"
               data-slot="draft-crop"
-              aria-label={`Recortar ${file.name}`}
+              aria-label={t('attachments.crop', { name: file.name })}
               onClick={() => onCrop(id)}
               className="absolute -bottom-2 -left-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -45,7 +47,7 @@ export function AttachmentDrafts({ drafts, onRemove, onCrop }: AttachmentDraftsP
           )}
           <button
             type="button"
-            aria-label={`Remover ${file.name}`}
+            aria-label={t('attachments.remove', { name: file.name })}
             onClick={() => onRemove(id)}
             className="absolute -top-2 -right-2 flex size-11 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >

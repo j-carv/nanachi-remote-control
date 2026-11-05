@@ -52,13 +52,13 @@ describe('requestPrecacheRefill', () => {
     const done = requestPrecacheRefill(fake.worker);
     fake.port().postMessage(false);
 
-    await expect(done).rejects.toThrow('refill recusado');
+    await expect(done).rejects.toThrow('refill refused');
   });
 
   it('rejects after the deadline when the service worker does not answer', async () => {
     const fake = fakeActiveWorker();
     const done = requestPrecacheRefill(fake.worker);
-    const assertion = expect(done).rejects.toThrow('sem resposta do service worker');
+    const assertion = expect(done).rejects.toThrow('no answer from the service worker');
 
     await vi.advanceTimersByTimeAsync(REFILL_TIMEOUT_MS);
 

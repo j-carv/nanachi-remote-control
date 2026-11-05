@@ -1,14 +1,15 @@
 import type { AgentAccount, AgentProfile } from '@nanachi/shared';
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from './i18n/index.js';
 import {
-  ACCOUNT_LOCKED_HINT,
   accountChangeLocked,
+  accountLockedHint,
   accountOptionLabel,
   accountSelectorFor,
   accountView,
   checkedText,
   createLoginReloads,
-  LOGIN_HELP,
+  loginHelp,
   newSessionAccount,
   profileActions,
   profileView,
@@ -29,7 +30,7 @@ describe('accountView', () => {
       tone: 'warn',
       help: 'Faça login no terminal do PC (ex.: claude, codex login, agy).',
     });
-    expect(LOGIN_HELP).toBe('Faça login no terminal do PC (ex.: claude, codex login, agy).');
+    expect(loginHelp()).toBe('Faça login no terminal do PC (ex.: claude, codex login, agy).');
   });
 
   it('não verificado: cinza, sem ajuda (o detalhe da conta explica o motivo)', () => {
@@ -178,7 +179,7 @@ describe('contas escolhidas', () => {
     expect(accountChangeLocked('idle')).toBe(false);
     expect(accountChangeLocked('stopped')).toBe(false);
     expect(accountChangeLocked('error')).toBe(false);
-    expect(ACCOUNT_LOCKED_HINT).toBe('Troque quando o agente terminar');
+    expect(accountLockedHint()).toBe('Troque quando o agente terminar');
   });
 });
 
@@ -276,5 +277,36 @@ describe('createLoginReloads', () => {
     reloads.started();
     reloads.closed();
     expect(count()).toBe(2);
+  });
+});
+
+describe('account texts in English', () => {
+  it('accountView names the states and tells how to sign in', () => {
+    setLanguage('en');
+    expect(accountView({ status: 'logged_in' })).toEqual({ statusLabel: 'Signed in', tone: 'ok', help: null });
+    expect(accountView({ status: 'logged_out' })).toEqual({
+      statusLabel: 'Signed out',
+      tone: 'warn',
+      help: "Sign in from the PC's terminal (e.g. claude, codex login, agy).",
+    });
+    expect(accountView({ status: 'unknown' })).toEqual({ statusLabel: 'Not checked', tone: 'muted', help: null });
+  });
+
+  it('checkedText uses the relative time of the language', () => {
+    setLanguage('en');
+    const now = 1_700_000_000_000;
+    expect(checkedText(now, now)).toBe('Checked now');
+    expect(checkedText(now - 2 * 60_000, now)).toBe('Checked 2 min ago');
+  });
+
+  it('removeAccountText, the label rules and the locked hint', () => {
+    setLanguage('en');
+    expect(removeAccountText('Claude Code', 'Work')).toBe(
+      'Remove "Work" from Claude Code? The login for this account on this PC is deleted, and the sessions that used it go back to the main account. The account itself is not affected.',
+    );
+    expect(validateAccountLabel('  ')).toBe('Enter a name.');
+    expect(validateAccountLabel('x'.repeat(41))).toBe('Name too long (max 40 characters).');
+    expect(validateAccountLabel('Work')).toBeNull();
+    expect(accountLockedHint()).toBe('Switch when the agent is done');
   });
 });

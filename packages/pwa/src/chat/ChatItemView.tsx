@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Brain, ChevronDown, Repeat } from 'lucide-react';
 import type { ApiClient } from '../api.js';
 import { FileAttachment } from '../components/FileAttachment.js';
@@ -39,6 +40,7 @@ function UserText({ text }: { text: string }) {
  * reconciliados nem reanalisados a cada chunk.
  */
 export const ChatItemView = memo(function ChatItemView({ node, api, view, nested = false }: ChatItemViewProps) {
+  const { t } = useTranslation('chat');
   const { item } = node;
   switch (item.kind) {
     case 'user_message': {
@@ -48,7 +50,7 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
           {item.loopIteration !== undefined && (
             <p data-slot="loop-label" className="mb-1 flex items-center gap-1 self-end text-xs text-muted-foreground">
               <Repeat className="size-3.5" aria-hidden="true" />
-              Loop #{item.loopIteration}
+              {t('item.loopRound', { number: item.loopIteration })}
             </p>
           )}
           <div
@@ -87,8 +89,8 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
         <details className="group text-sm text-muted-foreground">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
             <Brain className="size-4 shrink-0" aria-hidden="true" />
-            Pensamento
-            <span className="font-normal">· {item.text.length} caracteres</span>
+            {t('item.thought')}
+            <span className="font-normal">· {t('item.thoughtSize', { count: item.text.length })}</span>
             <ChevronDown
               className="ml-auto size-4 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
               aria-hidden="true"
@@ -116,7 +118,7 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
     case 'account_changed':
       return (
         <p data-slot="account-changed" className="self-center px-4 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]">
-          Conta trocada para {item.label}
+          {t('item.accountChanged', { label: item.label })}
         </p>
       );
 

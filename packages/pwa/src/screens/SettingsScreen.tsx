@@ -1,13 +1,17 @@
 import { useEffect, useId, useState } from 'react';
 import { Bell, BellOff, ChevronRight, Smartphone } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { createApiClient, ApiError, type ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
 import { AgentAccountsSection } from '../components/AgentAccountsSection.js';
+import { LanguageSection } from '../components/LanguageSection.js';
 import { ListGroup, listMainClass, listRowClass, SectionHeading } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { DesktopSection } from '../desktop/DesktopSection.js';
 import type { Machine } from '../machines.js';
 import type { Navigator } from '../navigation.js';
 import { groupMachinesByKey, sameApplicationKey } from '../push/pushSetup.js';
@@ -22,13 +26,6 @@ interface SettingsScreenProps {
   nav: Navigator;
 }
 
-const UNSUPPORTED_TEXT =
-  'Notificações não estão disponíveis neste navegador. No iPhone, abra pelo ícone da Tela de Início (iOS 16.4+).';
-const OTHER_KEY_TEXT =
-  'usa outra chave de notificação, então não recebe avisos deste celular. Copie o vapid.json do PC principal (veja o README) e ative de novo.';
-const UNREACHABLE_TEXT = 'não respondeu agora. Ative de novo quando ela estiver online.';
-const REJECTED_TEXT = 'não aceitou a inscrição. Tente ativar de novo.';
-
 function readSupport(): boolean {
   return isPushSupported({
     hasServiceWorker: 'serviceWorker' in navigator,
@@ -42,9 +39,9 @@ function clientFor(machine: Machine): ApiClient {
 }
 
 /** Erro da API tem texto próprio; falha do navegador (ex.: recusou a inscrição) tem outro. */
-function failureText(error: unknown): string {
+function failureText(error: unknown, t: TFunction<'settings'>): string {
   if (error instanceof ApiError) return describeError(error);
-  return 'Não consegui ativar as notificações neste navegador. Tente de novo.';
+  return t('notifications.browserFailed');
 }
 
 /**
@@ -53,6 +50,7 @@ function failureText(error: unknown): string {
  * máquinas com a mesma chave.
  */
 export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps) {
+  const { t } = useTranslation('settings');
   const [supported] = useState(readSupport);
   const [permission, setPermission] = useState<NotificationPermission | null>(() =>
     supported ? Notification.permission : null,
@@ -107,7 +105,7 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
 
       const request = toSubscriptionRequest(subscription.toJSON());
       if (request === null) {
-        setFailure('O navegador não devolveu a inscrição. Tente de novo.');
+        setFailure(t('notifications.noSubscription'));
         return;
       }
       await chosen.subscribePush(request);
@@ -132,13 +130,13 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
           () => true,
           () => false,
         );
-        lines.push(`${machine.name}: ${accepted ? 'ativa.' : REJECTED_TEXT}`);
+        lines.push(t(accepted ? 'notifications.machineActive' : 'notifications.machineRejected', { name: machine.name }));
       }
-      for (const machine of groups.otherKey) lines.push(`${machine.name}: ${OTHER_KEY_TEXT}`);
-      for (const machine of groups.unreachable) lines.push(`${machine.name}: ${UNREACHABLE_TEXT}`);
+      for (const machine of groups.otherKey) lines.push(t('notifications.machineOtherKey', { name: machine.name }));
+      for (const machine of groups.unreachable) lines.push(t('notifications.machineUnreachable', { name: machine.name }));
       setNotes(lines);
     } catch (caught) {
-      setFailure(failureText(caught));
+      setFailure(failureText(caught, t));
     } finally {
       setBusy(false);
     }
@@ -161,7 +159,7 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
       }
       setSubscribed(false);
     } catch (caught) {
-      setFailure(failureText(caught));
+      setFailure(failureText(caught, t));
     } finally {
       setBusy(false);
     }
@@ -169,28 +167,28 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
 
   const pushDescription = busy
     ? subscribed
-      ? 'Desativando…'
-      : 'Ativando…'
+      ? t('notifications.disabling')
+      : t('notifications.enabling')
     : subscribed
-      ? 'Ativas neste celular: aviso quando o agente termina, pede aprovação, dá erro ou envia um arquivo.'
-      : 'Desativadas neste celular.';
+      ? t('notifications.enabled')
+      : t('notifications.disabled');
 
   return (
     <Screen>
-      <ScreenHeader title="Ajustes" onBack={() => nav.back()} />
+      <ScreenHeader title={t('title')} onBack={() => nav.back()} />
 
       <AgentAccountsSection key={selected.id} machine={selected} nav={nav} />
 
       <section aria-labelledby="devices-title" className="flex flex-col gap-2">
         <SectionHeading icon={Smartphone} id="devices-title">
-          Dispositivos
+          {t('devices.heading')}
         </SectionHeading>
         <ListGroup>
           <li>
             <button type="button" className={`${listRowClass} w-full text-left transition-colors hover:bg-accent active:bg-accent`} onClick={() => nav.push({ kind: 'devices' })}>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-base">Dispositivos desta máquina</span>
-                <span className="text-sm text-muted-foreground">Celulares e navegadores pareados com {selected.name}.</span>
+                <span className="text-base">{t('devices.row')}</span>
+                <span className="text-sm text-muted-foreground">{t('devices.rowHint', { name: selected.name })}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
             </button>
@@ -200,16 +198,16 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
 
       <section aria-labelledby="push-title" className="flex flex-col gap-2">
         <SectionHeading icon={subscribed ? Bell : BellOff} id="push-title">
-          Notificações
+          {t('notifications.heading')}
         </SectionHeading>
         {!supported ? (
-          <p className="pl-1 text-sm text-muted-foreground">{UNSUPPORTED_TEXT}</p>
+          <p className="pl-1 text-sm text-muted-foreground">{t('notifications.unsupported')}</p>
         ) : (
           <>
             <ListGroup>
               <li className={listRowClass}>
                 <label htmlFor={pushId} className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-base">Avisos neste celular</span>
+                  <span className="text-base">{t('notifications.toggle')}</span>
                   <span className="text-sm text-muted-foreground">{pushDescription}</span>
                 </label>
                 <Switch
@@ -222,7 +220,7 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
             </ListGroup>
             {permission === 'denied' && (
               <p role="alert" className="pl-1 text-sm text-destructive">
-                As notificações estão bloqueadas. Libere-as nos ajustes do iPhone para este app.
+                {t('notifications.blocked')}
               </p>
             )}
             {failure !== null && (
@@ -242,6 +240,10 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
           </>
         )}
       </section>
+
+      <LanguageSection />
+
+      <DesktopSection />
     </Screen>
   );
 }

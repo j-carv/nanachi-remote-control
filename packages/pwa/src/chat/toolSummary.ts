@@ -1,5 +1,6 @@
 import type { ToolContent } from '@nanachi/shared';
 import { diffRows } from '../components/diffRows.js';
+import { t } from '../i18n/index.js';
 import type { ChatItem, ToolCallStatus } from './reducer.js';
 
 export type ToolItem = Extract<ChatItem, { kind: 'tool_call' }>;
@@ -13,13 +14,6 @@ export interface ToolSummary {
   removed: number;
   statusText: string;
 }
-
-const STATUS_TEXT: Record<ToolCallStatus, string> = {
-  pending: 'Pendente',
-  in_progress: 'Em andamento',
-  completed: 'Concluído',
-  failed: 'Falhou',
-};
 
 /** Contagem de linhas +/− somando todos os diffs do tool call. */
 function countChanges(content: readonly ToolContent[]): { added: number; removed: number } {
@@ -35,10 +29,15 @@ function countChanges(content: readonly ToolContent[]): { added: number; removed
   return { added, removed };
 }
 
+/** Status of a tool call in words, in the current language. */
+export function toolStatusText(status: ToolCallStatus): string {
+  return t(`chat:status.${status}`);
+}
+
 /** Resumo de uma linha do tool call: título, arquivo, +/− e status em texto. */
 export function summarizeTool(item: ToolItem): ToolSummary {
   const firstLocation = item.locations[0] ?? null;
-  const title = item.title !== '' ? item.title : (firstLocation ?? 'Ferramenta');
+  const title = item.title !== '' ? item.title : (firstLocation ?? t('chat:tool.fallbackTitle'));
   const file = firstLocation !== null && !title.includes(firstLocation) ? firstLocation : null;
   const { added, removed } = countChanges(item.content);
 
@@ -47,6 +46,6 @@ export function summarizeTool(item: ToolItem): ToolSummary {
     file,
     added,
     removed,
-    statusText: item.status === null ? 'Ferramenta' : STATUS_TEXT[item.status],
+    statusText: item.status === null ? t('chat:tool.noStatus') : toolStatusText(item.status),
   };
 }

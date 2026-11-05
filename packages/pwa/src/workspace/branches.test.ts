@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api.js';
+import { setLanguage } from '../i18n/index.js';
 import {
   branchTitle,
   dirtyFilesOf,
@@ -78,5 +79,13 @@ describe('dirtyFilesOf', () => {
     expect(dirtyFilesOf(new ApiError('unexpected', 409, null, 'sessions_running'))).toEqual([]);
     expect(dirtyFilesOf(new ApiError('unexpected', 409, null, 'dirty_worktree', { dirty: 3 }))).toEqual([]);
     expect(dirtyFilesOf(new Error('x'))).toEqual([]);
+  });
+});
+
+describe('branchTitle in English', () => {
+  it('names a detached HEAD in English and keeps a branch name as it is', () => {
+    setLanguage('en');
+    expect(branchTitle({ current: null, detachedAt: 'a1b2c3d' })).toBe('Detached HEAD');
+    expect(branchTitle({ current: 'feature/ui', detachedAt: null })).toBe('feature/ui');
   });
 });

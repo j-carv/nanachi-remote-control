@@ -1,4 +1,5 @@
 import { ApiError } from '../api.js';
+import { t } from '../i18n/index.js';
 
 /** A branch como a lista do drawer mostra (sem o campo `current`, que vem na própria linha). */
 export interface BranchItem {
@@ -24,9 +25,9 @@ export function filterBranches(branches: readonly BranchItem[], query: string): 
   return branches.filter((branch) => branch.name.toLowerCase().includes(needle));
 }
 
-/** Título do chip: a branch atual, ou "HEAD destacado" quando não há branch. */
+/** Título do chip: a branch atual, ou "HEAD destacado" / "Detached HEAD" quando não há branch. */
 export function branchTitle(head: { current: string | null; detachedAt: string | null }): string {
-  return head.current ?? 'HEAD destacado';
+  return head.current ?? t('workspace:branches.detached');
 }
 
 /** Os primeiros `max` caminhos sujos e quantos ficaram de fora ("e mais N"). */

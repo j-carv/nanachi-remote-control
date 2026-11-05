@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Repeat } from 'lucide-react';
 import type { Loop } from '@nanachi/shared';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ interface LoopChipProps {
  * ticks while the app is visible). A tap opens the sheet. Renders nothing without a loop (or with a stopped one).
  */
 export function LoopChip({ loop, onOpen }: LoopChipProps) {
+  const { t } = useTranslation('chat');
   const now = useLoopClock(loop !== null);
   const view = loopChipView(loop, now);
   if (view === undefined) return null;
@@ -33,7 +35,7 @@ export function LoopChip({ loop, onOpen }: LoopChipProps) {
       type="button"
       data-slot="loop-chip"
       data-phase={view.phase}
-      aria-label={`${view.label}. Abrir o Modo Loop`}
+      aria-label={t('loop.chip.open', { label: view.label })}
       aria-haspopup="dialog"
       onClick={onOpen}
       className="-my-2.5 flex min-w-0 shrink-0 items-center py-2.5"

@@ -1,0 +1,45 @@
+{
+  "viewer": {
+    "crop": "Crop",
+    "cropAgain": "Crop again",
+    "close": "Close",
+    "share": "Share",
+    "save": "Save",
+    "attachToChat": "Attach to chat",
+    "viewCrop": "Preview crop"
+  },
+  "cropper": {
+    "title": "Crop",
+    "dialog": "Crop image",
+    "cancel": "Cancel crop",
+    "ratio": "Crop aspect ratio",
+    "failed": "Couldn't crop this image.",
+    "cropping": "Cropping…",
+    "handles": {
+      "cropArea": "Crop area",
+      "nwDragHandle": "Top-left drag handle",
+      "nDragHandle": "Top drag handle",
+      "neDragHandle": "Top-right drag handle",
+      "eDragHandle": "Right drag handle",
+      "seDragHandle": "Bottom-right drag handle",
+      "sDragHandle": "Bottom drag handle",
+      "swDragHandle": "Bottom-left drag handle",
+      "wDragHandle": "Left drag handle"
+    }
+  },
+  "crop": {
+    "free": "Free",
+    "suffix": "cropped"
+  },
+  "thumb": {
+    "loading": "Loading image",
+    "open": "Open {{name}}"
+  },
+  "attachment": {
+    "download": "Download",
+    "downloading": "Downloading…"
+  },
+  "toolImage": {
+    "name": "image"
+  }
+}

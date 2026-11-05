@@ -1,4 +1,6 @@
 import { ShieldExclamationPoint } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { Session, SessionStatus } from '@nanachi/shared';
 import type { ConnectionStatus } from '../connection.js';
 import type { SessionTarget } from '../push/notificationRoute.js';
@@ -12,6 +14,7 @@ import {
 } from '../machineOverview.js';
 import type { Machine } from '../machines.js';
 import { formatRelativeTime } from '../relativeTime.js';
+import { displaySessionTitle } from '../sessionText.js';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { StatusDot, TONE_TEXT, type StatusTone } from './StatusDot.js';
@@ -34,12 +37,16 @@ interface HeaderStatus {
   pulse: boolean;
 }
 
-function headerStatus(connection: ConnectionStatus, overview: MachineOverview | undefined): HeaderStatus {
-  if (connection === 'unauthorized') return { label: 'Não autorizado', tone: 'danger', pulse: false };
-  if (overview === undefined) return { label: 'Verificando…', tone: 'muted', pulse: true };
-  if (overview.status === 'offline') return { label: 'Offline', tone: 'muted', pulse: false };
+function headerStatus(
+  connection: ConnectionStatus,
+  overview: MachineOverview | undefined,
+  t: TFunction<'machines'>,
+): HeaderStatus {
+  if (connection === 'unauthorized') return { label: t('status.unauthorized.label'), tone: 'danger', pulse: false };
+  if (overview === undefined) return { label: t('card.checking'), tone: 'muted', pulse: true };
+  if (overview.status === 'offline') return { label: t('status.offline.label'), tone: 'muted', pulse: false };
   const latencyMs = overview.status === 'ready' ? overview.details.latencyMs : overview.latencyMs;
-  return { label: `Online · ${latencyMs} ms`, tone: 'success', pulse: false };
+  return { label: t('card.online', { latencyMs }), tone: 'success', pulse: false };
 }
 
 const ROW_TONE: Record<SessionStatus, StatusTone> = {
@@ -55,15 +62,12 @@ function hostOf(baseUrl: string): string {
   return new URL(baseUrl).host;
 }
 
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 /** Placeholder lines while the machine's first load runs. Pulses (state, not decoration), stops under reduced motion. */
 function CardSkeleton() {
+  const { t } = useTranslation('machines');
   return (
     <div className="flex flex-col gap-2.5 motion-safe:animate-pulse">
-      <span className="sr-only">Carregando</span>
+      <span className="sr-only">{t('card.loading')}</span>
       <div className="h-3 w-3/4 rounded bg-muted" />
       <div className="h-3 w-1/2 rounded bg-muted" />
       <div className="h-3 w-2/3 rounded bg-muted" />
@@ -82,8 +86,9 @@ function ReadyBody({
   now: number;
   onOpenSession(target: SessionTarget): void;
 }) {
+  const { t } = useTranslation('machines');
   if (details.workspaceCount === 0) {
-    return <p className="text-sm text-muted-foreground">Nenhum workspace ainda. Adicione uma pasta em Workspaces.</p>;
+    return <p className="text-sm text-muted-foreground">{t('card.noWorkspaces')}</p>;
   }
 
   const counts = countSessions(details.sessions);
@@ -93,23 +98,23 @@ function ReadyBody({
   return (
     <>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        <span>{plural(details.workspaceCount, 'workspace', 'workspaces')}</span>
-        {counts.running > 0 && <span>{counts.running} rodando</span>}
+        <span>{t('card.workspaces', { count: details.workspaceCount })}</span>
+        {counts.running > 0 && <span>{t('summary.running', { count: counts.running })}</span>}
         {counts.awaiting > 0 && (
           <span className="flex items-center gap-1 font-medium text-attention">
             <ShieldExclamationPoint className="size-4" aria-hidden="true" />
-            {counts.awaiting} aguardando você
+            {t('summary.awaiting', { count: counts.awaiting })}
           </span>
         )}
-        {counts.idle > 0 && <span>{counts.idle} {counts.idle === 1 ? 'pronta' : 'prontas'}</span>}
+        {counts.idle > 0 && <span>{t('card.idle', { count: counts.idle })}</span>}
       </p>
 
       <p className="text-sm text-muted-foreground">
-        {last === null ? 'Nenhuma sessão ainda' : `Última atividade ${formatRelativeTime(last, now)}`}
+        {last === null ? t('card.noSessions') : t('card.lastActivity', { time: formatRelativeTime(last, now) })}
       </p>
 
       {details.agents.length > 0 && (
-        <ul aria-label="Agentes logados" className="flex flex-wrap gap-1.5">
+        <ul aria-label={t('card.agents')} className="flex flex-wrap gap-1.5">
           {details.agents.map((agent) => (
             <li key={agent}>
               <Badge variant="outline" className="text-xs font-normal">
@@ -121,7 +126,7 @@ function ReadyBody({
       )}
 
       {rows.length > 0 && (
-        <ul aria-label="Sessões" className="-mx-1 flex flex-col">
+        <ul aria-label={t('card.sessions')} className="-mx-1 flex flex-col">
           {rows.map((session) => (
             <SessionRow
               key={session.id}
@@ -138,6 +143,7 @@ function ReadyBody({
 }
 
 function SessionRow({ session, now, onOpen }: { session: Session; now: number; onOpen(): void }) {
+  const { t } = useTranslation('machines');
   const awaiting = sessionGroup(session.status) === 'awaiting';
   return (
     <li>
@@ -147,9 +153,9 @@ function SessionRow({ session, now, onOpen }: { session: Session; now: number; o
         className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:bg-accent"
       >
         <StatusDot tone={ROW_TONE[session.status]} />
-        <span className={cn('min-w-0 flex-1 truncate text-base', awaiting && 'font-medium')}>{session.title}</span>
+        <span className={cn('min-w-0 flex-1 truncate text-base', awaiting && 'font-medium')}>{displaySessionTitle(session.title)}</span>
         <span className={cn('shrink-0 text-sm', awaiting ? TONE_TEXT.attention : 'text-muted-foreground')}>
-          {awaiting ? 'Aguarda permissão' : formatRelativeTime(session.updatedAt, now)}
+          {awaiting ? t('card.awaitingPermission') : formatRelativeTime(session.updatedAt, now)}
         </span>
       </button>
     </li>
@@ -158,7 +164,8 @@ function SessionRow({ session, now, onOpen }: { session: Session; now: number; o
 
 /** One machine on the home screen: status and latency, counts by session state, recent sessions, logged-in agents. */
 export function MachineCard({ machine, overview, connection, selected, now, onSelect, onOpenSession }: MachineCardProps) {
-  const status = headerStatus(connection, overview);
+  const { t } = useTranslation('machines');
+  const status = headerStatus(connection, overview, t);
 
   return (
     <li
@@ -184,13 +191,13 @@ export function MachineCard({ machine, overview, connection, selected, now, onSe
 
       <div className="flex flex-col gap-3 border-t border-border px-4 py-3">
         {connection === 'unauthorized' ? (
-          <p className="text-sm text-muted-foreground">Este celular não tem mais acesso a este PC. Pareie de novo.</p>
+          <p className="text-sm text-muted-foreground">{t('card.unauthorized')}</p>
         ) : overview === undefined ? (
           <CardSkeleton />
         ) : overview.status === 'offline' ? (
-          <p className="text-sm text-muted-foreground">Sem resposta do PC.</p>
+          <p className="text-sm text-muted-foreground">{t('card.noResponse')}</p>
         ) : overview.status === 'error' ? (
-          <p className="text-sm text-muted-foreground">Não foi possível carregar as sessões.</p>
+          <p className="text-sm text-muted-foreground">{t('card.loadFailed')}</p>
         ) : (
           <ReadyBody machineId={machine.id} details={overview.details} now={now} onOpenSession={onOpenSession} />
         )}

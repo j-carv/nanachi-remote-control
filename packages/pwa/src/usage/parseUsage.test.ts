@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLanguage } from '../i18n/index.js';
 import { parseUsage } from './parseUsage.js';
 
 const ESC = '\u001b';
@@ -270,5 +271,49 @@ describe('parseUsage: fallback', () => {
     const usage = parseUsage('constructor', 'texto');
     expect(usage.windows).toEqual([]);
     expect(usage.unparsed).toBe('texto');
+  });
+});
+
+describe('parseUsage labels in English', () => {
+  it('claude: 5 hours, Weekly, and the API time', () => {
+    setLanguage('en');
+    const usage = parseUsage('claude', CLAUDE_TEXT);
+    expect(usage.windows.map((window) => window.label)).toEqual(['5 hours', 'Weekly']);
+    expect(usage.windows.map((window) => window.resetsAt)).toEqual(['Nov 4, 12:30 PM GMT-3', 'Nov 4, 11:00 PM GMT-3']);
+    expect(usage.extras).toEqual([{ label: 'API time', value: '3m 10s' }]);
+  });
+
+  it('claude: a weekly limit for one model keeps the model name', () => {
+    setLanguage('en');
+    const text = '### Limits\n\n**Weekly · Opus** — **33%**\n';
+    expect(parseUsage('claude', text).windows[0]).toMatchObject({ label: 'Weekly · Opus', usedPercent: 33 });
+  });
+
+  it('omp: window names, monthly, and "in" before the reset text the agent prints', () => {
+    setLanguage('en');
+    const usage = parseUsage('omp', OMP_TEXT);
+    expect(usage.windows.map((window) => [window.label, window.resetsAt])).toEqual([
+      ['Cursor Models · Monthly', 'in 14d'],
+      ['5 hours', 'in 2h'],
+      ['7 days', 'in 7d'],
+    ]);
+    expect(usage.extras).toEqual([{ label: 'Other Models · Monthly', value: '0.11 USD' }]);
+  });
+
+  it('omp: one hour and one day are singular', () => {
+    setLanguage('en');
+    const text = '- 1 hour\n  [███░░░] 20%\n- 1 day\n  [███░░░] 30%\n';
+    expect(parseUsage('omp', text).windows.map((window) => window.label)).toEqual(['1 hour', '1 day']);
+  });
+
+  it('codex: labels, and "unavailable" for what the agent has not reported yet', () => {
+    setLanguage('en');
+    const usage = parseUsage('codex', CODEX_TEXT);
+    expect(usage.windows.map((window) => window.label)).toEqual(['5 hours', 'Weekly']);
+    expect(usage.extras).toEqual([
+      { label: 'Tokens', value: 'unavailable' },
+      { label: 'Context window', value: 'unavailable' },
+      { label: 'Credits', value: '0' },
+    ]);
   });
 });

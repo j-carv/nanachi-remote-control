@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useModalOverlay } from './useModalOverlay.js';
 import { ImageCropper } from './ImageCropper.js';
 
@@ -17,6 +18,7 @@ interface ImageCropDialogProps {
  * próprio portal, para não ter duas sobreposições empilhadas.
  */
 export function ImageCropDialog(props: ImageCropDialogProps) {
+  const { t } = useTranslation('files');
   useModalOverlay(props.onCancel);
 
   return createPortal(
@@ -24,7 +26,7 @@ export function ImageCropDialog(props: ImageCropDialogProps) {
       data-slot="image-crop-dialog"
       role="dialog"
       aria-modal="true"
-      aria-label="Recortar imagem"
+      aria-label={t('cropper.dialog')}
       className="fixed inset-0 z-50 flex flex-col bg-black"
     >
       <ImageCropper {...props} />

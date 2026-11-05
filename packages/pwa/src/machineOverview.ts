@@ -1,4 +1,5 @@
 import type { AgentAccount, HealthResponse, Session, SessionStatus, Workspace } from '@nanachi/shared';
+import { t } from './i18n/index.js';
 import type { SessionTarget } from './push/notificationRoute.js';
 import type { Machine } from './machines.js';
 
@@ -114,11 +115,11 @@ export function summarize(entries: readonly OverviewEntry[]): OverviewSummary {
   return { running, awaiting, awaitingTarget };
 }
 
-/** Summary line pieces in Portuguese. A zero count is `null`, so the screen can leave it out. */
+/** Summary line pieces in the current language. A zero count is `null`, so the screen can leave it out. */
 export function summaryLabels(summary: OverviewSummary): { running: string | null; awaiting: string | null } {
   return {
-    running: summary.running > 0 ? `${summary.running} rodando` : null,
-    awaiting: summary.awaiting > 0 ? `${summary.awaiting} aguardando você` : null,
+    running: summary.running > 0 ? t('machines:summary.running', { count: summary.running }) : null,
+    awaiting: summary.awaiting > 0 ? t('machines:summary.awaiting', { count: summary.awaiting }) : null,
   };
 }
 

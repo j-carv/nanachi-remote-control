@@ -1,8 +1,9 @@
+import { t } from '../i18n/index.js';
+
+export { isRefillPrecacheRequest, REFILL_PRECACHE_MESSAGE } from './refillMessage.js';
+
 /** Longest wait for the new service worker to activate before the current one is unregistered. */
 export const FORCE_UPDATE_TIMEOUT_MS = 15_000;
-
-/** Message the page posts to the service worker to refill the precache (see `sw.ts`). */
-export const REFILL_PRECACHE_MESSAGE = 'refill-precache';
 
 export type ForceUpdatePhase = 'checking' | 'downloading' | 'clearing' | 'reloading';
 
@@ -38,7 +39,7 @@ export interface ForceUpdateEnv {
   reload(): void;
 }
 
-/** A failure before the reload. `message` is the reason in Portuguese, shown to the user. */
+/** A failure before the reload. `message` is the reason in the current language, shown to the user. */
 export class ForceUpdateError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
     super(reason, options);
@@ -46,13 +47,8 @@ export class ForceUpdateError extends Error {
   }
 }
 
-const REASON = {
-  registration: 'o navegador não respondeu ao service worker',
-  update: 'sem conexão para verificar a versão nova',
-  caches: 'não foi possível apagar o cache',
-  refill: 'não foi possível recarregar os arquivos do app',
-  unregister: 'não foi possível reiniciar o service worker',
-} as const;
+/** The step that failed; the reason text is in `common.json` under `forceUpdate.reason`. */
+type FailedStep = 'registration' | 'update' | 'caches' | 'refill' | 'unregister';
 
 type ActivationOutcome = 'activated' | 'redundant' | 'timeout';
 
@@ -89,17 +85,12 @@ export async function deleteAllCaches(storage: CacheStorageLike): Promise<void> 
   await Promise.all(names.map((name) => storage.delete(name)));
 }
 
-/** True when `data` is the message the page posts to ask for a precache refill. */
-export function isRefillPrecacheRequest(data: unknown): boolean {
-  return typeof data === 'object' && data !== null && 'type' in data && data.type === REFILL_PRECACHE_MESSAGE;
-}
-
-/** Runs one step and turns its failure into a Portuguese reason. The original error is kept in `cause`. */
-async function step<T>(reason: string, run: () => Promise<T>): Promise<T> {
+/** Runs one step and turns its failure into a reason in the current language. The original error is kept in `cause`. */
+async function step<T>(failed: FailedStep, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    throw new ForceUpdateError(reason, { cause: error });
+    throw new ForceUpdateError(t(`common:forceUpdate.reason.${failed}`), { cause: error });
   }
 }
 
@@ -122,11 +113,11 @@ export async function runForceUpdate(
   timeoutMs: number = FORCE_UPDATE_TIMEOUT_MS,
 ): Promise<void> {
   onPhase('checking');
-  const registration = await step(REASON.registration, () => env.getRegistration());
+  const registration = await step('registration', () => env.getRegistration());
   let keepWorker = true;
 
   if (registration !== null) {
-    await step(REASON.update, () => registration.update());
+    await step('update', () => registration.update());
     const pending = registration.installing ?? registration.waiting;
     if (pending !== null) {
       onPhase('downloading');
@@ -136,14 +127,14 @@ export async function runForceUpdate(
   }
 
   onPhase('clearing');
-  await step(REASON.caches, () => env.deleteAllCaches());
+  await step('caches', () => env.deleteAllCaches());
 
   if (registration !== null) {
     if (keepWorker) {
       const active = registration.active;
-      if (active !== null) await step(REASON.refill, () => env.refillPrecache(active));
+      if (active !== null) await step('refill', () => env.refillPrecache(active));
     } else {
-      await step(REASON.unregister, () => registration.unregister());
+      await step('unregister', () => registration.unregister());
     }
   }
 
