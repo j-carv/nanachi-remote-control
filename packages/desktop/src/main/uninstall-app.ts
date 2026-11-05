@@ -19,7 +19,7 @@ import { isOwnWindowCaller } from '../install/sender.js';
 import { runUninstall, type UninstallProgress } from '../install/uninstall.js';
 import { createShellWindow } from '../install/window.js';
 import { HIDDEN_ARG } from './autostart.js';
-import { readConfiguredPort, resolveHome } from './daemon-runtime.js';
+import { readConfiguredPort, resolveHome, standaloneHomes } from './daemon-runtime.js';
 import { fetchHealth } from './system.js';
 
 /**
@@ -57,7 +57,9 @@ export function runUninstaller(): void {
 
   const installDir = flags.target ?? (app.isPackaged ? dirname(process.execPath) : null);
   const testMode = flags.target !== null || flags.noShortcuts || flags.noRegistry;
-  const nanachiHome = resolveHome(process.env);
+  // Desktop's own data folder; the standalone daemon's (NANACHI_HOME) is only ever passed on to be refused.
+  const desktopHome = resolveHome(process.env);
+  const standaloneDirs = standaloneHomes(process.env);
   const profile = homedir();
   const pendingRemovals: string[] = [];
   let window: BrowserWindow | null = null;
@@ -91,7 +93,8 @@ export function runUninstaller(): void {
         { installDir, deleteData, noShortcuts: flags.noShortcuts, noRegistry: flags.noRegistry },
         {
           profile,
-          nanachiHome,
+          desktopHome,
+          standaloneDirs,
           desktopDataDir,
           startMenuDir: join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
           desktopDir: app.getPath('desktop'),
@@ -116,7 +119,7 @@ export function runUninstaller(): void {
               name: APP_USER_MODEL_ID,
             }),
           runReg,
-          homeInUse: async () => (await fetchHealth(readConfiguredPort(nanachiHome))).kind !== 'none',
+          homeInUse: async () => (await fetchHealth(readConfiguredPort(desktopHome))).kind !== 'none',
           scheduleRemoval: (dirs) => pendingRemovals.push(...dirs),
           emit: send,
         },
@@ -143,7 +146,7 @@ export function runUninstaller(): void {
     return {
       installDir: installDir ?? '',
       version: app.getVersion(),
-      dataDir: nanachiHome,
+      dataDir: desktopHome,
       testMode,
       deleteData: flags.deleteData,
     };

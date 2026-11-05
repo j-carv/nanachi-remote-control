@@ -25,5 +25,11 @@ export const PAYLOAD_DIR = 'payload';
 export const PAYLOAD_ZIP = 'payload.zip';
 export const PAYLOAD_META = 'payload.json';
 
-/** The daemon's data folder (`%USERPROFILE%\.nanachi-remote`): sessions, devices, config. Never an install target. */
-export const DATA_DIR_NAME = '.nanachi-remote';
+/** Desktop's own data folder (`%USERPROFILE%\.nanachi-desktop`): sessions, devices, config. Never an install target. */
+export const DATA_DIR_NAME = '.nanachi-desktop';
+
+/**
+ * The standalone daemon's data folder (`%USERPROFILE%\.nanachi-remote`: the supervisor, `npm run dev`). Desktop never
+ * reads it, deletes it or installs over it.
+ */
+export const STANDALONE_DATA_DIR_NAME = '.nanachi-remote';

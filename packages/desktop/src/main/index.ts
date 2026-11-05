@@ -10,7 +10,7 @@ import { APP_USER_MODEL_ID, UNINSTALL_ARG } from '../install/constants.js';
 import { createAutostart, HIDDEN_ARG } from './autostart.js';
 import { resolveBuildDir } from './build-dir.js';
 import { DaemonHost } from './daemon-host.js';
-import { missingRuntimeFile, readConfiguredPort, resolveHome, resolveRuntime } from './daemon-runtime.js';
+import { ensureDesktopConfig, missingRuntimeFile, readConfiguredPort, resolveHome, resolveRuntime } from './daemon-runtime.js';
 import { registerIpc } from './ipc.js';
 import { createRotatingLog } from './log-file.js';
 import { createDeviceAddRunner, createPairCliRunner } from './pair-cli.js';
@@ -59,7 +59,15 @@ async function boot(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const repoRoot = join(here, '..', '..', '..', '..');
   const userData = app.getPath('userData');
+  // Desktop's own data folder (NANACHI_DESKTOP_HOME or ~/.nanachi-desktop), never the standalone daemon's NANACHI_HOME.
   const home = resolveHome(process.env);
+  // Best effort, as early as possible: a daemon CLI that runs first on a fresh folder (a pairing code from the tray)
+  // would write a config with port 7777. The host repeats this before every spawn and reports a failure.
+  try {
+    ensureDesktopConfig(home);
+  } catch {
+    // Reported by the daemon host.
+  }
 
   const runtime = resolveRuntime({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
   const iconPath = app.isPackaged
@@ -74,6 +82,7 @@ async function boot(): Promise<void> {
     home,
     runtime,
     readPort: () => readConfiguredPort(home),
+    ensureConfig: (target) => void ensureDesktopConfig(target),
     health: (port) => fetchHealth(port),
     spawn: spawnHidden,
     killTree: killProcessTree,

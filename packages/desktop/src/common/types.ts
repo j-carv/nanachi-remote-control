@@ -5,7 +5,7 @@ export type DaemonState = 'starting' | 'running' | 'attached' | 'stopped' | 'err
 
 export interface DaemonStatus {
   state: DaemonState;
-  /** Port read from `<NANACHI_HOME>\config.json` (default 7777). */
+  /** Port read from `<Desktop data folder>\config.json` (default 7780; the standalone daemon uses 7777). */
   port: number;
   /** Who owns the process: Desktop spawned it, it was already there, or nothing runs. */
   mode: 'spawned' | 'attached' | 'none';

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app, dialog, type BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent, shell } from 'electron';
 import { messageOf } from '../src/common/message.js';
-import { resolveHome } from '../src/main/daemon-runtime.js';
+import { resolveHome, standaloneHomes } from '../src/main/daemon-runtime.js';
 import { HIDDEN_ARG } from '../src/main/autostart.js';
 import { parseInstallFlags } from '../src/install/args.js';
 import { APP_USER_MODEL_ID, PAYLOAD_DIR } from '../src/install/constants.js';
@@ -81,7 +81,8 @@ try {
 
 const testMode = flags.target !== null || flags.noShortcuts || flags.noRegistry || flags.noLaunch;
 const profile = homedir();
-const nanachiHome = resolveHome(process.env);
+const desktopHome = resolveHome(process.env);
+const standaloneDirs = standaloneHomes(process.env);
 const localAppData = process.env.LOCALAPPDATA ?? join(profile, 'AppData', 'Local');
 const defaultTarget = join(localAppData, 'Programs', 'Nanachi');
 
@@ -123,7 +124,8 @@ async function install(request: InstallRequest): Promise<InstallOutcome> {
     const result = await runInstall(options, {
       payload,
       profile,
-      nanachiHome,
+      desktopHome,
+      standaloneDirs,
       startMenuDir: join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
       desktopDir: app.getPath('desktop'),
       extract: extractPayload,
@@ -200,7 +202,7 @@ function registerIpc(): void {
   ipcMain.handle(channels.validateTarget, (event, target: unknown) => {
     assertOwnPage(event);
     if (typeof target !== 'string') return { ok: false, reason: 'Escolha uma pasta para instalar o Nanachi.' };
-    const check = checkInstallTarget(target, { profile, nanachiHome });
+    const check = checkInstallTarget(target, { profile, desktopHome, standaloneDirs });
     return check.ok ? { ok: true } : { ok: false, reason: check.reason };
   });
   ipcMain.handle(channels.start, (event, request: unknown): Promise<InstallOutcome> => {

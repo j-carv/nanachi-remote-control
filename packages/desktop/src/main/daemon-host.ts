@@ -26,10 +26,17 @@ export interface SpawnOptions {
 }
 
 export interface DaemonHostDeps {
+  /** Desktop's own data folder; the daemon gets it as its `NANACHI_HOME`. */
   home: string;
   runtime: DaemonRuntime;
   /** Port from config.json, read again on every (re)start. */
   readPort(): number;
+  /**
+   * Creates `<home>/config.json` with Desktop's default port when it is missing (`ensureDesktopConfig`). Called before
+   * every spawn, never when attaching. It throws when the folder cannot be written: without it the daemon would make its
+   * own config with port 7777, the standalone daemon's.
+   */
+  ensureConfig(home: string): void;
   /** What answers on the port: a healthy daemon, one that refuses local calls, or nothing Nanachi. */
   health(port: number): Promise<HealthProbe>;
   spawn(command: string, args: string[], options: SpawnOptions): ChildLike;
@@ -72,8 +79,8 @@ const LOG_TAIL_LINES = 20;
 
 /** Shown when a daemon is up but its `allowedTailscaleLogins` makes it refuse every call from this PC. */
 export const RESTRICTED_MESSAGE =
-  'O daemon responde, mas só aceita acessos pelo Tailscale (allowedTailscaleLogins no config.json), então o painel local não consegue usá-lo. ' +
-  'Use outra pasta de dados (NANACHI_HOME) para o Desktop ou abra o endereço do Tailscale.';
+  'O daemon responde, mas só aceita acessos pelo Tailscale (allowedTailscaleLogins preenchido no config.json da pasta de dados do Desktop, .nanachi-desktop), ' +
+  'então o painel local não consegue usá-lo. Deixe allowedTailscaleLogins vazio nesse config.json para usar o painel, ou abra o endereço do Tailscale.';
 /** After `kill`, how long to wait for the exit event before moving on. */
 const EXIT_WAIT_MS = 3_000;
 
@@ -218,6 +225,13 @@ export class DaemonHost {
         this.restartTimer = null;
         this.begin(true).catch((error: unknown) => this.fail(`falha ao verificar a porta: ${messageOf(error)}`));
       }, PORT_BUSY_RETRY_MS);
+      return;
+    }
+
+    try {
+      this.deps.ensureConfig(this.deps.home);
+    } catch (error) {
+      this.fail(`Não foi possível preparar o config.json em ${this.deps.home}: ${messageOf(error)}`);
       return;
     }
 

@@ -354,8 +354,8 @@ Nanachi Desktop is a Windows app that runs the daemon for you. It adds a tray ic
 
 ### What it does
 
-- **Runs the daemon** with its own bundled Node.js and restarts it after a crash (it stops retrying after more than 5 crashes in 2 minutes and shows an error). It uses the same data folder as the command line, `%USERPROFILE%\.nanachi-remote` or `NANACHI_HOME`, so `config.json` and paired devices are shared with a daemon started the other way. The daemon's log is `desktop-daemon.log` in that folder.
-- **Attaches to a daemon that is already running.** If a Nanachi daemon answers on the configured port (the supervisor or `Nanachi.bat`, for example), Desktop starts nothing, shows "conectado ao daemon existente" (connected to the existing daemon), and never stops that daemon when you quit.
+- **Runs the daemon** with its own bundled Node.js and restarts it after a crash (it stops retrying after more than 5 crashes in 2 minutes and shows an error). It has its own data folder, `%USERPROFILE%\.nanachi-desktop` (set `NANACHI_DESKTOP_HOME` to move it), separate from a standalone daemon or the supervisor, which keep using `%USERPROFILE%\.nanachi-remote`. Desktop never reads `NANACHI_HOME`, so sessions, paired devices and `config.json` are not shared with them. On a fresh folder it writes `config.json` with `"port": 7780` (an existing `config.json` is never rewritten, and its port wins), so Desktop and a standalone daemon on 7777 run side by side. The daemon's log is `desktop-daemon.log` in that folder.
+- **Attaches to a daemon that is already running.** If a Nanachi daemon already answers on Desktop's port (another copy of Desktop, for example; not the supervisor on 7777 unless you point Desktop's `config.json` at it), Desktop starts nothing, shows "conectado ao daemon existente" (connected to the existing daemon), and never stops that daemon when you quit.
 - **Tray icon.** The first menu line is the status: `Nanachi · rodando` (running), `· iniciando` (starting), `· conectado ao daemon existente`, `· parado` (stopped), or `· erro` (error). The items are **Abrir painel** (open the panel), **Gerar código de pareamento** (generate a pairing code: a 6-digit code with its expiry and a QR code), **Iniciar com o Windows** (start in the tray when you sign in), and **Sair** (quit). Quitting stops the daemon only if Desktop started it.
 - **Control panel.** The panel is this same web app, loaded from the local daemon, with an extra **Desktop** group in Settings: daemon status, **Iniciar com o Windows**, **Gerar código de pareamento**, **Procurar atualização** (check for updates), and **Tailscale embutido** (built-in Tailscale). On first run the panel registers itself as a device named "Nanachi Desktop (PC name)", which you can revoke like any other device.
 
@@ -389,7 +389,7 @@ Run `Nanachi-Setup-<version>.exe`. It opens its own window instead of a Windows 
 
 The install is per user and does not ask for administrator rights. The default folder is `%LOCALAPPDATA%\Programs\Nanachi`. It creates a Start Menu shortcut, a desktop shortcut unless you turn that off, and an uninstall entry for your user.
 
-To uninstall, remove **Nanachi** in Windows **Settings → Apps**, or run `Nanachi.exe --uninstall` from the install folder. A confirmation window opens and stops the daemon Desktop owns. Your data folder (sessions, devices, `config.json`) is kept unless you tick **Apagar também os dados do Nanachi** (also delete Nanachi's data).
+To uninstall, remove **Nanachi** in Windows **Settings → Apps**, or run `Nanachi.exe --uninstall` from the install folder. A confirmation window opens and stops the daemon Desktop owns. Desktop's data folder (`%USERPROFILE%\.nanachi-desktop`: sessions, devices, `config.json`) is kept unless you tick **Apagar também os dados do Nanachi** (also delete Nanachi's data), which deletes only that folder and Desktop's own profile. It always refuses the standalone daemon's folder, `%USERPROFILE%\.nanachi-remote`, and the folder named by `NANACHI_HOME` when that is set.
 
 ### Built-in Tailscale
 
@@ -411,7 +411,7 @@ On start and from **Procurar atualização**, Desktop asks GitHub for the latest
 - **Large.** The installer is about 850 MiB (844 MiB for the first build) and the installed app about 1.3 GiB, mostly Electron, Node.js, and the native binaries of the Claude Code and Codex SDKs.
 - **Windows x64 only.**
 - **Portuguese only.** The tray, the installer, and the uninstaller are not translated. The panel's content follows the app [language](#language).
-- **The local panel can be blocked by `allowedTailscaleLogins`.** With that list set, which the setup above recommends, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`. The panel then shows an explanation page instead of the app. This is unresolved and the daemon's authentication is unchanged. Its own message suggests a separate data folder (`NANACHI_HOME`) for Desktop or opening the Tailscale address instead. A separate folder has its own `config.json`, and an empty `allowedTailscaleLogins` accepts any login forwarded by Tailscale, so read [Security](#security-without-the-fine-print) before choosing that.
+- **The local panel needs an empty `allowedTailscaleLogins`.** With that list set, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`, so it shows an explanation page instead of the app. Desktop's own `config.json` (in `.nanachi-desktop`) has no allowlist unless you add one, and the daemon's authentication is unchanged. An empty list accepts any tailnet login that Tailscale forwards, but a device token is still required. Read [Security](#security-without-the-fine-print) before relying on that, and keep the list empty only in Desktop's folder.
 - **Not tested on a clean machine or a real iPhone.** The unit tests, the Go tests, and the smoke scripts use temporary folders and a fake sidecar. Not checked: the installer on a fresh Windows, the SmartScreen prompt, the Tailscale login and HTTPS serving to a phone through the built-in node, and start with Windows after a reboot.
 
 ## More than one PC
@@ -506,7 +506,7 @@ An entry in `agents` overrides the default for the same ID. Default agents not d
 | Antigravity asks for login or folder trust | Open `agy` once on your PC and answer its prompts in the desired folder. |
 | Screenshots are black | Run the daemon in your user's desktop session. A Windows service cannot see the same desktop. |
 | Port 7777 is in use | Do not mix a manual daemon and supervisor on the same port. If you change `port`, update Tailscale Serve too. |
-| Nanachi Desktop shows "O painel local não consegue usar este daemon" | `allowedTailscaleLogins` is set and the local panel has no Tailscale identity. See [Desktop limits](#desktop-limits). |
+| Nanachi Desktop shows "O painel local não consegue usar este daemon" | `allowedTailscaleLogins` is set in Desktop's `config.json` (`%USERPROFILE%\.nanachi-desktop`) and the local panel has no Tailscale identity. Empty the list. See [Desktop limits](#desktop-limits). |
 | A reset's result is unclear ("Não deu para confirmar...") | Refresh the usage and check the saved resets count before trying again. See [Saved rate-limit resets](#saved-rate-limit-resets). |
 | Error reading `config.json` | Check for valid JSON and inspect the field named in the message. PowerShell 5.1's UTF-8 BOM is accepted. |
 

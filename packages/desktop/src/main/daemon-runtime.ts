@@ -1,8 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { DATA_DIR_NAME } from '../install/constants.js';
 
-export const DEFAULT_PORT = 7777;
+/** Desktop's own port. 7777 is the standalone daemon's (and the supervisor's), so Desktop never defaults to it. */
+export const DEFAULT_PORT = 7780;
+
+/** Where Desktop keeps its data; `NANACHI_HOME` belongs to the standalone daemon and is ignored. */
+export const DESKTOP_HOME_ENV = 'NANACHI_DESKTOP_HOME';
 
 /** What it takes to run the daemon or its CLI under a Node 22 (never under Electron's own Node). */
 export interface DaemonRuntime {
@@ -48,14 +53,47 @@ export function missingRuntimeFile(runtime: DaemonRuntime, exists: (path: string
   return null;
 }
 
-/** `NANACHI_HOME` or `%USERPROFILE%\.nanachi-remote`: the same rule as the daemon (`resolveNanachiHome`). */
+/**
+ * Desktop's own data folder: `NANACHI_DESKTOP_HOME`, else `%USERPROFILE%\.nanachi-desktop`. It is NOT the standalone
+ * daemon's folder, so `NANACHI_HOME` is never read here. Every caller (daemon host, pairing CLI, tsnet state, the
+ * uninstaller, the data-delete guard) goes through this function; Desktop hands the result to the daemon and its CLI
+ * as their `NANACHI_HOME`.
+ */
 export function resolveHome(env: NodeJS.ProcessEnv, home: string = homedir()): string {
-  return env.NANACHI_HOME ?? join(home, '.nanachi-remote');
+  const override = env[DESKTOP_HOME_ENV];
+  return override !== undefined && override !== '' ? override : join(home, DATA_DIR_NAME);
 }
 
 /**
- * Port the daemon will listen on, read from `<home>/config.json` without creating it (the daemon does that).
- * Anything unreadable falls back to the default; the daemon reports the real config error in its log.
+ * The standalone daemon's data folder named by the environment (`NANACHI_HOME`), when set. Desktop never uses it; the
+ * guards of the installer and the uninstaller refuse it (on top of `%USERPROFILE%\.nanachi-remote`, which they always
+ * refuse).
+ */
+export function standaloneHomes(env: NodeJS.ProcessEnv): string[] {
+  const value = env.NANACHI_HOME;
+  return value !== undefined && value.trim() !== '' ? [value] : [];
+}
+
+/**
+ * Before a spawn: when `<home>/config.json` does not exist, creates the folder and writes `{ "port": 7780 }` (UTF-8,
+ * no BOM, trailing newline); the daemon fills every other default. An existing file, valid or not, is never rewritten
+ * (an exclusive create, so a file that shows up meanwhile is safe too): its port wins, and the daemon reports a config
+ * error itself. Without this the daemon would create its own config with port 7777, the supervisor's.
+ */
+export function ensureDesktopConfig(home: string): 'created' | 'kept' {
+  mkdirSync(home, { recursive: true });
+  try {
+    writeFileSync(join(home, 'config.json'), `${JSON.stringify({ port: DEFAULT_PORT }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    return 'created';
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') return 'kept';
+    throw error;
+  }
+}
+
+/**
+ * Port the daemon will listen on, read from `<home>/config.json` without creating it (`ensureDesktopConfig` does that).
+ * Anything unreadable falls back to Desktop's default, 7780; the daemon reports the real config error in its log.
  */
 export function readConfiguredPort(home: string): number {
   try {
