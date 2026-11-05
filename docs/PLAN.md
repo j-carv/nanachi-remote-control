@@ -659,6 +659,159 @@ Tests: `packages/pwa/src/terminal/touchScroll.test.ts` (axis, line steps with ca
 
 Not checked: the keyboard opening and the momentum feel on a real iPhone; the mouse-tracking path (no app in the e2e uses mouse tracking). The user confirms the feel on the device.
 
+## Extra (05/11) — model provider in the model picker
+
+Request (05/11): in the model picker of an agent with many connected providers (Oh My Pi), show exactly which provider each model comes from.
+
+Observed (05/11, `omp acp` 18.13.2, `session/new`): one `model` select (category `model`) with 739 options in a flat list. `value` is `<provider>/<model id>`, `name` is the display name, `description` repeats `value`. Providers by first segment: `openrouter` 602, `cursor` 123, `openai-codex` 8, `claude-cli` 6. OpenRouter values have a third segment: `openrouter/~anthropic/claude-opus-latest` (the upstream vendor, sometimes with a leading `~`). 36 display names repeat across providers ("Claude Opus 5.5" exists under `cursor` and `claude-cli`). Today the picker shows only `name`, so those are indistinguishable. Claude Code values (`default`, `opus`, `sonnet[1m]`) have no `/`.
+
+ACP also allows grouped select options (`SessionConfigSelectGroup = { group, name, options }`, SDK `v1/schema/types.gen.d.ts`). The daemon's `toSharedOption` (acp-mapping.ts) flattens groups and drops the group name today.
+
+Contract:
+- shared `session.ts`: `SelectOptionSchema` gains `group: z.string().min(1).nullable().optional()`: the `name` of the ACP group the option came from. Absent when the agent sent a flat list.
+- daemon `acp-mapping.ts` `toSharedOption`: options inside a group keep `group: <group name>`; flat options omit `group`. Nothing else changes.
+- PWA pure helper `packages/pwa/src/chat/modelSource.ts`:
+  - `PROVIDER_LABELS`: `openrouter` OpenRouter, `cursor` Cursor, `openai-codex` OpenAI Codex, `openai` OpenAI, `anthropic` Anthropic, `claude-cli` Claude CLI, `google` Google, `google-gemini-cli` Gemini CLI, `gemini` Gemini, `github-copilot` GitHub Copilot, `x-ai`/`xai` xAI, `mistralai`/`mistral` Mistral, `deepseek` DeepSeek, `qwen` Qwen, `z-ai`/`zai` Z.ai, `moonshotai` Moonshot AI, `meta-llama` Meta, `nvidia` NVIDIA, `minimax` MiniMax, `ollama` Ollama, `lmstudio` LM Studio, `groq` Groq, `cerebras` Cerebras, `amazon-bedrock` Amazon Bedrock, `azure-openai` Azure OpenAI, `vertex` Vertex AI. Unknown id → the id itself.
+  - `modelSourceOf(choice: { value: string; group?: string | null }): { providerId: string; providerLabel: string; vendorLabel: string | null } | null`. `group` set → `providerId = providerLabel = group`, `vendorLabel = null`. Else, `value` with at least one `/` → first segment is the provider (label from the map). With three or more segments, the second segment without a leading `~` is the vendor (label from the map); otherwise `vendorLabel = null`. No `/` and no group → `null`.
+  - `providerGroups(options)`: `{ providerId, providerLabel, options }[]` in first-appearance order. Returns `undefined` when fewer than two distinct providers come out (single-provider or provider-less lists keep today's rendering). Options without a source go to a final group with label "Outros".
+  - `choiceLabel(choice)`: `name`, plus ` · <vendorLabel>` when there is a vendor. Used inside a provider group.
+- Where it applies: select options whose `category` is `model` (or whose `id` is `model` when `category` is null). Other selects are unchanged.
+- UI:
+  - `ConfigSelect` (session bar "Modelo" row) and `ConfigControls` selects: the native `<select>` gets one `<optgroup label={providerLabel}>` per provider; option text from `choiceLabel`. The closed row shows the model name and, under it in muted small text, the provider label (and vendor when present), so the current provider is visible without opening the picker. Keep the native select (the iOS wheel shows the optgroup headers): render the visible text in spans and lay the select over them transparently (`absolute inset-0 opacity-0`), keeping the existing `data-slot` attributes and focus ring.
+  - The `/model` native picker (`commandSheetFor` → kind `config` → ActionSheet in ChatScreen): section header per provider group, option text from `choiceLabel`, the current value marked as today.
+  - lucide icons only, no emoji. Portuguese labels as in the rest of the app.
+- Tests: shared (`group` optional and nullable); daemon `acp-mapping` (grouped options keep the group name, flat ones omit it); PWA `modelSource.test.ts` (omp-style values: `openrouter/~anthropic/claude-opus-latest` → OpenRouter + Anthropic; `cursor/claude-4.5-sonnet` → Cursor; `claude-cli/opus` → Claude CLI; `default` → null; grouped option → group name; `providerGroups` order, "Outros", `undefined` for one provider and for Claude-style values).
+
+## Extra (05/11) — rate-limit resets in the usage drawer
+
+Request (05/11): spend saved rate-limit resets from the agent's usage interface. Never test with real resets: spending one is irreversible and uses the user's credit.
+
+Observed (05/11):
+- **omp 18.13.2** has `/usage reset` ("Spend a saved provider rate-limit reset", ACP hint `[show|reset [provider/credential-id|provider/active]]`). Providers with resets: `anthropic` (refreshes Claude's 5h session limit) and `openai-codex`.
+  - `/usage reset` with no argument lists them. Reply lines:
+    - `Saved rate-limit resets:`
+    - one line per stored account: `- <label> [<providerLabel> · <provider>/<credentialId>]: <A> saved, <U> usable now[, expires <when>][ (<reason>)][ (active)]`, or `- <label> [<providerLabel> · <provider>/<credentialId>]: unavailable (<error>)[ (active)]`. `<label>` is `<email or account id>[ · <org>]`. `<when>` is text as omp prints it.
+    - a blank line, then ``Spend one with `/usage reset <provider>/<credential id>` or `/usage reset <provider>/active`.``
+    - No account: `No provider accounts found. Use /login to add one.` Load failure: `Could not load saved resets: <message>`.
+  - `/usage reset <provider>/<credentialId|active>` spends one. One-line reply, for example `Reset applied for <label> (<providerLabel>) — <what was refreshed>.`; `<label> (<providerLabel>): that reset was already redeemed.`; `...: no saved resets available to spend...`; `...: nothing to reset right now — your covered limits aren't constrained, so no credit was spent.`; `...: couldn't load this account's saved resets (network/auth) — nothing was spent, try again.`; `Could not find the stored account ...`; `...: could not authenticate this account — try /login.`; `...: the reset offer changed — nothing was spent; reopen /usage reset.`; and validation errors (`No stored account matches ...`, `...: no saved resets usable right now...`, `...: saved resets unavailable (...), so nothing was spent.`).
+- **Codex**: the app-server of `@openai/codex` 0.165.0 (the copy codex-acp 2.5 bundles and runs) has `account/rateLimits/read` and `account/rateLimitResetCredit/consume`. codex-acp does not expose them over ACP. Line-delimited JSON-RPC without the `jsonrpc` field (checked 05/11): `initialize { clientInfo: { name, title, version }, capabilities: null }`, then the notification `{ method: "initialized" }`.
+  - `account/rateLimits/read {}` → `{ rateLimitResetCredits: { availableCount: number, credits: Array<{ id, resetType, status: "available"|"redeeming"|"redeemed"|"unknown", grantedAt: number (s), expiresAt: number|null (s), title: string|null, description: string|null }> | null } | null, ... }`. `credits: null` means only the count is known.
+  - `account/rateLimitResetCredit/consume { idempotencyKey: string, creditId?: string|null }` → `{ outcome: "reset" | "nothingToReset" | "noCredit" | "alreadyRedeemed" }`. Without `creditId` the backend picks the next credit.
+  - `account/read {}` → `{ account: { type: "chatgpt", email, planType } | { type: "apiKey" } | null, requiresOpenaiAuth }` (check the generated bindings: `codex app-server generate-ts --out <dir>`).
+- **Claude Code** 2.1.318 / claude-agent-acp 0.100: no reset command. Unsupported.
+
+Contract:
+- shared `http.ts`:
+  - `ResetEntrySchema = { target: string (1..200), accountLabel: string, providerLabel: string | null, available: int ≥ 0, usable: int ≥ 0, expiresAt: string | null, note: string | null, active: boolean }`. `target` is opaque to the PWA and goes back unchanged on redeem.
+  - `ResetsResponseSchema = { agent: string, entries: ResetEntry[], message: string | null, fetchedAt: number, cached?: true }`. `message` carries omp's "No provider accounts found..." or "Could not load saved resets..." line when there are no entries.
+  - `ResetRedeemRequestSchema = { target: string (1..200) }`.
+  - `ResetRedeemResponseSchema = { outcome: "reset" | "nothing_to_reset" | "no_credit" | "already_redeemed" | "failed", message: string }`.
+  - Error codes `resets_unsupported` (400) and `reset_in_progress` (409) in the shared error-code list and the PWA error messages ("Este agente não tem resets salvos", "Já tem um reset em andamento").
+- Routes (Bearer, same guards as `POST /api/sessions/:id/usage`, no auto-resume, never touch the session's events or status):
+  - `GET /api/sessions/:id/usage/resets` → 200 `ResetsResponse`. 404 `not_found`; 400 `resets_unsupported` for any agent without a reset source (claude, agy, shell, custom ids, PTY); 502 `agent_failed`; 504 `agent_timeout`. Cached 30 s per agent kind (and per account once accounts exist) with `cached: true`, like usage.
+  - `POST /api/sessions/:id/usage/resets { target }` → 200 `ResetRedeemResponse`. This spends a credit: the daemon never retries it, never sends it twice, and runs at most one redeem per agent kind (and account) at a time; a second concurrent call → 409 `reset_in_progress`. After any redeem attempt (success or not) the usage cache and the resets cache of that agent/account are dropped.
+- omp source (`packages/daemon/src/usage-resets.ts`, pure parser + command builder; runs on the existing usage probe of the agent, same 30 s timeout and cancel rules as usage):
+  - List: the probe sends the text prompt `/usage reset`. Parse the reply (ANSI stripped) with the line formats above into entries: `target = "<provider>/<credentialId>"`, `accountLabel = <label>`, `providerLabel = <providerLabel>`, `available = A`, `usable = U`, `expiresAt = <when>` or null, `note = <reason>` (or `unavailable` → `available = usable = 0`, `note = <error>`), `active` from the trailing `(active)`. Lines that do not match are ignored. No entries → `message` = the first non-empty line.
+  - Redeem: `target` must match `^(anthropic|openai-codex)/(\d+|active)$`, else 400 `invalid_request`. The prompt is exactly `/usage reset <provider>/<credentialId>` rebuilt from the validated parts (no other user text). Outcome from the reply: contains `Reset applied` → `reset`; `already redeemed` → `already_redeemed`; `no saved resets` → `no_credit`; `nothing to reset` → `nothing_to_reset`; anything else → `failed`. `message` = the reply with ANSI stripped, trimmed, at most 500 characters.
+- Codex source (`packages/daemon/src/codex-app-server.ts`): a short-lived client per operation. It spawns the bundled codex: `process.execPath` with `[<@openai/codex/bin/codex.js resolved with createRequire from @agentclientprotocol/codex-acp's package.json>, "app-server"]`; when the agent env sets `CODEX_PATH`, run that executable with `["app-server"]` instead (codex-acp's own rule). Env: the same env the codex agent gets (`agents.codex.env`, agent PATH), without `NANACHI_*`; plus the account home variable once accounts exist. No shell, `windowsHide`. It sends only `initialize`, `initialized`, `account/read`, `account/rateLimits/read` and `account/rateLimitResetCredit/consume`: never a thread or turn request. 30 s timeout for the whole operation; the process is killed when the operation ends.
+  - List: one entry for the account: `accountLabel` = `account.email` from `account/read` (or "Conta"), `providerLabel` "OpenAI Codex", `available = availableCount`, `usable` = credits with status `available` (or `availableCount` when `credits` is null), `expiresAt` = soonest `expiresAt` among available credits as ISO-8601 (or null), `note` null, `active` true, `target` = that credit's `id`, or `"next"` when ids are unknown. `rateLimitResetCredits` null → no entries, `message` "Nenhum reset salvo nesta conta".
+  - Redeem: `target` `"next"` → no `creditId`; otherwise `creditId = target` and the target must be an id seen in the last listing for that account (else 400 `invalid_request`). `idempotencyKey` = `randomUUID()` per POST. Outcome mapping: `reset` → `reset`, `nothingToReset` → `nothing_to_reset`, `noCredit` → `no_credit`, `alreadyRedeemed` → `already_redeemed`; JSON-RPC error → `failed` with a fixed message (the error text goes to the daemon log, not the body).
+- Agents → sources: `omp` → omp source; `codex` → Codex source; anything else → `resets_unsupported`.
+- PWA (`usage/UsageView.tsx` and a new `usage/ResetsSection.tsx`): when the session's agent is `omp` or `codex`, the usage drawer loads `GET .../usage/resets` after the usage and shows a "Resets salvos" section under the limit cards: one row per entry with the account label, a provider chip, "<A> salvos · <U> disponíveis agora", "expira <when>" when known, and the note in muted text. Each row has a "Usar reset" button, enabled only when `usable > 0`. It opens a confirmation (ActionSheet or dialog): title "Usar 1 reset?", body "<accountLabel> · <providerLabel>. Gasta um reset salvo e libera o limite agora. Não dá para desfazer.", actions "Usar reset" and "Cancelar". Only the confirm button sends the POST. While it runs, the button shows a spinner and every reset button is disabled. The reply `message` appears inline (success styling for `reset`, neutral otherwise), then the drawer refetches usage and resets. `message` from the list (no entries) shows as muted text. Errors use the existing ErrorNotice. lucide icons only, no emoji.
+- Tests (fake agent and a fake app-server fixture only; NEVER the real omp or codex for a redeem, and never `account/rateLimitResetCredit/consume` against the real backend):
+  - shared: the four schemas, error codes.
+  - daemon: the omp list parser (saved/usable, expires, reason, active, unavailable, no accounts, load failure, unrelated lines ignored); target validation (bad provider, bad id, extra text); outcome mapping; the fake ACP agent answers `/usage reset` and `/usage reset anthropic/1` and the routes return parsed entries and outcomes; 400 for claude/agy/shell; concurrent redeem → 409; caches dropped after a redeem; Codex with a fake app-server (a node fixture speaking the line protocol, selected through `CODEX_PATH`): list mapping (credits null, credits with ids, expiry ISO), consume with a unique `idempotencyKey` per call, unknown credit id → 400, outcome mapping, JSON-RPC error → `failed`, timeout kills the fixture.
+  - PWA: api client (list, redeem, error codes); a pure helper for the row text and button state.
+
+## Extra (05/11) — several accounts per agent
+
+Request (05/11): "I have Claude Code with 3 accounts; I want to switch between them, with the same settings on every account. Same for Codex. Ready for future providers."
+
+Verified on this PC (05/11, no login completed, no credential copied):
+- Claude Code 2.1.318 reads its whole state from `CLAUDE_CONFIG_DIR` when set: `.credentials.json`, `settings.json`, `projects/` and also `.claude.json` (created inside that folder, not in `%USERPROFILE%`). `claude auth status` with an empty folder → `"loggedIn": false`.
+- Codex 0.165 reads `CODEX_HOME`. An empty `CODEX_HOME` with only a copy of `sessions/` listed the existing threads through the app-server (`thread/list` rebuilt its state DB from the rollout files); `account/read` → `account: null`.
+- `claude auth login` in a PTY (cols 400) with `CLAUDE_CONFIG_DIR` set prints `If the browser didn't open, visit: <url>` (the URL is inside an OSC 8 hyperlink `ESC ] 8 ; id=... ; <url> ESC \ <url> ESC ] 8 ; ; ESC \`; its redirect is `https://platform.claude.com/oauth/code/callback`, which shows a code), then `Paste code here if prompted > `. It also tries to open a browser tab on the PC.
+- `codex login --device-auth` with `CODEX_HOME` set prints `https://auth.openai.com/codex/device` and a one-time code like `0HKH-0YU99` ("expires in 15 minutes"). Cursor-movement escapes sit between the lines: replacing CSI sequences with nothing glues `device` to the next line, so the stripper replaces non-SGR CSI sequences with a space.
+
+### Model
+- The **principal** account of an agent is its normal home (`%USERPROFILE%\.claude` + `%USERPROFILE%\.claude.json`, `%USERPROFILE%\.codex`). Id `default`, label "Principal". Nanachi never creates, moves or deletes it.
+- Every other account is a **profile home** `<NANACHI_HOME>\accounts\<agent>\<accountId>\` (accountId = `randomUUID()`). Processes for that account get `<homeEnv>=<profile home>`.
+- A profile shares configuration and history with the principal, and keeps credentials and account state private. `prepareProfile(adapter, principalHome, profileHome)` runs before every spawn for that account (session agent, usage probe, login, Codex app-server):
+  - **Shared directories**: a directory junction (`fs.symlink(target, path, 'junction')`, no admin needed) in the profile pointing to the same name in the principal home. Missing in the principal → create it there (empty) first. Already a junction to the right target → nothing. A real directory (or a junction elsewhere) at that path → leave it, log a warning, never delete it.
+  - **Shared files**: copied from the principal on every prepare (overwrite). Missing in the principal → leave the profile's copy alone.
+  - **Private**: everything else. Created by the agent itself in the profile.
+  - Adapter step for Claude: merge `.claude.json`. Read the principal `.claude.json` and the profile's (missing → `{}`). Set only the shared keys from the principal: `mcpServers`, `projects`, `hasCompletedOnboarding`, `lastOnboardingVersion`, `theme`. Keep every other key of the profile (`oauthAccount`, `userID`, caches...). Write atomically (temp file + rename). Principal invalid JSON or missing → skip the merge with a warning.
+- Adapters (`packages/daemon/src/accounts/adapters.ts`, one registry keyed by agent id; adding a harness = one entry plus tests):
+  - `claude`: `homeEnv: "CLAUDE_CONFIG_DIR"`. Principal home: `CLAUDE_CONFIG_DIR` from the agent env (`agents.claude.env`, then the daemon env) or `%USERPROFILE%\.claude`; principal `.claude.json`: `<CLAUDE_CONFIG_DIR>\.claude.json` when that variable is set, else `%USERPROFILE%\.claude.json`. Shared dirs: `projects`, `skills`, `agents`, `commands`, `hooks`, `plugins`, `plans`, `file-history`, `todos`, `tasks`, `output-styles`. Shared files: `settings.json`, `keybindings.json` and every top-level `*.md` of the principal home (`CLAUDE.md` and its `@` imports). Login: `claude auth login` (executable `claude` resolved on the agent PATH, no shell), `needsCode: true`. Identity: the existing Claude verifier (`claude auth status`) run with `CLAUDE_CONFIG_DIR=<home>` (principal: unchanged behaviour).
+  - `codex`: `homeEnv: "CODEX_HOME"`. Principal home: `CODEX_HOME` from the agent env or the daemon env, else `%USERPROFILE%\.codex`. Shared dirs: `sessions`, `archived_sessions`, `skills`, `prompts`, `rules`, `memories`, `.sandbox`, `.sandbox-bin`, `.sandbox-secrets`. Shared files: `config.toml`, `AGENTS.md`, `AGENTS.override.md`, `hooks.json`, `cap_sid`. Login: the bundled codex (same resolution as the Codex app-server client: `process.execPath <codex.js> login --device-auth`, or `CODEX_PATH login --device-auth`), `needsCode: false`, code pattern `\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b`. Identity: the existing `readCodexIdentity(<home>)` (payload of the `id_token` in `auth.json`, nothing else).
+  - `omp`, `agy`, `shell` and any custom id: no adapter → accounts unsupported. omp keeps several accounts by itself (`/login`, per-session pin); Antigravity keeps its login in the Windows Credential Manager, so a second home cannot hold a second login.
+- Deleting a profile home (`removeProfileHome`): resolve the path and refuse anything that is not strictly inside `<NANACHI_HOME>\accounts\<agent>\`. Then, for each top-level entry: `lstat`; a junction or symlink is removed as a link only (never followed); the rest is removed recursively. A unit test proves that a file inside a shared directory of the principal survives.
+
+### Persistence (next migration)
+```sql
+CREATE TABLE agent_accounts (
+  id TEXT PRIMARY KEY,
+  agent TEXT NOT NULL,
+  label TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE agent_active_account (
+  agent TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL
+);
+ALTER TABLE sessions ADD COLUMN account_id TEXT NULL;
+```
+`sessions.account_id` NULL = principal. No row in `agent_active_account` = principal. Additive only: the live daemon runs it on reload.
+
+### shared
+- `SessionSchema` gains `accountId: z.string().min(1).nullable().default(null)` (null = principal; the default keeps replies from older daemons valid).
+- `AgentProfileSchema = { id: string ("default" = principal), label: string, isDefault: boolean, active: boolean, status, account, detail, checkedAt }` (the last four with the same meaning and rules as `AgentAccount`).
+- `AgentAccountSchema` gains `supportsAccounts: z.boolean().default(false)` and `profiles: z.array(AgentProfileSchema).default([])`. Its existing top-level fields keep describing the principal.
+- `AccountLoginStateSchema = { accountId, state: "starting" | "waiting" | "verifying" | "succeeded" | "failed" | "cancelled", url: string | null, userCode: string | null, needsCode: boolean, codeSent: boolean, output: string, error: string | null, account: string | null }`. `output` = the last 4000 characters of the login output with escapes stripped.
+- Request schemas: `CreateAgentAccountRequestSchema = { label: string trimmed 1..40 }`, `RenameAgentAccountRequestSchema` (same), `SetActiveAccountRequestSchema = { accountId: string }`, `AccountLoginCodeRequestSchema = { code: string 1..2000 without control characters }`, `SetSessionAccountRequestSchema = { accountId: string }`. `CreateSessionRequest` gains `accountId?: string`.
+- Session event `account_changed { accountId: string | null, label: string }`, persisted like the other events.
+- New error codes: `accounts_unsupported` (400), `account_in_use` (409), `too_many_accounts` (409), `login_in_progress` (409), `invalid_state` (409).
+
+### Routes (Bearer)
+`:agent` must be a configured agent: unknown → 404 `not_found`; no adapter → 400 `accounts_unsupported`. `:accountId` unknown for that agent → 404 `not_found`.
+- `GET /api/agents/accounts[?refresh=1]`: as today, each entry now carries `supportsAccounts` and `profiles` (principal first, then by `created_at`; `active` marks the account new sessions use). Identity checks per profile share the existing 5 min cache (keyed by agent and account), the 15 s timeout and the "never return secrets" rules.
+- `POST /api/agents/:agent/accounts { label }` → 201 `AgentProfile` (status `logged_out`). Inserts the row and runs `prepareProfile`. More than 10 accounts for one agent → 409 `too_many_accounts`.
+- `PATCH /api/agents/:agent/accounts/:accountId { label }` → 200 `AgentProfile`. `default` → 400 `invalid_request`.
+- `DELETE /api/agents/:agent/accounts/:accountId` → 204. `default` → 400 `invalid_request`. A session with a live process on that account → 409 `account_in_use`. Cancels its login, removes the profile home, the row and an active pointer to it (back to principal), and sets `account_id = NULL` on its sessions.
+- `PUT /api/agents/:agent/accounts/active { accountId }` → 200 `{ accountId }` (`default` allowed).
+- Login (`packages/daemon/src/accounts/login.ts`):
+  - `POST /api/agents/:agent/accounts/:accountId/login` → 200 `AccountLoginState`. Starts a PTY with the adapter's login command (cols 500, rows 50, so the URL never wraps), cwd = the account home, env = the daemon env without any `NANACHI_*` variable, with the agent PATH, plus `<homeEnv>=<profile home>` (principal: no override, so it logs in the principal again). One login per agent at a time: a different account already logging in → 409 `login_in_progress`; the same account → returns the running state.
+  - Output parsing: drop OSC sequences (`ESC ]` up to `BEL` or `ESC \`), drop SGR (`ESC [ ... m`), replace every other CSI sequence with a space, normalise `\r\n`. `url` = first `https://[^\s"'<>]+`; `userCode` = the adapter's code pattern, searched only after the URL. URL found → state `waiting`.
+  - `GET .../login` → the state (404 `not_found` when none). Finished states stay in memory for 10 minutes.
+  - `POST .../login/code { code }` → 200 state. Only when `needsCode` and `waiting`, else 409 `invalid_state`. Writes `code + "\r"` to the PTY and sets `codeSent`. The code is never logged, persisted or echoed back in `output` (replace it with `••••` if the PTY echoes it).
+  - `DELETE .../login` → 204, kills the PTY tree, state `cancelled`.
+  - Exit 0 → `verifying` → identity check on the account home → `succeeded` with `account` = e-mail, or `failed` with "o login terminou, mas a conta não aparece conectada". Exit ≠ 0 → `failed` ("o login falhou (código N)"). No exit after 15 minutes → kill, `failed` ("tempo esgotado"). Login output is never written to the daemon log. Success drops the identity cache of that account.
+- Session account:
+  - `POST /api/sessions` (ACP agent with an adapter): `accountId` optional, defaults to the agent's active account; unknown → 400 `invalid_request`. Agent without an adapter + `accountId` other than `default` → 400 `accounts_unsupported`. Stored as `account_id` (NULL for principal). "Retomar do PC" uses the active account.
+  - `PUT /api/sessions/:id/account { accountId }` → 200 `Session`. Same account → 200, no change. Status `starting`, `running` or `awaiting_permission` → 409 `session_busy`. Otherwise: save `account_id`, append the `account_changed` event, and if the session has a live agent process, stop that process without a push and resume the session through the existing Retomar path (`session/load`/`session/resume`) under the new account. A `stopped`/`error` session just stores it: the next prompt resumes with the new account.
+  - `agentLaunch` adds `<homeEnv>=<profile home>` (after `prepareProfile`) for sessions whose account is not the principal. Reload-resume keeps each session's account (it reads `account_id`).
+  - Usage probe: one slot per `<agent>:<accountId>`; cwd `<NANACHI_HOME>\usage-probe\<agent>` for the principal (unchanged) and `<NANACHI_HOME>\usage-probe\<agent>@<accountId>` for other accounts, with the session file next to it; the probe env gets the account home. The resets routes (previous section) use the session's account the same way, and the Codex app-server client gets `CODEX_HOME` for it.
+
+### PWA
+- Settings → "Contas dos agentes": for an agent with `supportsAccounts`, its profiles as rows (principal first): status dot, label, e-mail or detail, and a "Em uso" badge on the active one. Tap → ActionSheet: "Usar em novas sessões" (PUT active), "Entrar" (login sheet), "Renomear" (NameSheet), "Remover" (confirmation; not for the principal). A last row "Adicionar conta" → NameSheet (label) → create → opens the login sheet.
+- Login sheet (`AccountLoginSheet`): polls `GET .../login` every 1.5 s while open. Shows: "Abra o link e entre com a conta que você quer adicionar" with an "Abrir link" button (`target="_blank"`, `rel="noopener noreferrer"`) and a copy button; Codex: the `userCode` large and monospaced with a copy button; Claude (`needsCode`): "Depois de entrar, copie o código que aparece e cole aqui", a text field and "Enviar". States: "Preparando...", "Aguardando você entrar...", "Verificando...", success "Conta conectada: <email>" (closes and refreshes the list), failure with the error and a collapsible monospaced output. "Cancelar" sends DELETE. Mention under the link (Claude only): "O PC também pode abrir uma aba de login; pode ignorar."
+- New-session sheet: a "Conta" select when the agent supports accounts and has more than one profile; default = the active one.
+- Session configuration sheet: a "Conta" row (same condition). Changing it sends PUT; disabled while the session is starting, running or awaiting permission, with the hint "Troque quando o agente terminar".
+- Usage drawer header: "Conta: <label>" (and the e-mail when known) for agents with accounts.
+- Chat: `account_changed` renders as a small centered muted line "Conta trocada para <label>".
+- lucide icons only, no emoji.
+
+### Tests
+- daemon unit, temp dirs only: adapter homes with and without env overrides; `prepareProfile` (junctions created and reused, missing principal dir created, files copied and overwritten, private files untouched, a real dir at a shared path left alone, `.claude.json` merge keeps the profile's `oauthAccount`/`userID` and takes the shared keys, invalid principal JSON); `removeProfileHome` (principal data in a shared dir survives; a path outside the accounts root is refused); login flow with fixture commands (a node script that prints an OSC-8 URL and `Paste code here if prompted > `, reads a line, writes a fake credential file and exits 0; one that prints a device URL and code, then exits 0; one that exits 1; one that never exits, for the timeout and DELETE); code echo masked; routes (CRUD, active, limits, 409s, unsupported agent, unknown account); session create with `accountId` and the env the fake agent receives (configure an agent with id `claude` that runs the fake agent; the fake agent reports an env variable on request); PUT account on an idle session stops it, appends `account_changed` and resumes it with the new env; busy → 409; usage probe slots per account; migration on a database at the previous version.
+- Allowed checks on the real harnesses (no LLM call, nothing spent, nothing logged in): `claude auth status` with an empty profile home → logged out; the Codex app-server `account/read` on an empty profile → null. NEVER complete a real login, never read or copy `.credentials.json` or `auth.json` contents.
+- PWA: api client tests for every new route, schema parsing with and without the new fields, a pure helper mapping the login state to the sheet's step.
+
+### Limits (documented, not fixed)
+- Settings changed while using a secondary account (Claude `/config` writing `settings.json`, Codex trusting a project in `config.toml`) are overwritten from the principal on the next spawn. Edit settings on the principal.
+- Claude `.claude.json` keys other than the shared ones are per account (tips, caches). Codex thread names (`session_index.jsonl`) and its SQLite state are per account; threads still list from the shared rollouts.
+- `claude auth login` opens a browser tab on the PC as well.
+- Codex with `[windows] sandbox = "elevated"` on a profile home was not checked with a real turn.
+
 ## Fases seguintes (detalhadas quando a anterior fechar)
 2. Claude Code (`claude-agent-acp`), várias sessões por workspace, histórico SQLite, retomar sessões, ressincronização.
 3. `phone-send` (+ `--screenshot`), anexos do celular, Web Push (VAPID).
