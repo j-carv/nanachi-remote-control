@@ -65,7 +65,10 @@ export async function makePayload(dir: string, files: Record<string, string> = S
 export interface Sandbox {
   root: string;
   profile: string;
-  nanachiHome: string;
+  /** Desktop's own data folder (`.nanachi-desktop`). */
+  desktopHome: string;
+  /** The standalone daemon's data folder (`.nanachi-remote`), which Desktop never touches. */
+  standaloneHome: string;
   startMenuDir: string;
   desktopDir: string;
   target: string;
@@ -79,7 +82,8 @@ export function makeSandbox(): Sandbox {
   const sandbox: Sandbox = {
     root,
     profile,
-    nanachiHome: join(profile, '.nanachi-remote'),
+    desktopHome: join(profile, '.nanachi-desktop'),
+    standaloneHome: join(profile, '.nanachi-remote'),
     startMenuDir: join(profile, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
     desktopDir: join(profile, 'Desktop'),
     target: join(root, 'Programs', 'Nanachi'),
@@ -108,7 +112,7 @@ export function makeInstallDeps(
   const deps: InstallDeps = {
     payload,
     profile: sandbox.profile,
-    nanachiHome: sandbox.nanachiHome,
+    desktopHome: sandbox.desktopHome,
     startMenuDir: sandbox.startMenuDir,
     desktopDir: sandbox.desktopDir,
     extract: extractPayload,

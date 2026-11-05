@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
-import { DATA_DIR_NAME } from './constants.js';
+import { DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME } from './constants.js';
 
 /**
  * Path guards for the installer and the uninstaller. Both end up deleting folders, so every target goes through here
- * first: a drive root, the user profile (or anything above it), the Nanachi data folder and a folder that holds it are
- * never an install target, and nothing outside the install folder is ever removed with it.
+ * first: a drive root, the user profile (or anything above it), either Nanachi data folder (Desktop's own and the
+ * standalone daemon's) and a folder that holds one are never an install target, and nothing outside the install folder
+ * is ever removed with it.
  */
 
 function key(path: string): string {
@@ -28,13 +29,30 @@ export function isInside(parent: string, child: string): boolean {
 export interface TargetContext {
   /** `os.homedir()`: the user profile. */
   profile: string;
-  /** The daemon's data folder (`NANACHI_HOME`, default `%USERPROFILE%\.nanachi-remote`). */
-  nanachiHome: string;
+  /** Desktop's own data folder (`NANACHI_DESKTOP_HOME`, default `%USERPROFILE%\.nanachi-desktop`). */
+  desktopHome: string;
+  /**
+   * More folders of the standalone daemon: the `NANACHI_HOME` of the environment. `%USERPROFILE%\.nanachi-remote` is
+   * always refused, whether it is listed here or not. Blank entries are ignored.
+   */
+  standaloneDirs?: readonly string[] | undefined;
   /** Injected in tests. */
   exists?: (path: string) => boolean;
 }
 
 export type TargetCheck = { ok: true; dir: string } | { ok: false; reason: string };
+
+/** Whether `dir` is, is inside, or holds one of `folders` (blank entries are no folder). */
+function overlapsAny(dir: string, folders: readonly string[]): boolean {
+  return folders.some(
+    (other) => typeof other === 'string' && other.trim() !== '' && (samePath(dir, other) || isInside(dir, other) || isInside(other, dir)),
+  );
+}
+
+/** The standalone daemon's folders: `<profile>\.nanachi-remote` always, plus the `NANACHI_HOME` of the environment. */
+function standaloneFolders(profile: string, extra: readonly string[] | undefined): string[] {
+  return [join(profile, STANDALONE_DATA_DIR_NAME), ...(extra ?? [])];
+}
 
 /** Whether `input` may be used as an install folder. The reasons are shown to the user (Portuguese). */
 export function checkInstallTarget(input: string, context: TargetContext): TargetCheck {
@@ -50,12 +68,14 @@ export function checkInstallTarget(input: string, context: TargetContext): Targe
   if (samePath(dir, context.profile) || isInside(dir, context.profile)) {
     return { ok: false, reason: 'Escolha uma subpasta; a pasta do usuário (ou uma que a contém) não pode receber o Nanachi.' };
   }
-  const dataProblem = 'Essa pasta guarda ou contém os dados do Nanachi (.nanachi-remote). Escolha outra.';
-  if (samePath(dir, context.nanachiHome) || isInside(context.nanachiHome, dir) || isInside(dir, context.nanachiHome)) {
+  const dataProblem = 'Essa pasta guarda ou contém os dados do Nanachi (.nanachi-desktop ou .nanachi-remote). Escolha outra.';
+  if (overlapsAny(dir, [context.desktopHome, ...standaloneFolders(context.profile, context.standaloneDirs)])) {
     return { ok: false, reason: dataProblem };
   }
   const segments = dir.split(sep).map((segment) => segment.toLowerCase());
-  if (segments.includes(DATA_DIR_NAME) || exists(join(dir, DATA_DIR_NAME))) return { ok: false, reason: dataProblem };
+  for (const name of [DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME]) {
+    if (segments.includes(name) || exists(join(dir, name))) return { ok: false, reason: dataProblem };
+  }
   return { ok: true, dir };
 }
 
@@ -71,8 +91,13 @@ export interface DataFolderContext {
   profile: string;
   /** The install folder that is being uninstalled: data and program never overlap. */
   installDir: string;
-  /** Other folders that must not be this one (the Desktop profile when checking `NANACHI_HOME`, and the reverse). */
+  /** Other folders that must not be this one (the Desktop profile when checking Desktop's data folder, and the reverse). */
   others?: readonly string[];
+  /**
+   * More folders of the standalone daemon (the `NANACHI_HOME` of the environment). `%USERPROFILE%\.nanachi-remote` is
+   * ALWAYS refused on top of these, so a caller cannot forget it. Blank entries are ignored.
+   */
+  standaloneDirs?: readonly string[] | undefined;
   /** Every one of these must exist in the folder. */
   requireAll?: readonly string[];
   /** At least one of these must exist in the folder. */
@@ -83,9 +108,10 @@ export interface DataFolderContext {
 export type DataFolderCheck = { ok: true; dir: string } | { ok: false; reason: string };
 
 /**
- * Whether `input` may be deleted as a Nanachi data folder (`NANACHI_HOME`, Desktop's profile). The path must be complete
- * (never resolved against the cwd: an empty or relative `NANACHI_HOME` is refused, not guessed), must not be a drive
- * root, the user profile or something that holds it, and must look like what Nanachi writes there.
+ * Whether `input` may be deleted as a Nanachi data folder (Desktop's own folder, Desktop's profile). The path must be
+ * complete (never resolved against the cwd: an empty or relative path is refused, not guessed), must not be a drive
+ * root, the user profile or something that holds it, must never be (or hold, or sit inside) the standalone daemon's
+ * folder, and must look like what Nanachi writes there.
  */
 export function checkDataFolder(input: string, context: DataFolderContext): DataFolderCheck {
   const exists = context.exists ?? existsSync;
@@ -101,10 +127,11 @@ export function checkDataFolder(input: string, context: DataFolderContext): Data
   if (samePath(dir, context.installDir) || isInside(dir, context.installDir) || isInside(context.installDir, dir)) {
     return { ok: false, reason: 'se mistura com a pasta do programa' };
   }
-  for (const other of context.others ?? []) {
-    if (typeof other === 'string' && other !== '' && (samePath(dir, other) || isInside(dir, other) || isInside(other, dir))) {
-      return { ok: false, reason: 'se mistura com outra pasta de dados do Nanachi' };
-    }
+  if (overlapsAny(dir, standaloneFolders(context.profile, context.standaloneDirs))) {
+    return { ok: false, reason: 'é a pasta de dados do daemon avulso do Nanachi (.nanachi-remote ou NANACHI_HOME), que o Desktop nunca apaga' };
+  }
+  if (overlapsAny(dir, context.others ?? [])) {
+    return { ok: false, reason: 'se mistura com outra pasta de dados do Nanachi' };
   }
   for (const name of context.requireAll ?? []) {
     if (!exists(join(dir, name))) return { ok: false, reason: `não tem ${name}, então não parece uma pasta de dados do Nanachi` };

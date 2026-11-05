@@ -101,7 +101,7 @@ async function main() {
     write(path.join(claudeHome, 'projects', 'p1', 'session.jsonl'), 'claude history');
     write(path.join(claudeHome, 'skills', 'mine', 'SKILL.md'), 'skill');
     write(path.join(codexHome, 'sessions', '2026', 'rollout.jsonl'), 'codex history');
-    const home = path.join(profile, '.nanachi-remote');
+    const home = path.join(profile, '.nanachi-desktop');
     write(path.join(home, 'config.json'), '{"port":7777}');
     write(path.join(home, 'data.db'), 'sqlite');
     const account = path.join(home, 'accounts', 'claude', 'acc-1');
@@ -126,7 +126,7 @@ async function main() {
       { installDir, deleteData: true, noShortcuts: true, noRegistry: true },
       {
         profile,
-        nanachiHome: home,
+        desktopHome: home,
         desktopDataDir: desktopData,
         startMenuDir: path.join(work, 'start'),
         desktopDir: path.join(work, 'desktop'),
@@ -172,7 +172,7 @@ async function main() {
       {
         payload: { zipPath: 'unused.zip', meta: { version: '1.0.0', files: 1, uncompressedBytes: 3 } },
         profile,
-        nanachiHome: path.join(profile, '.nanachi-remote'),
+        desktopHome: path.join(profile, '.nanachi-desktop'),
         startMenuDir: path.join(work, 'start'),
         desktopDir: path.join(work, 'desktop'),
         extract: async (_zip, dir, onBytes) => {

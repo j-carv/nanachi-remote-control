@@ -21,11 +21,15 @@ beforeEach(async () => {
     { target: sandbox.target, desktopShortcut: true, startWithWindows: true, noShortcuts: true, noRegistry: true },
     deps,
   );
-  mkdirSync(sandbox.nanachiHome, { recursive: true });
-  writeFileSync(join(sandbox.nanachiHome, 'config.json'), '{"port":7777}');
-  writeFileSync(join(sandbox.nanachiHome, 'data.db'), 'sqlite');
+  mkdirSync(sandbox.desktopHome, { recursive: true });
+  writeFileSync(join(sandbox.desktopHome, 'config.json'), '{"port":7780}');
+  writeFileSync(join(sandbox.desktopHome, 'data.db'), 'sqlite');
   mkdirSync(desktopData, { recursive: true });
   writeFileSync(join(desktopData, 'machine.bin'), 'token');
+  // The standalone daemon (supervisor) has its own folder next to Desktop's; the uninstaller must never touch it.
+  mkdirSync(sandbox.standaloneHome, { recursive: true });
+  writeFileSync(join(sandbox.standaloneHome, 'config.json'), '{"port":7777}');
+  writeFileSync(join(sandbox.standaloneHome, 'data.db'), 'sqlite of the supervisor');
 });
 afterEach(() => {
   sandbox.cleanup();
@@ -48,7 +52,7 @@ function makeDeps(overrides: Partial<UninstallDeps> = {}): { deps: UninstallDeps
   const recorder: UninstallRecorder = { events: [], stopped: [], reg: [], removeStartup: 0, scheduled: [], shortcutReads: [] };
   const deps: UninstallDeps = {
     profile: sandbox.profile,
-    nanachiHome: sandbox.nanachiHome,
+    desktopHome: sandbox.desktopHome,
     desktopDataDir: desktopData,
     startMenuDir: sandbox.startMenuDir,
     desktopDir: sandbox.desktopDir,
@@ -108,8 +112,8 @@ describe('runUninstall', () => {
 
     expect(result).toEqual({ removalScheduled: false, warnings: [] });
     expect(existsSync(sandbox.target)).toBe(false);
-    expect(readFileSync(join(sandbox.nanachiHome, 'config.json'), 'utf8')).toBe('{"port":7777}');
-    expect(existsSync(join(sandbox.nanachiHome, 'data.db'))).toBe(true);
+    expect(readFileSync(join(sandbox.desktopHome, 'config.json'), 'utf8')).toBe('{"port":7780}');
+    expect(existsSync(join(sandbox.desktopHome, 'data.db'))).toBe(true);
     expect(existsSync(join(desktopData, 'machine.bin'))).toBe(true);
     expect(recorder.scheduled).toEqual([]);
     expect(recorder.events.at(-1)).toMatchObject({ step: 'registry', state: 'skipped', percent: 100 });
@@ -218,21 +222,52 @@ describe('runUninstall', () => {
   });
 
   describe('data', () => {
-    it('is deleted only when asked: the data folder and the Desktop profile', async () => {
+    it('is deleted only when asked: Desktop\'s data folder and the Desktop profile, and nothing of the standalone daemon', async () => {
       const { deps } = makeDeps();
       const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
       expect(result.warnings).toEqual([]);
-      expect(existsSync(sandbox.nanachiHome)).toBe(false);
+      expect(existsSync(sandbox.desktopHome)).toBe(false);
       expect(existsSync(desktopData)).toBe(false);
       expect(existsSync(sandbox.target)).toBe(false);
       expect(existsSync(sandbox.profile)).toBe(true);
+      expect(readFileSync(join(sandbox.standaloneHome, 'data.db'), 'utf8')).toBe('sqlite of the supervisor');
+      expect(readFileSync(join(sandbox.standaloneHome, 'config.json'), 'utf8')).toBe('{"port":7777}');
+    });
+
+    it('refuses the standalone daemon\'s folder (.nanachi-remote) as the "data folder", with a warning, whatever it holds', async () => {
+      // Desktop's folder pointed at the supervisor's folder by mistake (NANACHI_DESKTOP_HOME=...\.nanachi-remote).
+      const { deps } = makeDeps({ desktopHome: sandbox.standaloneHome });
+      const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
+      expect(result.warnings.join(' ')).toMatch(/não foram apagados/);
+      expect(existsSync(join(sandbox.standaloneHome, 'data.db'))).toBe(true);
+      expect(existsSync(join(sandbox.standaloneHome, 'config.json'))).toBe(true);
+      expect(existsSync(sandbox.target)).toBe(false);
+    });
+
+    it('refuses the NANACHI_HOME of the environment, wherever it is, with a warning', async () => {
+      const fromEnv = join(sandbox.root, 'supervisor-data');
+      mkdirSync(fromEnv, { recursive: true });
+      writeFileSync(join(fromEnv, 'config.json'), '{}');
+      writeFileSync(join(fromEnv, 'data.db'), 'sqlite');
+      const { deps } = makeDeps({ desktopHome: fromEnv, standaloneDirs: [fromEnv] });
+      const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
+      expect(result.warnings.join(' ')).toMatch(/não foram apagados/);
+      expect(existsSync(join(fromEnv, 'data.db'))).toBe(true);
+    });
+
+    it('refuses a Desktop profile folder that is the standalone daemon\'s folder', async () => {
+      writeFileSync(join(sandbox.standaloneHome, 'machine.bin'), 'x');
+      const { deps } = makeDeps({ desktopDataDir: sandbox.standaloneHome });
+      await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
+      expect(existsSync(join(sandbox.standaloneHome, 'data.db'))).toBe(true);
+      expect(existsSync(join(sandbox.standaloneHome, 'machine.bin'))).toBe(true);
     });
 
     it('is kept, with a warning, while a daemon uses the data folder', async () => {
       const { deps } = makeDeps({ homeInUse: () => Promise.resolve(true) });
       const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
       expect(result.warnings.join(' ')).toMatch(/daemon/);
-      expect(existsSync(join(sandbox.nanachiHome, 'config.json'))).toBe(true);
+      expect(existsSync(join(sandbox.desktopHome, 'config.json'))).toBe(true);
       expect(existsSync(join(desktopData, 'machine.bin'))).toBe(true);
       expect(existsSync(sandbox.target)).toBe(false);
     });
@@ -241,7 +276,7 @@ describe('runUninstall', () => {
       const notData = join(sandbox.root, 'some-other-folder');
       mkdirSync(notData, { recursive: true });
       writeFileSync(join(notData, 'important.txt'), 'x');
-      const unrelated = makeDeps({ nanachiHome: notData, desktopDataDir: notData });
+      const unrelated = makeDeps({ desktopHome: notData, desktopDataDir: notData });
       const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), unrelated.deps);
       expect(existsSync(join(notData, 'important.txt'))).toBe(true);
       expect(result.warnings.join(' ')).toMatch(/não foram apagados/);
@@ -251,7 +286,7 @@ describe('runUninstall', () => {
       await runInstall({ target: sandbox.target, desktopShortcut: false, startWithWindows: false, noShortcuts: true, noRegistry: true }, redo.deps);
 
       writeFileSync(join(sandbox.profile, 'config.json'), '{}');
-      const profileAsHome = makeDeps({ nanachiHome: sandbox.profile, desktopDataDir: sandbox.profile });
+      const profileAsHome = makeDeps({ desktopHome: sandbox.profile, desktopDataDir: sandbox.profile });
       await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), profileAsHome.deps);
       expect(existsSync(join(sandbox.profile, 'config.json'))).toBe(true);
       expect(existsSync(sandbox.profile)).toBe(true);
@@ -279,7 +314,8 @@ describe('runUninstall', () => {
       ['a drive root', () => 'C:\\'],
       ['the user profile', () => sandbox.profile],
       ['the folder that holds the profile', () => sandbox.root],
-      ['the data folder', () => sandbox.nanachiHome],
+      ['the data folder', () => sandbox.desktopHome],
+      ['the standalone daemon\'s data folder', () => sandbox.standaloneHome],
     ];
     for (const [name, installDir] of unsafe) {
       it(`refuses ${name}, even with a marker inside`, async () => {
@@ -288,7 +324,7 @@ describe('runUninstall', () => {
         const { deps, recorder } = makeDeps();
         await expect(runUninstall(options({ installDir: target }), deps)).rejects.toBeInstanceOf(InstallError);
         expect(existsSync(sandbox.profile)).toBe(true);
-        expect(existsSync(join(sandbox.nanachiHome, 'data.db'))).toBe(true);
+        expect(existsSync(join(sandbox.desktopHome, 'data.db'))).toBe(true);
         expect(recorder.events).toEqual([]);
         if (target !== 'C:\\') nodeFs.rmSync(join(target, INSTALL_MARKER), { force: true });
       });
@@ -325,11 +361,11 @@ describe('runUninstall: data with junctions (the agents\' own folders)', () => {
     writeFileSync(join(claudeProjects, 'session.jsonl'), 'claude history');
     writeFileSync(join(claudeSkills, 'SKILL.md'), 'skill');
     writeFileSync(join(codexSessions, 'rollout.jsonl'), 'codex history');
-    makeJunction(claudeProjects, join(sandbox.nanachiHome, 'accounts', 'claude', 'acc-1', 'projects'));
-    makeJunction(claudeSkills, join(sandbox.nanachiHome, 'accounts', 'claude', 'acc-1', 'skills'));
-    makeJunction(codexSessions, join(sandbox.nanachiHome, 'accounts', 'codex', 'acc-2', 'sessions'));
+    makeJunction(claudeProjects, join(sandbox.desktopHome, 'accounts', 'claude', 'acc-1', 'projects'));
+    makeJunction(claudeSkills, join(sandbox.desktopHome, 'accounts', 'claude', 'acc-1', 'skills'));
+    makeJunction(codexSessions, join(sandbox.desktopHome, 'accounts', 'codex', 'acc-2', 'sessions'));
     // And one at the top of the data folder.
-    makeJunction(join(sandbox.profile, '.claude'), join(sandbox.nanachiHome, 'claude-link'));
+    makeJunction(join(sandbox.profile, '.claude'), join(sandbox.desktopHome, 'claude-link'));
     return { claudeProjects, codexSessions };
   }
 
@@ -339,7 +375,7 @@ describe('runUninstall: data with junctions (the agents\' own folders)', () => {
     const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
 
     expect(result.warnings).toEqual([]);
-    expect(existsSync(sandbox.nanachiHome)).toBe(false);
+    expect(existsSync(sandbox.desktopHome)).toBe(false);
     expect(readFileSync(join(claudeProjects, 'session.jsonl'), 'utf8')).toBe('claude history');
     expect(readFileSync(join(sandbox.profile, '.claude', 'skills', 'SKILL.md'), 'utf8')).toBe('skill');
     expect(readFileSync(join(codexSessions, 'rollout.jsonl'), 'utf8')).toBe('codex history');
@@ -349,8 +385,8 @@ describe('runUninstall: data with junctions (the agents\' own folders)', () => {
     const { claudeProjects } = linkAgentFolders();
     const { deps } = makeDeps();
     await runUninstall(options({ noShortcuts: true, noRegistry: true }), deps);
-    expect(existsSync(join(sandbox.nanachiHome, 'config.json'))).toBe(true);
-    expect(existsSync(join(sandbox.nanachiHome, 'accounts', 'claude', 'acc-1', 'projects'))).toBe(true);
+    expect(existsSync(join(sandbox.desktopHome, 'config.json'))).toBe(true);
+    expect(existsSync(join(sandbox.desktopHome, 'accounts', 'claude', 'acc-1', 'projects'))).toBe(true);
     expect(existsSync(join(claudeProjects, 'session.jsonl'))).toBe(true);
   });
 
@@ -359,8 +395,8 @@ describe('runUninstall: data with junctions (the agents\' own folders)', () => {
     mkdirSync(real, { recursive: true });
     writeFileSync(join(real, 'config.json'), '{}');
     writeFileSync(join(real, 'data.db'), 'sqlite');
-    removeTree(sandbox.nanachiHome, nodeFs);
-    makeJunction(real, sandbox.nanachiHome);
+    removeTree(sandbox.desktopHome, nodeFs);
+    makeJunction(real, sandbox.desktopHome);
 
     const { deps } = makeDeps();
     const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
@@ -370,9 +406,9 @@ describe('runUninstall: data with junctions (the agents\' own folders)', () => {
 });
 
 describe('runUninstall: the data-deletion guard', () => {
-  /** Runs a "delete the data" uninstall whose NANACHI_HOME is `home`; the warnings it gave. */
+  /** Runs a "delete the data" uninstall whose Desktop data folder is `home`; the warnings it gave. */
   async function warningsFor(home: string): Promise<string[]> {
-    const { deps } = makeDeps({ nanachiHome: home, desktopDataDir: join(sandbox.root, 'nothing-here') });
+    const { deps } = makeDeps({ desktopHome: home, desktopDataDir: join(sandbox.root, 'nothing-here') });
     const result = await runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps);
     return result.warnings;
   }
@@ -395,7 +431,7 @@ describe('runUninstall: the data-deletion guard', () => {
     expect(existsSync(join(dir, 'config.json'))).toBe(true);
   });
 
-  it('never resolves a relative NANACHI_HOME against the working directory', async () => {
+  it('never resolves a relative data folder against the working directory', async () => {
     // A folder that would match if the relative name were resolved from the cwd.
     const name = 'relative-nanachi-data-test';
     const cwdFolder = folderWith(join(process.cwd(), name), ['config.json', 'data.db']);
@@ -407,7 +443,7 @@ describe('runUninstall: the data-deletion guard', () => {
     }
   });
 
-  it('treats an empty NANACHI_HOME as no data folder at all', async () => {
+  it('treats an empty data folder as no data folder at all', async () => {
     expect(await warningsFor('')).toEqual([]);
     expect(existsSync(sandbox.profile)).toBe(true);
   });
@@ -426,7 +462,7 @@ describe('runUninstall: the data-deletion guard', () => {
   ])('refuses %s as the data folder before touching anything', async (_label, home) => {
     const dir = home();
     if (dir !== 'C:\\') folderWith(dir, ['config.json', 'data.db']);
-    const { deps, recorder } = makeDeps({ nanachiHome: dir });
+    const { deps, recorder } = makeDeps({ desktopHome: dir });
     await expect(runUninstall(options({ deleteData: true, noShortcuts: true, noRegistry: true }), deps)).rejects.toBeInstanceOf(InstallError);
     expect(recorder.events).toEqual([]);
     expect(existsSync(join(sandbox.target, 'Nanachi.exe'))).toBe(true);

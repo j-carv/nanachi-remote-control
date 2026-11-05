@@ -17,7 +17,7 @@ that passes validation starts a real node.
 
 | Flag | Meaning |
 | --- | --- |
-| `--state-dir <dir>` | Absolute path where the node keeps its state (keys, certificates). Created if missing. Desktop uses `<NANACHI_HOME>\tsnet`. |
+| `--state-dir <dir>` | Absolute path where the node keeps its state (keys, certificates). Created if missing. Desktop uses `<Desktop data folder>\tsnet` (`%USERPROFILE%\.nanachi-desktop` by default). |
 | `--hostname <name>` | Node name on the tailnet, `[a-z0-9-]{1,63}`. Desktop uses `nanachi-<pc name>`. |
 | `--target <url>` | The daemon: `http://127.0.0.1:<port>` or `http://localhost:<port>`. Nothing else is accepted. |
 | `--version` | Print the version (sidecar, `tailscale.com` module, Go) and exit. |

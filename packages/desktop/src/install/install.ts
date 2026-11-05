@@ -90,7 +90,13 @@ export interface ShortcutSpec {
 export interface InstallDeps {
   payload: Payload;
   profile: string;
-  nanachiHome: string;
+  /** Desktop's own data folder (`NANACHI_DESKTOP_HOME`, default `%USERPROFILE%\.nanachi-desktop`). */
+  desktopHome: string;
+  /**
+   * The standalone daemon's `NANACHI_HOME` from the environment, when set. Desktop never uses it; the guard refuses it
+   * (and `%USERPROFILE%\.nanachi-remote`, always) as an install target.
+   */
+  standaloneDirs?: readonly string[] | undefined;
   /** `%APPDATA%\Microsoft\Windows\Start Menu\Programs`. */
   startMenuDir: string;
   desktopDir: string;
@@ -202,7 +208,12 @@ async function closeRunning(dir: string, deps: InstallDeps): Promise<void> {
 export async function runInstall(options: InstallOptions, deps: InstallDeps): Promise<InstallResult> {
   const fs = deps.fs ?? nodeFs;
   const exists = deps.exists ?? fs.existsSync;
-  const check = checkInstallTarget(options.target, { profile: deps.profile, nanachiHome: deps.nanachiHome, exists });
+  const check = checkInstallTarget(options.target, {
+    profile: deps.profile,
+    desktopHome: deps.desktopHome,
+    standaloneDirs: deps.standaloneDirs,
+    exists,
+  });
   if (!check.ok) throw new InstallError(check.reason);
   const dir = check.dir;
   const exe = join(dir, EXE_NAME);

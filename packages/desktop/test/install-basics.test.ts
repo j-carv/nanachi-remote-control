@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseInstallFlags } from '../src/install/args.js';
-import { DATA_DIR_NAME } from '../src/install/constants.js';
+import { DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME } from '../src/install/constants.js';
 import { assertInsideInstall, checkDataFolder, checkInstallTarget, isInside, samePath } from '../src/install/guards.js';
 import { buildPayloadMeta, parsePayloadMeta, readPayload } from '../src/install/payload.js';
 import { parseProcessList, scanPrefix } from '../src/install/processes.js';
@@ -65,7 +65,7 @@ describe('parseInstallFlags', () => {
 });
 
 describe('checkInstallTarget', () => {
-  const context = { profile: 'C:\\Users\\ana', nanachiHome: 'C:\\Users\\ana\\.nanachi-remote', exists: () => false };
+  const context = { profile: 'C:\\Users\\ana', desktopHome: 'C:\\Users\\ana\\.nanachi-desktop', exists: () => false };
 
   it('accepts a folder under the profile and one on another drive', () => {
     expect(checkInstallTarget('C:\\Users\\ana\\AppData\\Local\\Programs\\Nanachi', context)).toEqual({
@@ -88,21 +88,38 @@ describe('checkInstallTarget', () => {
     }
   });
 
-  it('refuses the data folder, anything inside it and anything that contains it', () => {
-    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-remote', context).ok).toBe(false);
-    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-remote\\app', context).ok).toBe(false);
+  it('refuses Desktop\'s data folder, anything inside it and anything that contains it', () => {
+    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-desktop', context).ok).toBe(false);
+    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-desktop\\app', context).ok).toBe(false);
     expect(checkInstallTarget('C:\\Users', context).ok).toBe(false);
-    const custom = { ...context, nanachiHome: 'D:\\Dados\\nanachi' };
+    const custom = { ...context, desktopHome: 'D:\\Dados\\nanachi' };
     expect(checkInstallTarget('D:\\Dados', custom).ok).toBe(false);
     expect(checkInstallTarget('D:\\Dados\\nanachi\\x', custom).ok).toBe(false);
   });
 
-  it('refuses a path that has a .nanachi-remote segment or a folder that holds one', () => {
-    const elsewhere = { ...context, nanachiHome: 'D:\\Dados\\home' };
-    expect(checkInstallTarget(`E:\\x\\${DATA_DIR_NAME}\\y`, elsewhere).ok).toBe(false);
-    const holds = { ...elsewhere, exists: (path: string) => path === join('E:\\apps', DATA_DIR_NAME) };
-    expect(checkInstallTarget('E:\\apps', holds).ok).toBe(false);
-    expect(checkInstallTarget('E:\\other', holds).ok).toBe(true);
+  it('also refuses the standalone daemon\'s folder (.nanachi-remote) without being told about it', () => {
+    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-remote', context).ok).toBe(false);
+    expect(checkInstallTarget('C:\\Users\\ana\\.nanachi-remote\\app', context).ok).toBe(false);
+  });
+
+  it('also refuses the NANACHI_HOME of the environment, anything inside it and anything that holds it', () => {
+    const withEnv = { ...context, standaloneDirs: ['D:\\Supervisor\\data'] };
+    expect(checkInstallTarget('D:\\Supervisor\\data', withEnv).ok).toBe(false);
+    expect(checkInstallTarget('D:\\Supervisor\\data\\app', withEnv).ok).toBe(false);
+    expect(checkInstallTarget('D:\\Supervisor', withEnv).ok).toBe(false);
+    expect(checkInstallTarget('D:\\Other', withEnv).ok).toBe(true);
+    // A blank value is no folder at all.
+    expect(checkInstallTarget('D:\\Other', { ...context, standaloneDirs: ['', '  '] }).ok).toBe(true);
+  });
+
+  it('refuses a path that has a .nanachi-desktop or .nanachi-remote segment, or a folder that holds one', () => {
+    const elsewhere = { ...context, desktopHome: 'D:\\Dados\\home' };
+    for (const name of [DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME]) {
+      expect(checkInstallTarget(`E:\\x\\${name}\\y`, elsewhere).ok, name).toBe(false);
+      const holds = { ...elsewhere, exists: (path: string) => path === join('E:\\apps', name) };
+      expect(checkInstallTarget('E:\\apps', holds).ok, name).toBe(false);
+      expect(checkInstallTarget('E:\\other', holds).ok, name).toBe(true);
+    }
   });
 
   it('refuses empty, relative and NUL-carrying paths', () => {
@@ -111,11 +128,13 @@ describe('checkInstallTarget', () => {
     }
   });
 
-  it('notices a real .nanachi-remote folder inside the target (default existence check)', () => {
-    const target = join(dir, 'apps');
-    mkdirSync(join(target, DATA_DIR_NAME), { recursive: true });
-    const result = checkInstallTarget(target, { profile: join(dir, 'profile'), nanachiHome: join(dir, 'profile', DATA_DIR_NAME) });
-    expect(result.ok).toBe(false);
+  it('notices a real data folder of either kind inside the target (default existence check)', () => {
+    for (const name of [DATA_DIR_NAME, STANDALONE_DATA_DIR_NAME]) {
+      const target = join(dir, `apps-${name}`);
+      mkdirSync(join(target, name), { recursive: true });
+      const result = checkInstallTarget(target, { profile: join(dir, 'profile'), desktopHome: join(dir, 'profile', DATA_DIR_NAME) });
+      expect(result.ok, name).toBe(false);
+    }
   });
 });
 
@@ -244,8 +263,39 @@ describe('checkDataFolder', () => {
   const has = (...present: string[]) => (path: string) => present.some((name) => path.endsWith(name));
 
   it('accepts a complete path that holds config.json and data.db', () => {
-    const check = checkDataFolder('C:\\Users\\ana\\.nanachi-remote', { ...context, exists: has('config.json', 'data.db') });
-    expect(check).toEqual({ ok: true, dir: 'C:\\Users\\ana\\.nanachi-remote' });
+    const check = checkDataFolder('C:\\Users\\ana\\.nanachi-desktop', { ...context, exists: has('config.json', 'data.db') });
+    expect(check).toEqual({ ok: true, dir: 'C:\\Users\\ana\\.nanachi-desktop' });
+  });
+
+  describe('the standalone daemon\'s folder is never deleted', () => {
+    const exists = (): boolean => true;
+
+    it('refuses %USERPROFILE%\\.nanachi-remote, anything inside it, even with config.json and data.db', () => {
+      for (const input of ['C:\\Users\\ana\\.nanachi-remote', 'c:\\users\\ANA\\.nanachi-remote\\', 'C:\\Users\\ana\\.nanachi-remote\\accounts']) {
+        const check = checkDataFolder(input, { ...context, exists });
+        expect(check.ok, input).toBe(false);
+        if (!check.ok) expect(check.reason).toMatch(/\.nanachi-remote|daemon avulso/);
+      }
+    });
+
+    it('refuses the NANACHI_HOME value of the environment, a folder inside it and one that holds it', () => {
+      const env = { ...context, standaloneDirs: ['D:\\Supervisor\\data'], exists };
+      for (const input of ['D:\\Supervisor\\data', 'D:\\Supervisor\\data\\sub', 'D:\\Supervisor']) {
+        expect(checkDataFolder(input, env).ok, input).toBe(false);
+      }
+      expect(checkDataFolder('D:\\Desktop\\data', env).ok).toBe(true);
+    });
+
+    it('applies to the Desktop profile check too (any folder that goes through the guard)', () => {
+      const profileCheck = { profile: 'C:\\Users\\ana', installDir: 'D:\\Nanachi', requireAny: ['machine.bin'], standaloneDirs: ['D:\\Supervisor\\data'], exists };
+      expect(checkDataFolder('D:\\Supervisor\\data', profileCheck).ok).toBe(false);
+      expect(checkDataFolder('C:\\Users\\ana\\.nanachi-remote', profileCheck).ok).toBe(false);
+      expect(checkDataFolder('C:\\Users\\ana\\AppData\\Roaming\\Nanachi', profileCheck).ok).toBe(true);
+    });
+
+    it('a blank NANACHI_HOME entry does not block anything', () => {
+      expect(checkDataFolder('C:\\Users\\ana\\.nanachi-desktop', { ...context, standaloneDirs: ['', '  '], exists }).ok).toBe(true);
+    });
   });
 
   it.each([

@@ -83,7 +83,7 @@ export function tsnetHostname(pcName: string): string {
 }
 
 export interface SidecarLaunch {
-  /** `<NANACHI_HOME>\tsnet`. */
+  /** `<Desktop data folder>\tsnet`. */
   stateDir: string;
   hostname: string;
   /** `http://127.0.0.1:<daemon port>`. */
@@ -153,7 +153,7 @@ export interface TsnetHostDeps {
   /** Path of `nanachi-tsnet.exe`, resolved on every (re)start. */
   exePath(): string;
   exists(path: string): boolean;
-  /** `<NANACHI_HOME>\tsnet`. */
+  /** `<Desktop data folder>\tsnet`. */
   stateDir: string;
   /** `nanachi-<pc name>`. */
   hostname: string;

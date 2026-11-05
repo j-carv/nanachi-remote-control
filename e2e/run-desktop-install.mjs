@@ -5,8 +5,9 @@
  * (`--target <pasta temporária> --no-shortcuts --no-registry --no-launch`), então não criam atalhos, não escrevem no
  * registro nem no "iniciar com o Windows" e não usam %LOCALAPPDATA%\Programs. O script confere, só com leituras, que o
  * Menu Iniciar, a Área de Trabalho, a chave de desinstalação, o item de login e %LOCALAPPDATA%\Programs\Nanachi ficaram
- * exatamente como estavam. O app instalado usa NANACHI_HOME e userData temporários, porta livre e allowlist vazia; nunca
- * a porta 7777 nem o daemon do supervisor. NUNCA rode o instalador em modo normal neste PC.
+ * exatamente como estavam. O app instalado usa NANACHI_DESKTOP_HOME (pasta de dados própria do Desktop) e userData
+ * temporários, porta livre (nem 7777, a do supervisor, nem 7780, a padrão do Desktop) e allowlist vazia; um NANACHI_HOME
+ * de isca no ambiente (o daemon avulso) tem que ser ignorado e continuar inexistente. Nunca o daemon do supervisor. NUNCA rode o instalador em modo normal neste PC.
  *
  * Roteiro:
  *   1. o instalador de verdade (Nanachi-Setup-<versão>.exe, portable) com --yes instala na pasta A e sai com código 0;
@@ -54,7 +55,9 @@ const payloadMeta = join(buildDir, 'installer-payload', 'payload.json');
 
 const root = join(tmpdir(), `nanachi-e2einstall-${randomBytes(4).toString('hex')}`);
 const home = join(root, 'home');
+const standaloneDecoy = join(root, 'standalone-nanachi-home');
 const userData = join(root, 'userdata');
+let configText = '';
 const targetA = join(root, 'A instalação', 'Nanachi');
 const targetB = join(root, 'B instalação', 'Nanachi');
 const installerLog = join(root, 'installer.log');
@@ -157,6 +160,8 @@ function walkFiles(dir) {
 
 function setupFolders() {
   for (const dir of [home, userData, shotsDir, dirname(targetA), dirname(targetB)]) mkdirSync(dir, { recursive: true });
+  // Desktop only creates config.json (port 7780) when it is missing. This script picks a free port and writes the file
+  // first, so port 7780 (which may be taken) never comes into play.
   // Allowlist vazia: o painel local usa o daemon sem a "chave local".
   const config = {
     port,
@@ -168,7 +173,18 @@ function setupFolders() {
     corsOrigins: [],
     agents: {},
   };
-  writeFileSync(join(home, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
+  configText = `${JSON.stringify(config, null, 2)}\n`;
+  writeFileSync(join(home, 'config.json'), configText);
+}
+
+/** The installed app ran: Desktop's folder still holds the config with the port this script chose, and the decoy never appeared. */
+function assertDesktopHome() {
+  const text = readFileSync(join(home, 'config.json'), 'utf8');
+  assert.equal(JSON.parse(text).port, port, "Desktop's config.json holds the port this script chose");
+  assert.equal(text, configText, 'Desktop does not rewrite an existing config.json');
+  assert.ok(existsSync(join(home, 'data.db')), "the daemon keeps its data in Desktop's folder (NANACHI_DESKTOP_HOME)");
+  assert.equal(existsSync(standaloneDecoy), false, "Desktop never uses the environment's NANACHI_HOME (the standalone daemon's folder)");
+  log("   Desktop's folder holds config.json (the chosen port) and data.db; the NANACHI_HOME decoy was never touched");
 }
 
 const testFlags = (target) => ['--target', target, '--no-shortcuts', '--no-registry', '--no-launch'];
@@ -235,7 +251,14 @@ async function launch(executablePath, args, env = {}) {
   return instance;
 }
 
-const desktopEnv = () => ({ NANACHI_HOME: home, NANACHI_DESKTOP_USER_DATA: userData, NANACHI_INSTALLER_LOG: installerLog });
+// NANACHI_DESKTOP_HOME is Desktop's data folder. NANACHI_HOME stands in for the standalone daemon's folder: Desktop must
+// ignore it, and the uninstaller must refuse it (it never exists here, and the run checks it still does not).
+const desktopEnv = () => ({
+  NANACHI_DESKTOP_HOME: home,
+  NANACHI_HOME: standaloneDecoy,
+  NANACHI_DESKTOP_USER_DATA: userData,
+  NANACHI_INSTALLER_LOG: installerLog,
+});
 
 async function shot(page, name) {
   await page.screenshot({ path: join(shotsDir, `${name}.png`), omitBackground: true });
@@ -351,6 +374,7 @@ async function verifyInstalledApp() {
   log(`   título do painel: ${JSON.stringify(title)}`);
   await shot(page, 'app-instalado-painel');
 
+  assertDesktopHome();
   const logText = readFileSync(join(home, 'desktop-daemon.log'), 'utf8');
   assert.match(logText, /bandeja criada/);
   assert.ok(!/EBUSY|ENOENT: no such file/.test(logText), `erro no log do Desktop:\n${logText}`);
@@ -499,10 +523,10 @@ async function uninstallWithWindow() {
 }
 
 function assertDataKept() {
-  assert.ok(existsSync(join(home, 'config.json')), 'NANACHI_HOME tem que continuar');
+  assert.ok(existsSync(join(home, 'config.json')), 'a pasta de dados do Desktop (NANACHI_DESKTOP_HOME) tem que continuar');
   assert.ok(existsSync(join(home, 'data.db')), 'o banco do daemon tem que continuar');
   assert.ok(existsSync(userData), 'o userData do Desktop tem que continuar');
-  log('   NANACHI_HOME e userData continuam');
+  log('   NANACHI_DESKTOP_HOME e userData continuam');
 }
 
 async function uninstallYesDeletingData() {
@@ -520,9 +544,10 @@ async function uninstallYesDeletingData() {
   assert.equal(code, 0, 'o desinstalador com --yes sai com código 0');
   await until('a pasta da instalação sumir (limpeza agendada)', () => !existsSync(targetA), 90_000);
   log('   a pasta A sumiu');
-  assert.equal(existsSync(home), false, '--delete-data apaga NANACHI_HOME (a pasta temporária do teste)');
+  assert.equal(existsSync(home), false, '--delete-data apaga a pasta de dados do Desktop (NANACHI_DESKTOP_HOME, temporária)');
   assert.equal(existsSync(userData), false, '--delete-data apaga o userData do Desktop (também temporário)');
-  log('   NANACHI_HOME e userData temporários foram apagados, só porque --delete-data foi pedido');
+  assert.equal(existsSync(standaloneDecoy), false, 'o NANACHI_HOME do ambiente (daemon avulso) nunca é tocado');
+  log('   NANACHI_DESKTOP_HOME e userData temporários foram apagados, só porque --delete-data foi pedido');
 }
 
 async function run() {
@@ -531,6 +556,7 @@ async function run() {
   port = await freePort();
   origin = `http://127.0.0.1:${port}`;
   assert.notEqual(port, 7777, 'a porta 7777 é do supervisor');
+  assert.notEqual(port, 7780, "7780 is Desktop's default port; this script uses any other free port");
   setupFolders();
   const before = realSystemState();
   log(`pasta temporária ${root}; porta ${port}`);

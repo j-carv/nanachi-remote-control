@@ -57,7 +57,13 @@ export interface UninstallProgress {
 
 export interface UninstallDeps {
   profile: string;
-  nanachiHome: string;
+  /** Desktop's own data folder (`NANACHI_DESKTOP_HOME`, default `%USERPROFILE%\.nanachi-desktop`). */
+  desktopHome: string;
+  /**
+   * The standalone daemon's `NANACHI_HOME` from the environment, when set. Desktop never uses it; the guards refuse it
+   * (and `%USERPROFILE%\.nanachi-remote`, always) as the install folder and as a data folder to delete.
+   */
+  standaloneDirs?: readonly string[] | undefined;
   /** Desktop's own data (`%APPDATA%\Nanachi`): the paired-device token and the Desktop settings. */
   desktopDataDir: string;
   startMenuDir: string;
@@ -135,7 +141,7 @@ function removeInstallDir(dir: string, fs: FsLike, options: RemoveOptions | unde
 
 /**
  * Uninstalls Nanachi: stops what runs from the folder, removes shortcuts, the login item, the files and the uninstall
- * key. The data (`NANACHI_HOME`, Desktop's profile) stays unless `deleteData`. Throws `InstallError` for a folder that
+ * key. The data (Desktop's data folder and profile; never the standalone daemon's) stays unless `deleteData`. Throws `InstallError` for a folder that
  * is not a Nanachi install; the folder is validated before anything is touched.
  */
 export async function runUninstall(options: UninstallOptions, deps: UninstallDeps): Promise<UninstallResult> {
@@ -143,7 +149,8 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
   const sleep = deps.sleep ?? defaultSleep;
   const check = checkInstallTarget(options.installDir, {
     profile: deps.profile,
-    nanachiHome: deps.nanachiHome,
+    desktopHome: deps.desktopHome,
+    standaloneDirs: deps.standaloneDirs,
     exists: fs.existsSync,
   });
   if (!check.ok) throw new InstallError(check.reason);
@@ -232,17 +239,19 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
       warnings.push('Os dados do Nanachi não foram apagados: um daemon do Nanachi está usando essa pasta.');
       return;
     }
-    // The daemon's folder needs both its config and its database; Desktop's profile needs one of its own two files.
-    const home = checkDataFolder(deps.nanachiHome, {
+    // Desktop's data folder needs both its config and its database; its profile needs one of its own two files. The
+    // standalone daemon's folder (`.nanachi-remote`, NANACHI_HOME) is refused by both checks, whatever it holds.
+    const home = checkDataFolder(deps.desktopHome, {
       profile: deps.profile,
       installDir: dir,
       others: [deps.desktopDataDir],
+      standaloneDirs: deps.standaloneDirs,
       requireAll: ['config.json', 'data.db'],
       exists: fs.existsSync,
     });
     if (!home.ok) {
       // Nothing there is not a problem: there is just nothing to delete.
-      if (isPresent(deps.nanachiHome, fs)) warnings.push(`Os dados em ${deps.nanachiHome} não foram apagados: ${home.reason}.`);
+      if (isPresent(deps.desktopHome, fs)) warnings.push(`Os dados em ${deps.desktopHome} não foram apagados: ${home.reason}.`);
     } else {
       const wasLink = isLink(home.dir, fs);
       if (!removeTree(home.dir, fs, deps.removeOptions)) {
@@ -255,7 +264,8 @@ export async function runUninstall(options: UninstallOptions, deps: UninstallDep
     const profile = checkDataFolder(deps.desktopDataDir, {
       profile: deps.profile,
       installDir: dir,
-      others: [deps.nanachiHome],
+      others: [deps.desktopHome],
+      standaloneDirs: deps.standaloneDirs,
       requireAny: ['machine.bin', 'desktop-settings.json'],
       exists: fs.existsSync,
     });

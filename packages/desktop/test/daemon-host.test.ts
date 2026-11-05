@@ -44,6 +44,8 @@ interface Harness {
   host: DaemonHost;
   children: FakeChild[];
   spawnCalls: Array<{ command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv }>;
+  /** Every call of `ensureConfig`, and what the spawn count was at that moment (it must come before the spawn). */
+  configCalls: Array<{ home: string; spawnsSoFar: number }>;
   killed: number[];
   logged: string[];
   setHealth(value: Answer): void;
@@ -54,14 +56,18 @@ function harness(overrides: Partial<DaemonHostDeps> = {}, initialHealth: Answer 
   let health = initialHealth;
   const children: FakeChild[] = [];
   const spawnCalls: Harness['spawnCalls'] = [];
+  const configCalls: Harness['configCalls'] = [];
   const killed: number[] = [];
   const logged: string[] = [];
   let nextPid = 4000;
 
   const deps: DaemonHostDeps = {
-    home: 'C:\\Users\\user\\.nanachi-remote',
+    home: 'C:\\Users\\user\\.nanachi-desktop',
     runtime: RUNTIME,
     readPort: () => 7811,
+    ensureConfig: (home) => {
+      configCalls.push({ home, spawnsSoFar: spawnCalls.length });
+    },
     health: () => Promise.resolve(probe(health)),
     spawn: (command, args, options) => {
       spawnCalls.push({ command, args, cwd: options.cwd, env: options.env });
@@ -95,6 +101,7 @@ function harness(overrides: Partial<DaemonHostDeps> = {}, initialHealth: Answer 
     host,
     children,
     spawnCalls,
+    configCalls,
     killed,
     logged,
     statuses,
@@ -162,6 +169,12 @@ describe('restricted daemon (allowedTailscaleLogins set)', () => {
     expect(RESTRICTED_MESSAGE).toMatch(/allowedTailscaleLogins/);
   });
 
+  it('names Desktop\'s own folder and says the panel needs the list empty (not NANACHI_HOME)', () => {
+    expect(RESTRICTED_MESSAGE).toMatch(/\.nanachi-desktop/);
+    expect(RESTRICTED_MESSAGE).toMatch(/vazi/);
+    expect(RESTRICTED_MESSAGE).not.toMatch(/NANACHI_HOME|\.nanachi-remote/);
+  });
+
   it('never stops it', async () => {
     const h = harness({}, 'restricted');
     await h.host.start();
@@ -194,7 +207,7 @@ describe('spawn mode', () => {
         command: RUNTIME.nodePath,
         args: [RUNTIME.daemonMain],
         cwd: RUNTIME.cwd,
-        env: { PATH: 'x', NANACHI_HOME: 'C:\\Users\\user\\.nanachi-remote' },
+        env: { PATH: 'x', NANACHI_HOME: 'C:\\Users\\user\\.nanachi-desktop' },
       },
     ]);
     expect(h.host.status()).toMatchObject({ state: 'starting', mode: 'spawned', pid: 4000 });
@@ -213,6 +226,46 @@ describe('spawn mode', () => {
       machineName: 'OFFICE-PC',
       message: null,
     });
+  });
+
+  it('passes Desktop\'s folder as NANACHI_HOME even when the environment already has another one', async () => {
+    const h = harness({ env: { PATH: 'x', NANACHI_HOME: 'C:\\Users\\user\\.nanachi-remote' } });
+    await h.host.start();
+    expect(h.spawnCalls[0]?.env.NANACHI_HOME).toBe('C:\\Users\\user\\.nanachi-desktop');
+  });
+
+  it('makes sure config.json exists in its own folder before every spawn, never after', async () => {
+    const h = harness();
+    await h.host.start();
+    expect(h.configCalls).toEqual([{ home: 'C:\\Users\\user\\.nanachi-desktop', spawnsSoFar: 0 }]);
+
+    // A crash restarts the daemon: the check runs again, before the new spawn.
+    h.children[0]?.exit(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.spawnCalls).toHaveLength(2);
+    expect(h.configCalls).toEqual([
+      { home: 'C:\\Users\\user\\.nanachi-desktop', spawnsSoFar: 0 },
+      { home: 'C:\\Users\\user\\.nanachi-desktop', spawnsSoFar: 1 },
+    ]);
+  });
+
+  it('does not touch config.json when it attaches to a daemon that already answers', async () => {
+    const h = harness({}, HEALTH);
+    await h.host.start();
+    expect(h.configCalls).toEqual([]);
+  });
+
+  it('reports an error, and spawns nothing, when config.json cannot be prepared (a daemon would create one with port 7777)', async () => {
+    const h = harness({
+      ensureConfig: () => {
+        throw new Error('EACCES: permission denied');
+      },
+    });
+    await h.host.start();
+    expect(h.spawnCalls).toHaveLength(0);
+    expect(h.host.status()).toMatchObject({ state: 'error', mode: 'none' });
+    expect(h.host.status().message).toMatch(/\.nanachi-desktop/);
+    expect(h.host.status().message).toMatch(/EACCES/);
   });
 
   it('appends the daemon stdout and stderr to the log', async () => {

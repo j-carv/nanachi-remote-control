@@ -241,28 +241,37 @@ describe('runInstall', () => {
       ['a drive root', () => 'C:\\'],
       ['the user profile', () => sandbox.profile],
       ['the folder that holds the user profile', () => sandbox.root],
-      ['the Nanachi data folder', () => sandbox.nanachiHome],
-      ['a folder inside the data folder', () => join(sandbox.nanachiHome, 'app')],
+      ['the Nanachi data folder', () => sandbox.desktopHome],
+      ['a folder inside the data folder', () => join(sandbox.desktopHome, 'app')],
     ];
     for (const [name, target] of cases) {
       it(`refuses ${name} before touching anything`, async () => {
-        mkdirSync(sandbox.nanachiHome, { recursive: true });
-        writeFileSync(join(sandbox.nanachiHome, 'config.json'), '{}');
+        mkdirSync(sandbox.desktopHome, { recursive: true });
+        writeFileSync(join(sandbox.desktopHome, 'config.json'), '{}');
         const { deps, recorder } = makeInstallDeps(sandbox, payload);
         await expect(runInstall(options({ target: target() }), deps)).rejects.toBeInstanceOf(InstallError);
         expect(recorder.events).toEqual([]);
         expect(recorder.shortcuts).toEqual([]);
         expect(recorder.reg).toEqual([]);
-        expect(readFileSync(join(sandbox.nanachiHome, 'config.json'), 'utf8')).toBe('{}');
+        expect(readFileSync(join(sandbox.desktopHome, 'config.json'), 'utf8')).toBe('{}');
         expect(existsSync(join(sandbox.profile, INSTALL_MARKER))).toBe(false);
       });
     }
 
-    it('refuses a target that contains a .nanachi-remote folder', async () => {
+    it.each(['.nanachi-desktop', '.nanachi-remote'])('refuses a target that contains a %s folder', async (name) => {
       const holder = join(sandbox.root, 'holder');
-      mkdirSync(join(holder, '.nanachi-remote'), { recursive: true });
-      const { deps } = makeInstallDeps(sandbox, payload, { nanachiHome: join(sandbox.root, 'elsewhere') });
-      await expect(runInstall(options({ target: holder }), deps)).rejects.toThrow(/\.nanachi-remote/);
+      mkdirSync(join(holder, name), { recursive: true });
+      const { deps } = makeInstallDeps(sandbox, payload, { desktopHome: join(sandbox.root, 'elsewhere') });
+      await expect(runInstall(options({ target: holder }), deps)).rejects.toThrow(/\.nanachi-desktop/);
+    });
+
+    it('refuses the standalone daemon\'s data folder, and the NANACHI_HOME of the environment, as the target', async () => {
+      const fromEnv = join(sandbox.root, 'supervisor-data');
+      mkdirSync(fromEnv, { recursive: true });
+      for (const target of [sandbox.standaloneHome, join(sandbox.standaloneHome, 'app'), fromEnv, join(fromEnv, 'app')]) {
+        const { deps } = makeInstallDeps(sandbox, payload, { standaloneDirs: [fromEnv] });
+        await expect(runInstall(options({ target }), deps), target).rejects.toBeInstanceOf(InstallError);
+      }
     });
   });
 

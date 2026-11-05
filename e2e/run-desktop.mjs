@@ -9,7 +9,11 @@
  * para uma pasta vazia, então mesmo sem o override o sidecar real não seria achado.
  *
  * O que confere:
- *   1. o painel carrega a PWA do daemon (porta livre, NANACHI_HOME e userData temporários, allowlist vazia);
+ *   0. (config seeding) a fresh Desktop data folder gets config.json with { "port": 7780 } (the compiled function, no
+ *      process started), and an existing config.json is never rewritten;
+ *   1. o painel carrega a PWA do daemon (porta livre diferente de 7777 e 7780, NANACHI_DESKTOP_HOME e userData
+ *      temporários, allowlist vazia); o config.json da pasta do Desktop continua com a porta escolhida pelo script, e um
+ *      NANACHI_HOME de isca no ambiente (a pasta do daemon avulso) nunca é lido nem criado;
  *   2. Ajustes tem o grupo "Desktop" com daemon rodando, "Iniciar com o Windows", código de pareamento e versão;
  *   3. ligar "Tailscale embutido" sobe só o sidecar falso, com as flags do contrato e TS_NO_LOGS_NO_SUPPORT=true,
  *      e o cartão mostra needs_login (link) e depois running (endereço https);
@@ -49,6 +53,8 @@ const { removeTree } = await import(pathToFileURL(join(desktopDir, 'dist', 'inst
 
 const root = join(tmpdir(), `nanachi-e2edesktop-${randomBytes(4).toString('hex')}`);
 const home = join(root, 'home');
+// Stands in for the standalone daemon's NANACHI_HOME, which Desktop must ignore: it never exists, and the run checks it stays that way.
+const standaloneDecoy = join(root, 'standalone-nanachi-home');
 const userData = join(root, 'userdata');
 const buildDir = join(root, 'empty-build-dir');
 const fakeExe = join(root, 'fake-tsnet.exe');
@@ -57,6 +63,7 @@ const recordLog = `${record}.log`;
 
 let port = 0;
 let origin = '';
+let configText = '';
 /** Cada processo que este script iniciou, para a limpeza no fim. */
 const pids = new Set();
 let app = null;
@@ -85,6 +92,8 @@ async function freePort() {
 
 function setupFolders() {
   for (const dir of [home, userData, buildDir, shotsDir]) mkdirSync(dir, { recursive: true });
+  // Desktop only creates config.json (port 7780) when it is missing. This script picks a free port and writes the file
+  // first, so port 7780 (which may be taken) never comes into play.
   // Allowlist vazia: o painel local usa o daemon sem a "chave local" (que não faz parte desta entrega).
   const config = {
     port,
@@ -96,7 +105,36 @@ function setupFolders() {
     corsOrigins: [],
     agents: {},
   };
-  writeFileSync(join(home, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
+  configText = `${JSON.stringify(config, null, 2)}\n`;
+  writeFileSync(join(home, 'config.json'), configText);
+}
+
+/** What Desktop does by itself in a fresh folder (the compiled function; no process, no port). */
+async function checkConfigSeeding() {
+  const { DEFAULT_PORT, ensureDesktopConfig, resolveHome } = await import(pathToFileURL(join(desktopDir, 'dist', 'main', 'daemon-runtime.js')).href);
+  assert.equal(DEFAULT_PORT, 7780);
+  const fresh = join(root, 'fresh-desktop-home');
+  assert.equal(ensureDesktopConfig(fresh), 'created');
+  const bytes = readFileSync(join(fresh, 'config.json'));
+  assert.deepEqual(JSON.parse(bytes.toString('utf8')), { port: 7780 });
+  assert.notDeepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'config.json has no BOM');
+  assert.equal(ensureDesktopConfig(fresh), 'kept');
+  assert.equal(ensureDesktopConfig(home), 'kept', 'an existing config.json is never rewritten');
+  assert.equal(readFileSync(join(home, 'config.json'), 'utf8'), configText);
+  // NANACHI_HOME (the standalone daemon) does not count; only NANACHI_DESKTOP_HOME does.
+  assert.equal(resolveHome({ NANACHI_HOME: standaloneDecoy, NANACHI_DESKTOP_HOME: home }), home);
+  assert.notEqual(resolveHome({ NANACHI_HOME: standaloneDecoy }), standaloneDecoy);
+  log('fresh Desktop home gets config.json with port 7780; an existing config.json is not rewritten');
+}
+
+/** After Desktop ran: config.json in Desktop's folder is what this script wrote (its chosen port), and the decoy never appeared. */
+function checkHomeAfterRun() {
+  const text = readFileSync(join(home, 'config.json'), 'utf8');
+  assert.equal(JSON.parse(text).port, port, "Desktop's config.json holds the port this script chose");
+  assert.equal(text, configText, 'Desktop does not rewrite an existing config.json');
+  assert.ok(existsSync(join(home, 'data.db')), "the daemon Desktop started keeps its data in Desktop's folder (NANACHI_DESKTOP_HOME)");
+  assert.equal(existsSync(standaloneDecoy), false, "Desktop never uses the environment's NANACHI_HOME (the standalone daemon's folder)");
+  log("Desktop's own folder holds config.json (the chosen port) and data.db; the NANACHI_HOME decoy was never touched");
 }
 
 function buildFakeSidecar() {
@@ -136,7 +174,9 @@ async function launch() {
     cwd: repoRoot,
     env: {
       ...process.env,
-      NANACHI_HOME: home,
+      // A pasta de dados do Desktop. O NANACHI_HOME de isca (o do daemon avulso) tem que ser ignorado.
+      NANACHI_DESKTOP_HOME: home,
+      NANACHI_HOME: standaloneDecoy,
       NANACHI_DESKTOP_USER_DATA: userData,
       // Nunca o sidecar real: o falso, e uma pasta de build vazia como segunda barreira.
       NANACHI_DESKTOP_TSNET_PATH: fakeExe,
@@ -187,10 +227,12 @@ async function run() {
   port = await freePort();
   origin = `http://127.0.0.1:${port}`;
   assert.notEqual(port, 7777, 'a porta 7777 é do supervisor');
+  assert.notEqual(port, 7780, "7780 is Desktop's default port; this script uses any other free port");
   setupFolders();
   buildFakeSidecar();
   assert.ok(existsSync(join(desktopDir, 'dist', 'main', 'index.js')), 'compile o Desktop antes: npm run build:desktop -w @nanachi/desktop');
   log(`home ${home}, porta ${port}`);
+  await checkConfigSeeding();
 
   // O código que uma pessoa estaria digitando no celular enquanto o Desktop se pareia pela primeira vez.
   // `pair --json` derrubaria um código que ainda vale; o Desktop usa `device add`, então ele tem que continuar valendo.
@@ -228,6 +270,7 @@ async function run() {
   assert.match((await page.locator('[data-slot=desktop-daemon]').textContent()) ?? '', new RegExp(`Porta ${port}`));
   assert.equal(await tailscaleSwitch(page).getAttribute('aria-checked'), 'false', 'o Tailscale começa desligado');
   assert.equal(readRecord(), null, 'nenhum sidecar deveria ter sido iniciado antes de o usuário ligar');
+  checkHomeAfterRun();
   await shotBothThemes(page, section, 'desktop-ajustes');
 
   // ----- 2. versão e atualização (consulta anônima ao GitHub; qualquer resposta serve) -----
