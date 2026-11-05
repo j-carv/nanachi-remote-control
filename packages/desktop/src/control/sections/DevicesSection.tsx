@@ -1,8 +1,9 @@
 import { Monitor, Plus, RotateCw, ShieldOff, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { DeviceInfo } from '../../common/control-api.js';
+import { useTranslation } from 'react-i18next';
+import type { ControlError, DeviceInfo } from '../../common/control-api.js';
 import type { PairingCode } from '../../common/types.js';
-import { isCalmError } from '../lib/errors.js';
+import { errorMessage, isCalmError } from '../lib/errors.js';
 import { formatCountdown, formatDate, formatDateTime, formatPairingCode, formatRelative, remainingFraction } from '../lib/format.js';
 import { useApi } from '../state/api.js';
 import { settle, useResource } from '../state/resource.js';
@@ -31,42 +32,43 @@ export interface PairingViewProps {
 
 /** The pairing code, its countdown and the steps. A code is single-use and short-lived, so expiry is a state, not an error. */
 export function PairingView({ code, remainingMs, fraction, regenerating, onRegenerate, onClose }: PairingViewProps) {
+  const { t } = useTranslation();
   const expired = remainingMs <= 0;
   return (
-    <section aria-label="Parear novo aparelho" className="animate-page rounded-lg border border-border bg-card">
+    <section aria-label={t('devices.pairNew')} className="animate-page rounded-lg border border-border bg-card">
       <div className="flex flex-wrap gap-x-10 gap-y-5 px-5 py-5">
         <div className="min-w-[220px]">
-          <div className="text-[13px] text-muted-foreground">Código de pareamento</div>
+          <div className="text-[13px] text-muted-foreground">{t('devices.pairing.title')}</div>
           <div className="mt-1 flex items-center gap-2">
             <span
-              aria-label={`Código ${code.split('').join(' ')}`}
+              aria-label={t('devices.pairing.codeLabel', { digits: code.split('').join(' ') })}
               className={cx('selectable font-mono text-[34px] leading-[44px] font-medium tracking-[0.06em] tabular-nums', expired && 'text-muted-foreground line-through decoration-1')}
             >
               {formatPairingCode(code)}
             </span>
-            {expired ? null : <CopyButton text={code} label="Copiar código" />}
+            {expired ? null : <CopyButton text={code} label={t('devices.pairing.copy')} />}
           </div>
           <div className="mt-2 flex items-center gap-3">
-            <div role="progressbar" aria-label="Tempo restante do código" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} className="h-1 w-40 overflow-hidden rounded-full bg-muted">
+            <div role="progressbar" aria-label={t('devices.pairing.timeLeft')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} className="h-1 w-40 overflow-hidden rounded-full bg-muted">
               <div className={cx('h-full rounded-full transition-[width] duration-1000 ease-linear', fraction < 0.2 ? 'bg-attention' : 'bg-foreground/70')} style={{ width: `${Math.round(fraction * 100)}%` }} />
             </div>
             <span className={cx('text-[13px] tabular-nums', expired ? 'text-attention' : 'text-muted-foreground')} role="timer" aria-live="off">
-              {expired ? 'Expirou' : `Expira em ${formatCountdown(remainingMs)}`}
+              {expired ? t('devices.pairing.expired') : t('devices.pairing.expiresIn', { time: formatCountdown(remainingMs) })}
             </span>
           </div>
         </div>
         <ol className="min-w-[240px] flex-1 list-decimal space-y-1.5 pl-5 text-[13px] leading-5 text-muted-foreground marker:text-muted-foreground">
-          <li>Abra o Nanachi no iPhone e escolha parear com um código.</li>
-          <li>Digite os seis dígitos antes que o tempo acabe.</li>
-          <li>Cada código vale uma vez. Se expirar, gere outro.</li>
+          <li>{t('devices.pairing.step1')}</li>
+          <li>{t('devices.pairing.step2')}</li>
+          <li>{t('devices.pairing.step3')}</li>
         </ol>
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-2.5">
         <Button variant="ghost" onClick={onClose}>
-          Fechar
+          {t('common.close')}
         </Button>
         <Button variant={expired ? 'primary' : 'secondary'} icon={<RotateCw aria-hidden="true" />} loading={regenerating} onClick={onRegenerate}>
-          {expired ? 'Gerar novo código' : 'Gerar outro'}
+          {expired ? t('devices.pairing.regenerateExpired') : t('devices.pairing.regenerate')}
         </Button>
       </div>
     </section>
@@ -74,9 +76,10 @@ export function PairingView({ code, remainingMs, fraction, regenerating, onRegen
 }
 
 function PairingPanel({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const api = useApi();
   const [issued, setIssued] = useState<{ code: PairingCode; startedAt: number } | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState<ControlError | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const active = useRef(true);
@@ -91,7 +94,7 @@ function PairingPanel({ onClose }: { onClose: () => void }) {
       setIssued({ code: result.value, startedAt: Date.now() });
       setNow(Date.now());
     } else {
-      setFailed(result.message);
+      setFailed(result);
     }
   };
 
@@ -114,21 +117,21 @@ function PairingPanel({ onClose }: { onClose: () => void }) {
 
   if (failed) {
     return (
-      <section aria-label="Parear novo aparelho" role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-destructive/8 px-4 py-3.5 text-[13px]">
-        <span className="min-w-0 flex-1">{failed}</span>
+      <section aria-label={t('devices.pairNew')} role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-destructive/8 px-4 py-3.5 text-[13px]">
+        <span className="min-w-0 flex-1">{errorMessage(failed, t)}</span>
         <Button icon={<RotateCw aria-hidden="true" />} loading={regenerating} onClick={() => void generate()}>
-          Tentar de novo
+          {t('common.retry')}
         </Button>
         <Button variant="ghost" onClick={onClose}>
-          Fechar
+          {t('common.close')}
         </Button>
       </section>
     );
   }
   if (!issued) {
     return (
-      <section aria-label="Parear novo aparelho" aria-busy="true" className="flex h-[148px] items-center justify-center rounded-lg border border-border bg-card text-[13px] text-muted-foreground">
-        Gerando o código…
+      <section aria-label={t('devices.pairNew')} aria-busy="true" className="flex h-[148px] items-center justify-center rounded-lg border border-border bg-card text-[13px] text-muted-foreground">
+        {t('devices.pairing.generating')}
       </section>
     );
   }
@@ -163,10 +166,11 @@ export function sortDevices(devices: readonly DeviceInfo[]): DeviceInfo[] {
 }
 
 export function DevicesTable({ devices, now, onRevoke }: DevicesTableProps) {
+  const { t } = useTranslation();
   return (
     <Group>
       <table className="w-full table-fixed border-collapse text-sm">
-        <caption className="sr-only">Aparelhos pareados</caption>
+        <caption className="sr-only">{t('devices.table.caption')}</caption>
         <colgroup>
           <col />
           <col className="w-[116px]" />
@@ -177,19 +181,19 @@ export function DevicesTable({ devices, now, onRevoke }: DevicesTableProps) {
         <thead>
           <tr className="border-b border-border">
             <th scope="col" className={HEAD}>
-              Nome
+              {t('devices.table.name')}
             </th>
             <th scope="col" className={HEAD}>
-              Criado
+              {t('devices.table.created')}
             </th>
             <th scope="col" className={HEAD}>
-              Último uso
+              {t('devices.table.lastSeen')}
             </th>
             <th scope="col" className={HEAD}>
-              Status
+              {t('devices.table.status')}
             </th>
             <th scope="col" className={HEAD}>
-              <span className="sr-only">Ações</span>
+              <span className="sr-only">{t('devices.table.actions')}</span>
             </th>
           </tr>
         </thead>
@@ -204,23 +208,23 @@ export function DevicesTable({ devices, now, onRevoke }: DevicesTableProps) {
                   <span className={cx('truncate font-medium', !device.revoked && 'text-foreground')} title={device.name}>
                     {device.name}
                   </span>
-                  {device.isThisApp ? <Badge>Este app</Badge> : null}
+                  {device.isThisApp ? <Badge>{t('devices.table.thisApp')}</Badge> : null}
                 </span>
               </th>
-              <td className="px-4 whitespace-nowrap tabular-nums">{formatDate(device.createdAt)}</td>
-              <td className="px-4 whitespace-nowrap tabular-nums" title={device.lastSeenAt === null ? undefined : formatDateTime(device.lastSeenAt)}>
-                {formatRelative(device.lastSeenAt, now)}
+              <td className="px-4 whitespace-nowrap tabular-nums">{formatDate(device.createdAt, t)}</td>
+              <td className="px-4 whitespace-nowrap tabular-nums" title={device.lastSeenAt === null ? undefined : formatDateTime(device.lastSeenAt, t)}>
+                {formatRelative(device.lastSeenAt, now, t)}
               </td>
               <td className="px-4">
                 <span className={cx('inline-flex items-center gap-1.5', device.revoked ? 'text-muted-foreground' : 'text-foreground')}>
                   <StatusDot tone={device.revoked ? 'muted' : 'success'} />
-                  {device.revoked ? 'Revogado' : 'Ativo'}
+                  {device.revoked ? t('devices.table.revoked') : t('devices.table.active')}
                 </span>
               </td>
               <td className="px-3 text-right">
                 {device.isThisApp || device.revoked ? null : (
-                  <Button variant="danger-ghost" size="sm" aria-label={`Revogar ${device.name}`} onClick={() => onRevoke(device)}>
-                    Revogar
+                  <Button variant="danger-ghost" size="sm" aria-label={t('devices.table.revokeLabel', { name: device.name })} onClick={() => onRevoke(device)}>
+                    {t('devices.table.revoke')}
                   </Button>
                 )}
               </td>
@@ -235,6 +239,7 @@ export function DevicesTable({ devices, now, onRevoke }: DevicesTableProps) {
 /* ----------------------------------------------------------------- section */
 
 export function DevicesSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const shell = useShell();
   const toast = useToast();
@@ -256,10 +261,10 @@ export function DevicesSection() {
     setTarget(null);
     if (result.ok) {
       devices.setData(result.value);
-      toast({ tone: 'success', message: `${target.name} não tem mais acesso.` });
+      toast({ tone: 'success', message: t('devices.revoke.done', { name: target.name }) });
       void shell.reloadOverview(true);
     } else {
-      toast({ tone: 'error', title: 'Não foi possível revogar', message: result.message });
+      toast({ tone: 'error', title: t('devices.revoke.failedTitle'), message: errorMessage(result, t) });
     }
   };
 
@@ -272,11 +277,11 @@ export function DevicesSection() {
       <div className="rounded-lg border border-border bg-card">
         <EmptyState
           icon={Smartphone}
-          title="Nenhum aparelho pareado"
-          description="Gere um código aqui e digite no Nanachi do iPhone para ele poder usar este PC."
+          title={t('devices.empty.title')}
+          description={t('devices.empty.description')}
           action={
             <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setPairing(true)}>
-              Parear novo aparelho
+              {t('devices.pairNew')}
             </Button>
           }
         />
@@ -290,7 +295,7 @@ export function DevicesSection() {
       actions={
         pairing || (devices.state.status === 'error' && isCalmError(devices.state.error.code)) ? null : (
           <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setPairing(true)}>
-            Parear novo aparelho
+            {t('devices.pairNew')}
           </Button>
         )
       }
@@ -301,15 +306,15 @@ export function DevicesSection() {
         open={target !== null}
         onClose={() => setTarget(null)}
         dismissible={!revoking}
-        title={target ? `Revogar ${target.name}?` : 'Revogar aparelho?'}
-        description="O aparelho perde o acesso agora. Para voltar a usar este PC, ele precisa ser pareado de novo com um código."
+        title={target ? t('devices.revoke.title', { name: target.name }) : t('devices.revoke.titleFallback')}
+        description={t('devices.revoke.description')}
         footer={
           <>
             <Button disabled={revoking} onClick={() => setTarget(null)}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button variant="destructive" icon={<ShieldOff aria-hidden="true" />} loading={revoking} onClick={() => void revoke()}>
-              Revogar
+              {t('devices.revoke.action')}
             </Button>
           </>
         }

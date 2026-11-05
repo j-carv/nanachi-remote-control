@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
-<title>Instalador do Nanachi</title>
+<title data-i18n="installer.setup.title">Instalador do Nanachi</title>
 <link rel="stylesheet" href="shell.css">
 </head>
 <body>
@@ -12,83 +12,83 @@
     <div class="backdrop" aria-hidden="true"><div class="blob one"></div><div class="blob two"></div><div class="blob three"></div></div>
 
     <header class="titlebar">
-      <span class="name">Instalador do Nanachi</span>
+      <span class="name" data-i18n="installer.setup.title">Instalador do Nanachi</span>
       <div class="window-buttons">
-        <button type="button" class="window-button" data-slot="minimize" aria-label="Minimizar"><svg viewBox="0 0 14 14"><path d="M2.5 7h9"/></svg></button>
-        <button type="button" class="window-button" data-slot="close" aria-label="Fechar"><svg viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+        <button type="button" class="window-button" data-slot="minimize" aria-label="Minimizar" data-i18n-aria-label="installer.window.minimize"><svg viewBox="0 0 14 14"><path d="M2.5 7h9"/></svg></button>
+        <button type="button" class="window-button" data-slot="close" aria-label="Fechar" data-i18n-aria-label="installer.window.close"><svg viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
       </div>
     </header>
 
     <main class="content">
       <section class="view" data-view="idle">
         <div class="logo-wrap"><span class="ring"></span><span class="ring late"></span><img class="logo" src="icon.png" alt="" width="84" height="84"></div>
-        <h1>Nanachi</h1>
-        <p class="muted">Seus agentes de IA rodando no PC, no seu bolso.</p>
-        <div class="actions"><button type="button" class="button primary large" data-slot="install">Instalar</button></div>
-        <button type="button" class="link" data-slot="options-open">Opções</button>
+        <h1 translate="no">Nanachi</h1>
+        <p class="muted" data-i18n="installer.setup.tagline">Seus agentes de IA rodando no PC, no seu bolso.</p>
+        <div class="actions"><button type="button" class="button primary large" data-slot="install" data-i18n="installer.setup.install">Instalar</button></div>
+        <button type="button" class="link" data-slot="options-open" data-i18n="installer.setup.options">Opções</button>
       </section>
 
       <section class="view" data-view="options" hidden>
         <div class="options">
           <div class="field">
-            <label for="target">Pasta de instalação</label>
+            <label for="target" data-i18n="installer.setup.targetLabel">Pasta de instalação</label>
             <div class="field-row">
               <input id="target" type="text" data-slot="target" spellcheck="false" autocomplete="off">
-              <button type="button" class="button" data-slot="choose-folder">Alterar…</button>
+              <button type="button" class="button" data-slot="choose-folder" data-i18n="installer.setup.change">Alterar…</button>
             </div>
             <p class="small-text error-text" data-slot="target-error" role="alert" hidden></p>
           </div>
-          <label class="switch"><span>Criar atalho na Área de Trabalho</span><input type="checkbox" data-slot="desktop-shortcut" checked></label>
-          <label class="switch"><span>Iniciar com o Windows</span><input type="checkbox" data-slot="start-with-windows" checked></label>
+          <label class="switch"><span data-i18n="installer.setup.desktopShortcut">Criar atalho na Área de Trabalho</span><input type="checkbox" data-slot="desktop-shortcut" checked></label>
+          <label class="switch"><span data-i18n="installer.setup.startWithWindows">Iniciar com o Windows</span><input type="checkbox" data-slot="start-with-windows" checked></label>
         </div>
         <div class="actions">
-          <button type="button" class="button" data-slot="options-close">Voltar</button>
-          <button type="button" class="button primary" data-slot="install-from-options">Instalar</button>
+          <button type="button" class="button" data-slot="options-close" data-i18n="installer.setup.back">Voltar</button>
+          <button type="button" class="button primary" data-slot="install-from-options" data-i18n="installer.setup.install">Instalar</button>
         </div>
       </section>
 
       <section class="view" data-view="close" hidden>
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>O Nanachi está aberto</h2>
-        <p class="muted" data-slot="close-detail">Para continuar, ele precisa ser fechado.</p>
+        <h2 data-i18n="installer.setup.closeTitle">O Nanachi está aberto</h2>
+        <p class="muted" data-slot="close-detail"></p>
         <div class="actions">
-          <button type="button" class="button" data-slot="close-cancel">Cancelar</button>
-          <button type="button" class="button primary" data-slot="close-confirm">Fechar o Nanachi e continuar</button>
+          <button type="button" class="button" data-slot="close-cancel" data-i18n="installer.common.cancel">Cancelar</button>
+          <button type="button" class="button primary" data-slot="close-confirm" data-i18n="installer.setup.closeConfirm">Fechar o Nanachi e continuar</button>
         </div>
       </section>
 
       <section class="view" data-view="progress" hidden>
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>Instalando o Nanachi</h2>
+        <h2 data-i18n="installer.setup.progressTitle">Instalando o Nanachi</h2>
         <div class="progress">
-          <div class="progress-meta"><span class="step" data-slot="step" aria-live="polite">Preparando…</span><span class="percent" data-slot="percent">0%</span></div>
-          <div class="track" role="progressbar" aria-label="Progresso da instalação" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-slot="track"><div class="fill"></div></div>
+          <div class="progress-meta"><span class="step" data-slot="step" aria-live="polite"></span><span class="percent" data-slot="percent">0%</span></div>
+          <div class="track" role="progressbar" aria-label="Progresso da instalação" data-i18n-aria-label="installer.setup.progressLabel" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-slot="track"><div class="fill"></div></div>
         </div>
-        <p class="note">Isso leva um minuto. Pode deixar a janela aberta.</p>
+        <p class="note" data-i18n="installer.setup.progressNote">Isso leva um minuto. Pode deixar a janela aberta.</p>
       </section>
 
       <section class="view" data-view="done" hidden>
         <div class="checkmark"><svg viewBox="0 0 26 26"><path d="M5 13.5l5.2 5.2L21 7.8"/></svg></div>
-        <h2>Nanachi instalado</h2>
-        <p class="muted" data-slot="done-detail">Tudo pronto.</p>
-        <div class="actions"><button type="button" class="button primary large" data-slot="launch">Abrir o Nanachi</button></div>
-        <button type="button" class="link" data-slot="done-close">Fechar</button>
+        <h2 data-i18n="installer.setup.doneTitle">Nanachi instalado</h2>
+        <p class="muted" data-slot="done-detail"></p>
+        <div class="actions"><button type="button" class="button primary large" data-slot="launch" data-i18n="installer.setup.launch">Abrir o Nanachi</button></div>
+        <button type="button" class="link" data-slot="done-close" data-i18n="installer.window.close">Fechar</button>
       </section>
 
       <section class="view" data-view="error" hidden>
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>Não foi possível instalar</h2>
+        <h2 data-i18n="installer.setup.errorTitle">Não foi possível instalar</h2>
         <p class="error-text" data-slot="error-message" role="alert"></p>
         <div class="actions">
-          <button type="button" class="button" data-slot="error-close">Fechar</button>
-          <button type="button" class="button primary" data-slot="retry">Tentar de novo</button>
+          <button type="button" class="button" data-slot="error-close" data-i18n="installer.window.close">Fechar</button>
+          <button type="button" class="button primary" data-slot="retry" data-i18n="installer.setup.retry">Tentar de novo</button>
         </div>
       </section>
     </main>
 
     <footer class="footer">
-      <span data-slot="version">Versão</span>
-      <span data-slot="scope">Só para o seu usuário. Não pede administrador.</span>
+      <span data-slot="version"></span>
+      <span data-slot="scope" data-i18n="installer.setup.scope">Só para o seu usuário. Não pede administrador.</span>
     </footer>
   </div>
 </div>

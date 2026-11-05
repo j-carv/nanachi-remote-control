@@ -47,8 +47,12 @@ export function dropDefaultApp(appOutDir: string): void {
   rmSync(join(appOutDir, 'resources', 'default_app.asar'), { force: true });
 }
 
-/** The Chromium locale packs worth shipping: the app is Portuguese, with English as the fallback. */
-export const ELECTRON_LANGUAGES = ['pt-BR', 'en-US'];
+/**
+ * The Chromium locale packs worth shipping: one for each language of Desktop, English being the fallback. They are not only
+ * for Chromium's own strings: `app.getLocale()` answers with a locale Chromium has a pack for, so without `es` and `es-419` a
+ * Spanish Windows would report `en-US` and Desktop's first run (and the installer, which has no setting yet) would pick English.
+ */
+export const ELECTRON_LANGUAGES = ['pt-BR', 'en-US', 'es', 'es-419'];
 
 export interface AppConfigInput {
   buildDir: string;

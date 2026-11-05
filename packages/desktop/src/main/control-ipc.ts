@@ -1,10 +1,12 @@
 import { CONTROL_INVOKE_CHANNELS, CONTROL_SYNC_CHANNELS } from '../common/channels.js';
 import type { ControlError, ControlResult, WindowState } from '../common/control-api.js';
+import { isLanguage, t, type Language } from '../common/i18n/index.js';
 import type { IpcCallerLike } from '../install/sender.js';
 import { controlFailure, toControlError } from './control-errors.js';
 import type { ControlActions } from './control-service.js';
 import { UntrustedSenderError } from './ipc.js';
 import { MAX_ROOT_LENGTH, MAX_ROOTS } from './roots-config.js';
+import { parseViewport } from './sessions-viewport.js';
 
 /** What a handler knows about its caller: the web contents and the frame that sent the message. */
 export type ControlIpcSender = IpcCallerLike;
@@ -33,6 +35,8 @@ export interface ControlIpcDeps {
   /** True only for the control window's own page (see `isControlCaller`). */
   isOwnSender(event: ControlIpcSender): boolean;
   version: string;
+  /** Desktop's language now; the page learns it from the preload handshake. */
+  language(): Language;
   window: ControlWindowActions;
   actions: ControlActions;
 }
@@ -94,28 +98,32 @@ export function registerControlIpc(deps: ControlIpcDeps): () => void {
 
   handleResult(c.overview, () => actions.overview());
   handleResult(c.restartDaemon, () => actions.restartDaemon());
-  handle(c.openSessions, () => actions.openSessions());
   handle(c.openDataFolder, () => actions.openDataFolder());
+  handle(c.sessionsViewport, (report) => {
+    const viewport = parseViewport(report);
+    if (viewport === null) throw new TypeError('sessionsViewport espera um retângulo e dois sinalizadores');
+    return actions.sessions.setViewport(viewport);
+  });
 
   handleResult(c.foldersGet, () => actions.folders.get());
   handle(c.foldersPick, () => actions.folders.pick());
   handleResult(c.foldersSave, (roots, restart, confirmedBusy) => {
-    if (!isStringList(roots) || typeof restart !== 'boolean') return invalid('Pedido inválido: a lista de pastas ou a opção de reiniciar não faz sentido.');
-    if (roots.length > MAX_ROOTS) return invalid(`Muitas pastas: o máximo é ${MAX_ROOTS}.`);
-    if (roots.some((path) => path.length > MAX_ROOT_LENGTH)) return invalid('Um dos caminhos é longo demais.');
+    if (!isStringList(roots) || typeof restart !== 'boolean') return invalid(t('main.control.invalidFoldersRequest'));
+    if (roots.length > MAX_ROOTS) return invalid(t('main.roots.tooMany', { max: MAX_ROOTS }));
+    if (roots.some((path) => path.length > MAX_ROOT_LENGTH)) return invalid(t('main.control.oneFolderTooLong'));
     // Only a number counts as a confirmation; anything else is dropped, which means "not confirmed".
     return typeof confirmedBusy === 'number' ? actions.folders.save(roots, restart, confirmedBusy) : actions.folders.save(roots, restart);
   });
   handle(c.foldersReveal, (path) => actions.folders.reveal(stringArg(path, 'foldersReveal')));
 
   handleResult(c.devicesList, () => actions.devices.list());
-  handleResult(c.devicesRevoke, (id) => (typeof id === 'string' ? actions.devices.revoke(id) : invalid('Identificador inválido.')));
+  handleResult(c.devicesRevoke, (id) => (typeof id === 'string' ? actions.devices.revoke(id) : invalid(t('main.control.invalidId'))));
   handleResult(c.devicesPairingCode, () => actions.devices.pairingCode());
 
   // Anything but a boolean means "from the daemon's cache".
   handleResult(c.accountsList, (refresh) => actions.accounts.list(typeof refresh === 'boolean' ? refresh : undefined));
   handleResult(c.accountsSetActive, (agentId, accountId) =>
-    typeof agentId === 'string' && typeof accountId === 'string' ? actions.accounts.setActive(agentId, accountId) : invalid('Identificador inválido.'),
+    typeof agentId === 'string' && typeof accountId === 'string' ? actions.accounts.setActive(agentId, accountId) : invalid(t('main.control.invalidId')),
   );
 
   handle(c.tailscaleStatus, () => actions.tailscale.status());
@@ -126,6 +134,10 @@ export function registerControlIpc(deps: ControlIpcDeps): () => void {
   handle(c.logsGet, () => actions.logs.get());
   handle(c.logsOpenFolder, () => actions.logs.openFolder());
 
+  handle(c.settingsSetLanguage, (language) => {
+    if (!isLanguage(language)) throw new TypeError('setLanguage espera pt-BR, en ou es');
+    return actions.settings.setLanguage(language);
+  });
   handle(c.settingsGetAutostart, () => actions.settings.getAutostart());
   handle(c.settingsSetAutostart, (value) => {
     if (typeof value !== 'boolean') throw new TypeError('setAutostart espera true ou false');
@@ -137,7 +149,7 @@ export function registerControlIpc(deps: ControlIpcDeps): () => void {
 
   // Synchronous handshake of the preload: answered from memory, and a stranger gets nothing (not even an error).
   const onInit = (event: SyncEvent): void => {
-    event.returnValue = deps.isOwnSender(event) ? { version: deps.version } : null;
+    event.returnValue = deps.isOwnSender(event) ? { version: deps.version, language: deps.language() } : null;
   };
   ipcMain.on(CONTROL_SYNC_CHANNELS.init, onInit);
 

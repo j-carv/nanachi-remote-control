@@ -8,13 +8,16 @@ import type {
   AgentAccountsInfo,
   ControlApi,
   ControlResult,
+  ControlSection,
   DeviceInfo,
+  SessionsViewState,
   FoldersState,
   LogsInfo,
   OverviewInfo,
   SaveRootsResult,
   WindowState,
 } from '../common/control-api.js';
+import type { Language } from '../common/i18n/languages.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from '../common/types.js';
 import type { BridgeIpc } from './bridge.js';
 
@@ -23,7 +26,7 @@ import type { BridgeIpc } from './bridge.js';
  * channel that is not on it throws before anything reaches `ipcRenderer`. Event listeners receive the payload only,
  * never the IPC event. What goes in is validated by `main/control-ipc.ts`; what comes back is typed by `ControlApi`.
  */
-export function createControlBridge(ipc: BridgeIpc, version: string): ControlApi {
+export function createControlBridge(ipc: BridgeIpc, version: string, language: Language): ControlApi {
   function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     if (!ALLOWED_CONTROL_INVOKE_CHANNELS.has(channel)) throw new Error(`canal não permitido: ${channel}`);
     return ipc.invoke(channel, ...args) as Promise<T>;
@@ -40,6 +43,9 @@ export function createControlBridge(ipc: BridgeIpc, version: string): ControlApi
   const c = CONTROL_INVOKE_CHANNELS;
   return {
     version,
+    language,
+    onNavigate: (callback) => subscribe<ControlSection>(CONTROL_EVENT_CHANNELS.navigate, callback),
+    onLanguage: (callback) => subscribe<Language>(CONTROL_EVENT_CHANNELS.language, callback),
     window: {
       minimize: () => invoke<void>(c.windowMinimize),
       toggleMaximize: () => invoke<WindowState>(c.windowToggleMaximize),
@@ -50,8 +56,11 @@ export function createControlBridge(ipc: BridgeIpc, version: string): ControlApi
     overview: () => invoke<ControlResult<OverviewInfo>>(c.overview),
     onDaemonStatus: (callback) => subscribe<DaemonStatus>(CONTROL_EVENT_CHANNELS.daemonStatus, callback),
     restartDaemon: () => invoke<ControlResult<DaemonStatus>>(c.restartDaemon),
-    openSessions: () => invoke<void>(c.openSessions),
     openDataFolder: () => invoke<void>(c.openDataFolder),
+    sessions: {
+      setViewport: (viewport) => invoke<void>(c.sessionsViewport, viewport),
+      onState: (callback) => subscribe<SessionsViewState>(CONTROL_EVENT_CHANNELS.sessionsView, callback),
+    },
     folders: {
       get: () => invoke<ControlResult<FoldersState>>(c.foldersGet),
       pick: () => invoke<string[]>(c.foldersPick),
@@ -87,6 +96,7 @@ export function createControlBridge(ipc: BridgeIpc, version: string): ControlApi
       openFolder: () => invoke<void>(c.logsOpenFolder),
     },
     settings: {
+      setLanguage: (value) => invoke<Language>(c.settingsSetLanguage, value),
       getAutostart: () => invoke<{ value: boolean; supported: boolean }>(c.settingsGetAutostart),
       setAutostart: (value) => invoke<{ value: boolean; supported: boolean }>(c.settingsSetAutostart, value),
       checkForUpdate: () => invoke<UpdateCheckResult>(c.settingsCheckForUpdate),

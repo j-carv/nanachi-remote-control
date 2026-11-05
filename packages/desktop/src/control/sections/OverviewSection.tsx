@@ -1,7 +1,9 @@
 import { ChevronRight, FolderOpen, MessagesSquare, Network, Play, RotateCw, Server, Smartphone } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ControlSection, OverviewInfo } from '../../common/control-api.js';
 import type { DaemonStatus, TailscaleStatus } from '../../common/types.js';
+import { errorMessage } from '../lib/errors.js';
 import { restartedMessage } from '../lib/save.js';
 import { daemonSummary, tailscaleSummary, type StatusSummary } from '../lib/status.js';
 import { useApi } from '../state/api.js';
@@ -45,15 +47,16 @@ export interface OverviewViewProps {
  * (a failed start leaves nothing owned, `mode` is `none`, and that is exactly when a retry is wanted). A daemon Desktop did
  * not start is not Desktop's to restart.
  */
-export function daemonAction(daemon: DaemonStatus): { label: string; icon: 'restart' | 'start' } | null {
+export function daemonAction(daemon: DaemonStatus): { label: 'common.retry' | 'overview.start' | 'overview.restart'; icon: 'restart' | 'start' } | null {
   if (daemon.mode === 'attached') return null;
-  if (daemon.state === 'error') return { label: 'Tentar de novo', icon: 'restart' };
-  if (daemon.state === 'stopped') return { label: 'Iniciar', icon: 'start' };
-  return { label: 'Reiniciar', icon: 'restart' };
+  if (daemon.state === 'error') return { label: 'common.retry', icon: 'restart' };
+  if (daemon.state === 'stopped') return { label: 'overview.start', icon: 'start' };
+  return { label: 'overview.restart', icon: 'restart' };
 }
 
 function DaemonRow({ daemon, restarting, onRestart }: { daemon: DaemonStatus; restarting: boolean; onRestart: () => void }) {
-  const summary = daemonSummary(daemon);
+  const { t } = useTranslation();
+  const summary = daemonSummary(daemon, t);
   const action = daemonAction(daemon);
   return (
     <Row
@@ -67,8 +70,8 @@ function DaemonRow({ daemon, restarting, onRestart }: { daemon: DaemonStatus; re
         <>
           <div>{summary.detail}</div>
           <div className="mt-0.5 flex flex-wrap gap-x-4">
-            <Fact label="Porta">{daemon.port}</Fact>
-            {daemon.version ? <Fact label="Versão">{daemon.version}</Fact> : null}
+            <Fact label={t('overview.port')}>{daemon.port}</Fact>
+            {daemon.version ? <Fact label={t('overview.version')}>{daemon.version}</Fact> : null}
             {daemon.pid !== null ? <Fact label="PID">{daemon.pid}</Fact> : null}
           </div>
         </>
@@ -76,7 +79,7 @@ function DaemonRow({ daemon, restarting, onRestart }: { daemon: DaemonStatus; re
       trailing={
         action ? (
           <Button icon={action.icon === 'start' ? <Play aria-hidden="true" /> : <RotateCw aria-hidden="true" />} loading={restarting} onClick={onRestart}>
-            {action.label}
+            {t(action.label)}
           </Button>
         ) : null
       }
@@ -85,34 +88,35 @@ function DaemonRow({ daemon, restarting, onRestart }: { daemon: DaemonStatus; re
 }
 
 function TailscaleRow({ status, busy, onStart, onLogin, onNavigate }: { status: TailscaleStatus; busy: boolean; onStart: () => void; onLogin: (url: string) => void; onNavigate: () => void }) {
-  const summary = tailscaleSummary(status);
+  const { t } = useTranslation();
+  const summary = tailscaleSummary(status, t);
   const address = status.state === 'running' ? `https://${status.dnsName}` : null;
   let trailing = null;
   if (status.state === 'off') {
     trailing = (
       <Button variant="secondary" loading={busy} onClick={onStart}>
-        Ligar
+        {t('overview.turnOn')}
       </Button>
     );
   } else if (status.state === 'needs_login') {
     trailing = (
       <Button variant="primary" onClick={() => onLogin(status.authUrl)}>
-        Entrar no Tailscale
+        {t('common.tailscaleLogin')}
       </Button>
     );
   } else if (status.state === 'running' && address) {
     trailing = (
       <>
-        <CopyButton text={address} label="Copiar endereço" />
+        <CopyButton text={address} label={t('common.copyAddress')} />
         <Button variant="ghost" onClick={onNavigate}>
-          Gerenciar
+          {t('overview.manage')}
         </Button>
       </>
     );
   } else if (status.state === 'error') {
     trailing = (
       <Button variant="ghost" onClick={onNavigate}>
-        Ver detalhes
+        {t('overview.details')}
       </Button>
     );
   }
@@ -127,7 +131,7 @@ function TailscaleRow({ status, busy, onStart, onLogin, onNavigate }: { status: 
       description={
         address ? (
           <>
-            <div>Endereço para o iPhone</div>
+            <div>{t('common.addressForPhone')}</div>
             <div className="selectable mt-0.5 truncate font-mono text-[12px] text-foreground">{address}</div>
           </>
         ) : (
@@ -160,21 +164,21 @@ function ActivityRow({ label, value, hint, onOpen }: { label: string; value: num
 
 /** The overview, as plain data in and callbacks out. */
 export function OverviewView({ info, restarting, tailscaleBusy, onRestart, onStartTailscale, onTailscaleLogin, onNavigate, onOpenDataFolder }: OverviewViewProps) {
+  const { t } = useTranslation();
   const { daemon, tailscale, activity } = info;
   return (
     <>
       {daemon.restricted ? (
-        <Notice tone="attention" title="Acesso local bloqueado">
-          {daemon.message ??
-            'O daemon só aceita acessos pelo Tailscale (allowedTailscaleLogins no config.json), então este painel não consegue usá-lo. Esvazie essa lista na pasta de dados do Nanachi.'}
+        <Notice tone="attention" title={t('overview.restrictedTitle')}>
+          {daemon.message ?? t('overview.restrictedFallback')}
         </Notice>
       ) : null}
       {daemon.state === 'error' ? (
-        <Notice tone="destructive" title="O daemon não conseguiu iniciar">
-          {daemon.message ?? 'Veja as últimas linhas do log para entender o motivo.'}
+        <Notice tone="destructive" title={t('overview.startFailedTitle')}>
+          {daemon.message ?? t('overview.startFailedFallback')}
           {daemon.logTail.length > 0 ? (
             <details className="mt-2">
-              <summary className="cursor-default text-foreground">Últimas linhas do log</summary>
+              <summary className="cursor-default text-foreground">{t('overview.lastLines')}</summary>
               <pre className="selectable mt-1.5 max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-[11.5px] leading-[1.5] whitespace-pre-wrap text-foreground">
                 {daemon.logTail.join('\n')}
               </pre>
@@ -184,17 +188,17 @@ export function OverviewView({ info, restarting, tailscaleBusy, onRestart, onSta
       ) : null}
 
       <section aria-labelledby="overview-services">
-        <SectionHeading id="overview-services">Serviços</SectionHeading>
+        <SectionHeading id="overview-services">{t('overview.servicesHeading')}</SectionHeading>
         <Group>
           <DaemonRow daemon={daemon} restarting={restarting} onRestart={onRestart} />
           <TailscaleRow status={tailscale} busy={tailscaleBusy} onStart={onStartTailscale} onLogin={onTailscaleLogin} onNavigate={() => onNavigate('tailscale')} />
           <Row
             icon={FolderOpen}
-            title="Pasta de dados"
+            title={t('common.dataFolder')}
             description={<span className="selectable block truncate font-mono text-[12px]">{info.dataFolder}</span>}
             trailing={
               <Button icon={<FolderOpen aria-hidden="true" />} onClick={onOpenDataFolder}>
-                Abrir pasta
+                {t('common.openFolder')}
               </Button>
             }
           />
@@ -202,15 +206,15 @@ export function OverviewView({ info, restarting, tailscaleBusy, onRestart, onSta
       </section>
 
       <section aria-labelledby="overview-activity">
-        <SectionHeading id="overview-activity">Atividade</SectionHeading>
+        <SectionHeading id="overview-activity">{t('overview.activityHeading')}</SectionHeading>
         {activity ? (
           <Group>
             <ActivityRow label="Workspaces" value={activity.workspaces} />
-            <ActivityRow label="Sessões" value={activity.sessions} hint={activity.busySessions > 0 ? `${activity.busySessions} em andamento` : undefined} />
-            <ActivityRow label="Aparelhos pareados" value={activity.devices} onOpen={() => onNavigate('devices')} />
+            <ActivityRow label={t('overview.sessions')} value={activity.sessions} hint={activity.busySessions > 0 ? t('overview.busy', { busy: activity.busySessions }) : undefined} />
+            <ActivityRow label={t('overview.pairedDevices')} value={activity.devices} onOpen={() => onNavigate('devices')} />
           </Group>
         ) : (
-          <Notice>Os números de atividade não estão disponíveis agora: o daemon não respondeu ou não reconheceu este app.</Notice>
+          <Notice>{t('overview.activityUnavailable')}</Notice>
         )}
       </section>
     </>
@@ -227,6 +231,7 @@ function OverviewSkeleton() {
 }
 
 export function OverviewSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const shell = useShell();
   const toast = useToast();
@@ -248,10 +253,10 @@ export function OverviewSection() {
     setRestarting(true);
     try {
       const result = await api.restartDaemon();
-      if (result.ok) toast(restartedMessage(result.value));
-      else toast({ tone: 'error', title: 'Não foi possível reiniciar', message: result.message });
+      if (result.ok) toast(restartedMessage(result.value, t));
+      else toast({ tone: 'error', title: t('restart.failedTitle'), message: errorMessage(result, t) });
     } catch {
-      toast({ tone: 'error', message: 'Não foi possível reiniciar o daemon.' });
+      toast({ tone: 'error', message: t('restart.failed') });
     } finally {
       setRestarting(false);
       setConfirmRestart(false);
@@ -264,7 +269,7 @@ export function OverviewSection() {
     try {
       shell.setTailscale(await api.tailscale.start());
     } catch {
-      toast({ tone: 'error', message: 'Não foi possível ligar o Tailscale.' });
+      toast({ tone: 'error', message: t('common.tailscaleStartFailed') });
     } finally {
       setTailscaleBusy(false);
     }
@@ -273,10 +278,10 @@ export function OverviewSection() {
   const actions = (
     <>
       <Button icon={<Smartphone aria-hidden="true" />} onClick={() => shell.navigate('devices', { pairing: true })}>
-        Parear iPhone
+        {t('overview.pairIphone')}
       </Button>
       <Button variant="primary" icon={<MessagesSquare aria-hidden="true" />} onClick={shell.openSessions}>
-        Abrir sessões
+        {t('common.openSessions')}
       </Button>
     </>
   );
@@ -294,9 +299,9 @@ export function OverviewSection() {
         // Only a daemon that is up has sessions to interrupt; starting one that stopped or failed needs no question.
         onRestart={() => (info.daemon.state === 'running' ? setConfirmRestart(true) : void restart())}
         onStartTailscale={() => void startTailscale()}
-        onTailscaleLogin={(url) => reported(() => api.tailscale.openLogin(url), 'Não foi possível abrir a página de login do Tailscale.')}
+        onTailscaleLogin={(url) => reported(() => api.tailscale.openLogin(url), t('common.openLoginFailed'))}
         onNavigate={(section) => shell.navigate(section)}
-        onOpenDataFolder={() => reported(() => api.openDataFolder(), 'Não foi possível abrir a pasta de dados.')}
+        onOpenDataFolder={() => reported(() => api.openDataFolder(), t('common.openDataFolderFailed'))}
       />
     );
   }

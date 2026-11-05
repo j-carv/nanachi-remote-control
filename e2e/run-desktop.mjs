@@ -1,7 +1,9 @@
 /*
  * Smoke do Nanachi Desktop (Electron em desenvolvimento, `electron packages/desktop`): o centro de controle abre ao iniciar e
- * funciona com o processo principal de verdade; o painel de sessões carrega a PWA do daemon que o Desktop sobe, a seção
- * "Desktop" aparece em Ajustes e o cartão "Tailscale embutido" mostra os eventos de um sidecar FALSO (needs_login e depois running).
+ * funciona com o processo principal de verdade; a seção "Sessões" do próprio centro de controle (uma vista do Electron sobre a
+ * área de conteúdo) carrega a PWA do daemon que o Desktop sobe, a seção "Desktop" aparece em Ajustes da PWA e o cartão
+ * "Tailscale embutido" mostra os eventos de um sidecar FALSO (needs_login e depois running); o idioma (pt-BR, English, Español)
+ * muda o centro de controle, o menu da bandeja e o idioma da PWA.
  *
  * Segurança: o sidecar real (nanachi-tsnet.exe) registraria um dispositivo na tailnet de quem fizer login, então este
  * script nunca o inicia. Ele compila `packages/desktop/test/fixtures/fake-tsnet` (só biblioteca padrão do Go, sem rede)
@@ -23,16 +25,28 @@
  *      old one gone) and /api/roots reflects it; Aparelhos lists "Este app" (and its pairing code and revoke work);
  *   2. screenshots of every section, light and dark, go to a temp folder OUTSIDE the repository, whose path is printed
  *      (nothing from the control center is written under e2e/screenshots);
- *   3. "Abrir sessões" opens the PWA window: the daemon's origin (free port, not 7777 or 7780, NANACHI_DESKTOP_HOME and
- *      userData temporary, empty allowlist); config.json keeps the port this script chose, and a NANACHI_HOME decoy in
- *      the environment (the standalone daemon's folder) is never read or created;
+ *   3. the "Sessões" section (Ctrl+8, the sidebar, the overview's "Abrir sessões" and the tray item) shows the PWA in a view over
+ *      the content area: the daemon's origin (free port, not 7777 or 7780, NANACHI_DESKTOP_HOME and userData temporary, empty
+ *      allowlist), `view.getBounds()` equal to the content rectangle the page reports (below the 40 px title bar, right of the
+ *      64 px icon rail that the sidebar always is on this section, whatever was saved: no toggle, Ctrl+B does nothing, native
+ *      titles instead of portal tooltips, the saved choice back when leaving; following the window size, and at the smallest the
+ *      window can be the PWA is still in its wide layout), hidden whenever another section is on screen, Ctrl+1..8 also work
+ *      from inside the PWA, the PWA never gets `window.nanachiControl`, and the old separate PWA window is gone; config.json
+ *      keeps the port this script chose, and a NANACHI_HOME decoy in the environment (the standalone daemon's folder) is never
+ *      read or created; a daemon restart reloads the view; a PWA page whose renderer dies is replaced once, a second death
+ *      within 30 s is not (the section says so) and opening the section again tries once more; screenshots of the whole window
+ *      (light and dark) go to the temp folder;
  *   4. Ajustes (in the PWA) has the "Desktop" group with the daemon running, "Iniciar com o Windows", the pairing code and the version;
  *   5. turning "Tailscale embutido" on starts only the fake sidecar, with the contract flags and TS_NO_LOGS_NO_SUPPORT=true,
  *      and the card shows needs_login (link) and then running (https address); the control center follows the same events;
  *   6. the pairing code shows up in a sheet;
  *   7. turning it off closes the sidecar's stdin (polite stop) and the process goes away;
  *   8. quitting Desktop with Tailscale on takes down the sidecar and the daemon it started;
- *   9. opening again restores "Tailscale embutido" by itself (tailscaleEnabled).
+ *   9. opening again restores "Tailscale embutido" by itself (tailscaleEnabled);
+ *  10. languages: the first run takes Desktop's language from the system locale (`--lang`), a stored language wins over it, the
+ *      "Idioma" row of Ajustes switches the control center (sidebar, title bar, headings) and the tray menu labels at once,
+ *      the PWA in the view gets `nanachi.language` from Desktop on a change, live and without reloading the page (and a later
+ *      change made inside the PWA stays), for English and Spanish and back.
  *
  * Como rodar (da raiz, com o supervisor já tendo publicado o daemon e a PWA; compile o Desktop antes):
  *   npm run build:desktop -w @nanachi/desktop
@@ -211,10 +225,11 @@ function desktopEnv() {
   };
 }
 
-async function launch() {
+/** `locale` is what the operating system would say (`--lang`): only the very first run of Desktop reads it. */
+async function launch(locale) {
   const instance = await electron.launch({
     executablePath: electronBinary,
-    args: [desktopDir],
+    args: [desktopDir, `--lang=${locale}`],
     cwd: repoRoot,
     env: desktopEnv(),
   });
@@ -226,7 +241,7 @@ async function launch() {
 
 // ---------- the control center window ----------
 
-/** The sections in sidebar order (Ctrl+1..7), with the title the page shows. */
+/** The sections in sidebar order (Ctrl+1..8), with the title the page shows. */
 const SECTIONS = [
   { id: 'overview', label: 'Visão geral' },
   { id: 'folders', label: 'Pastas e discos' },
@@ -235,7 +250,12 @@ const SECTIONS = [
   { id: 'tailscale', label: 'Tailscale' },
   { id: 'logs', label: 'Logs' },
   { id: 'settings', label: 'Ajustes' },
+  { id: 'sessions', label: 'Sessões' },
 ];
+const SESSIONS = SECTIONS[7];
+/** The sidebar on Sessões: always the 64 px icon rail. The expanded sidebar (232 px) is back on every other section. */
+const RAIL = 64;
+const EXPANDED = 232;
 
 const isControlUrl = (url) => url.startsWith('file:') && url.endsWith('/control/index.html');
 
@@ -325,17 +345,19 @@ async function shotControl(instance, page, name, { toasts = false } = {}) {
 }
 
 const sidebar = (page) => page.locator('nav#sidebar');
+/** The sidebar's item of a section. */
+const navItem = (page, section) => sidebar(page).locator('ul').getByRole('button', { name: section.label });
 
 async function sectionIsCurrent(page, section) {
   const title = (await page.locator('#page-title').textContent().catch(() => null)) ?? '';
-  const current = await sidebar(page).getByRole('button', { name: section.label }).getAttribute('aria-current');
+  const current = await navItem(page, section).getAttribute('aria-current');
   return title === section.label && current === 'page';
 }
 
 /** Opens one section with Ctrl+N or by clicking the sidebar, and waits until it finished loading with no error state. */
 async function openSection(page, section, how = 'keyboard') {
-  if (how === 'keyboard') await page.keyboard.press(`Control+${SECTIONS.indexOf(section) + 1}`);
-  else await sidebar(page).getByRole('button', { name: section.label }).click();
+  if (how === 'keyboard') await page.keyboard.press(`Control+${SECTIONS.findIndex((candidate) => candidate.id === section.id) + 1}`);
+  else await navItem(page, section).click();
   await until(`${section.label} is the current section`, () => sectionIsCurrent(page, section), 10_000, page);
   await until(
     `${section.label} finished loading`,
@@ -589,21 +611,429 @@ function checkDesktopLog() {
   assert.deepEqual(bad, [], 'unexpected control center lines in desktop-daemon.log');
 }
 
-/** "Abrir sessões" in the control center: the PWA window loads from the daemon's origin. */
-async function openSessionsWindow(instance, control) {
-  await sidebar(control).getByRole('button', { name: 'Abrir sessões', exact: true }).click();
-  let panel = null;
+/**
+ * The control window and its sessions view as the main process sees them: `view.getBounds()` and `view.getVisible()` are what
+ * is really on screen (the page only reports where it wants the view).
+ */
+async function sessionsViewState(instance) {
+  return instance.evaluate(({ BrowserWindow }, base) => {
+    const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().endsWith('/control/index.html'));
+    if (win === undefined) return null;
+    const children = win.contentView.children;
+    const view = children.find((child) => child.webContents.getURL().startsWith(base)) ?? null;
+    return {
+      windows: BrowserWindow.getAllWindows().length,
+      children: children.length,
+      content: win.getContentBounds(),
+      visible: view === null ? null : view.getVisible(),
+      bounds: view === null ? null : view.getBounds(),
+      url: view === null ? null : view.webContents.getURL(),
+    };
+  }, origin);
+}
+
+/** The content area of the page (`<main>`), in whole pixels, in the order of `view.getBounds()`. */
+const contentRect = (page) =>
+  page.evaluate(() => {
+    const rect = document.querySelector('main#main').getBoundingClientRect();
+    return { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.right) - Math.round(rect.left), height: Math.round(rect.bottom) - Math.round(rect.top) };
+  });
+
+/**
+ * The view covers exactly the content area: below the 40 px title bar, right of the sidebar (`sidebarWidth`), down to the
+ * window's edges; and the page's own idea of that rectangle is the same one.
+ */
+async function expectViewGeometry(instance, control, sidebarWidth, why) {
+  let last = null;
   await until(
-    'the sessions window loads the PWA',
+    `${why}: the view covers the content area (x ${sidebarWidth}, y 40, to the window edges)`,
+    async () => {
+      const state = await sessionsViewState(instance);
+      if (state === null || state.bounds === null || state.visible !== true) return false;
+      const wanted = { x: sidebarWidth, y: 40, width: state.content.width - sidebarWidth, height: state.content.height - 40 };
+      const reported = await contentRect(control);
+      last = JSON.stringify({ view: state.bounds, page: reported, wanted });
+      return JSON.stringify(state.bounds) === JSON.stringify(wanted) && JSON.stringify(reported) === JSON.stringify(wanted);
+    },
+    10_000,
+    control,
+  ).catch((error) => {
+    throw new Error(`${error.message}; last seen ${last}`);
+  });
+}
+
+/** The sessions section (Ctrl+8, or the sidebar): returns the PWA page the view shows, loaded from the daemon's origin. */
+async function showSessions(instance, control, how = 'keyboard', section = SESSIONS) {
+  await openSection(control, section, how);
+  let pwa = null;
+  await until(
+    'the sessions view loads the PWA',
     () => {
-      panel = instance.windows().find((window) => window.url().startsWith(`${origin}/`)) ?? null;
-      return panel !== null;
+      pwa = instance.windows().find((window) => window.url().startsWith(`${origin}/`)) ?? null;
+      return pwa !== null;
     },
     90_000,
     control,
   );
-  await panel.waitForLoadState('domcontentloaded');
-  return panel;
+  await pwa.waitForLoadState('domcontentloaded');
+  await until('the sessions view is shown', async () => (await sessionsViewState(instance))?.visible === true, 20_000, control);
+  return pwa;
+}
+
+/**
+ * A screenshot of the WHOLE window (the page and the view over it, as the user sees it), light and dark. The PWA page gets the
+ * same colour scheme by emulation, like the control center page (the media query does not follow `nativeTheme` here).
+ */
+async function shotWindow(instance, control, name, pwa) {
+  const win = await instance.browserWindow(control);
+  const sourceId = await win.evaluate((w) => w.getMediaSourceId());
+  for (const scheme of ['light', 'dark']) {
+    await setTheme(instance, control, scheme);
+    await pwa.emulateMedia({ colorScheme: scheme });
+    await control.waitForTimeout(700);
+    const png = await instance.evaluate(
+      async ({ desktopCapturer }, wanted) => {
+        const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: wanted.width, height: wanted.height } });
+        const found = sources.find((source) => source.id === wanted.id);
+        return found === undefined ? null : found.thumbnail.toPNG().toString('base64');
+      },
+      { id: sourceId, width: 2000, height: 1300 },
+    );
+    assert.ok(png !== null, 'the window could be captured');
+    writeFileSync(join(controlShots, `${name}-${scheme}.png`), Buffer.from(png, 'base64'));
+    log(`screenshot ${name} (${scheme}, whole window)`);
+  }
+  await setTheme(instance, control, 'light');
+  await pwa.emulateMedia({ colorScheme: 'light' });
+  await instance.evaluate(({ nativeTheme }) => {
+    nativeTheme.themeSource = 'system';
+  });
+}
+
+/** Every `Menu.buildFromTemplate` of the main process is recorded from here on: the tray rebuilds its menu on every change. */
+async function installMenuHook(instance) {
+  await instance.evaluate(({ Menu }) => {
+    globalThis.__e2eMenus = [];
+    const original = Menu.buildFromTemplate.bind(Menu);
+    Menu.buildFromTemplate = (template) => {
+      globalThis.__e2eMenus.push(template);
+      return original(template);
+    };
+  });
+}
+
+/** The tray menu as it was last built: the label of each item (`separator` for a separator). */
+const trayLabels = (instance) => instance.evaluate(() => globalThis.__e2eMenus?.at(-1)?.map((item) => item.label ?? item.type) ?? null);
+
+/** Makes the tray rebuild its menu (the "start with Windows" setter refreshes it even where it is not supported). */
+const rebuildTray = (control) => control.evaluate(() => window.nanachiControl.settings.setAutostart(false));
+
+/** The same click the tray would receive: main runs the item's handler. */
+const clickTrayItem = (instance, label) =>
+  instance.evaluate((_electron, wanted) => {
+    const item = globalThis.__e2eMenus.at(-1).find((candidate) => candidate.label === wanted);
+    if (item === undefined) throw new Error(`no tray item "${wanted}"`);
+    item.click(item, undefined, {});
+  }, label);
+
+/**
+ * The "Sessões" section: the PWA in a view over the content area of the control center, with the old separate window gone.
+ * Returns the PWA page.
+ */
+async function checkSessionsSection(instance, control) {
+  const pwa = await showSessions(instance, control);
+  const state = await sessionsViewState(instance);
+  assert.equal(state.windows, 1, 'the PWA has no window of its own any more: the app has exactly one BrowserWindow');
+  assert.equal(state.children, 1, 'the control window carries exactly one view');
+  assert.ok(state.url.startsWith(`${origin}/`), "the view loads the daemon's origin");
+  assert.equal(await pwa.evaluate(() => typeof window.nanachiControl), 'undefined', 'the PWA view never gets the control API');
+  assert.equal(await pwa.evaluate(() => typeof window.nanachiDesktop), 'object', "the PWA view has the panel's own small bridge");
+  await pwa.getByRole('button', { name: 'Ajustes', exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  log('Sessões: the PWA rendered inside the control center (one window, one view, no control API in the view)');
+
+  await expectViewGeometry(instance, control, RAIL, 'Sessões open (the sidebar is the rail)');
+  log(`view.getBounds() = ${JSON.stringify(state.bounds)}: below the title bar, right of the 64 px rail`);
+
+  // On Sessões the sidebar is the 64 px rail whatever was saved: nothing to toggle, Ctrl+B does nothing, no second "Abrir sessões"
+  // button, and the tooltips are native titles (a portal of the page would be painted under the view).
+  assert.equal(await control.getByRole('button', { name: 'Recolher a barra lateral' }).count(), 0, 'no collapse button on Sessões');
+  assert.equal(await control.getByRole('button', { name: 'Expandir a barra lateral' }).count(), 0, 'no expand button on Sessões');
+  assert.equal(await sidebar(control).getByRole('button', { name: 'Abrir sessões', exact: true }).count(), 0, 'the sidebar has no "Abrir sessões" button any more');
+  assert.equal(await sidebar(control).locator('ul button[title]').count(), SECTIONS.length, 'every rail item has a native title');
+  assert.equal(await sidebar(control).locator('ul button[title]').first().getAttribute('title'), 'Visão geral (Ctrl+1)');
+  assert.equal(await control.locator('header button[title]').count(), 3, 'the three window buttons have native titles on Sessões');
+  await control.keyboard.press('Control+b');
+  await expectViewGeometry(instance, control, RAIL, 'Ctrl+B on Sessões');
+  await openSection(control, SECTIONS[0]);
+  await until('the saved (expanded) sidebar is back on the Visão geral', async () => (await sidebarWidth(control)) === EXPANDED, 10_000, control);
+  assert.equal(await sidebar(control).locator('button[title]').count(), 0, 'no native titles outside Sessões (the portal tooltips are used)');
+  await control.getByRole('button', { name: 'Recolher a barra lateral' }).click();
+  await until('the sidebar collapsed to the rail on the Visão geral', async () => (await sidebarWidth(control)) === RAIL, 10_000, control);
+  await openSection(control, SESSIONS);
+  await expectViewGeometry(instance, control, RAIL, 'Sessões with a collapsed choice saved');
+  await openSection(control, SECTIONS[0]);
+  assert.equal(await sidebarWidth(control), RAIL, 'the collapsed choice is still what is saved');
+  await control.getByRole('button', { name: 'Expandir a barra lateral' }).click();
+  await until('the sidebar expanded again', async () => (await sidebarWidth(control)) === EXPANDED, 10_000, control);
+  await openSection(control, SESSIONS);
+  await expectViewGeometry(instance, control, RAIL, 'Sessões again');
+  log('on Sessões the sidebar is the rail (no toggle, Ctrl+B ignored, native titles); the saved choice comes back on the other sections');
+
+  // The window is resized: the view follows.
+  const original = state.content;
+  const resize = (width, height) =>
+    instance.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().endsWith('/control/index.html'));
+      win.setContentSize(size.width, size.height);
+    }, { width, height });
+  await resize(1000, 700);
+  await expectViewGeometry(instance, control, RAIL, 'window resized to 1000x700');
+  // At the smallest size the window can be, the PWA is still in its wide layout (two panes), never the phone's: the view is
+  // at least 900 px wide and 500 px tall, so the screen that is open is not remounted by crossing the breakpoint.
+  await resize(300, 300);
+  await expectViewGeometry(instance, control, RAIL, 'window at its minimum size');
+  const smallest = (await sessionsViewState(instance)).bounds;
+  assert.ok(smallest.width >= 900 && smallest.height >= 500, `the view at the smallest window is ${smallest.width}x${smallest.height}, under the 900x500 of the wide layout`);
+  assert.deepEqual(
+    await pwa.evaluate(() => ({ wide: matchMedia('(min-width: 900px) and (min-height: 500px)').matches, shell: document.querySelectorAll('[data-slot="wide-shell"]').length })),
+    { wide: true, shell: 1 },
+    'the PWA in the smallest window is in its wide layout',
+  );
+  log(`the smallest window gives the view ${smallest.width}x${smallest.height}: the PWA stays in its wide layout`);
+  await resize(original.width, original.height);
+  await expectViewGeometry(instance, control, RAIL, 'window back to its size');
+  log('the view follows the window size');
+
+  // Another section hides it; coming back shows the same page again.
+  await openSection(control, SECTIONS[0]);
+  await until('the view is hidden while another section is on screen', async () => (await sessionsViewState(instance)).visible === false, 10_000, control);
+  await openSection(control, SESSIONS);
+  await expectViewGeometry(instance, control, RAIL, 'back on Sessões');
+  assert.equal((await sessionsViewState(instance)).children, 1, 'coming back reuses the same view');
+  log('switching away hides the view and Ctrl+8 shows it again');
+
+  // The PWA holds the keyboard while it is on screen: Ctrl+1..8 still work from inside it. The key goes through the view's
+  // own input pipeline (`sendInputEvent`, what a real key press does); a synthetic CDP key event skips `before-input-event`.
+  await instance.evaluate(({ BrowserWindow }, base) => {
+    const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().endsWith('/control/index.html'));
+    const view = win.contentView.children.find((child) => child.webContents.getURL().startsWith(base));
+    view.webContents.sendInputEvent({ type: 'keyDown', keyCode: '2', modifiers: ['control'] });
+  }, origin);
+  await until('Ctrl+2 pressed inside the PWA selects Pastas e discos', () => sectionIsCurrent(control, SECTIONS[1]), 10_000, control);
+  await until('the view is hidden again', async () => (await sessionsViewState(instance)).visible === false, 10_000, control);
+  await openSection(control, SESSIONS);
+  await expectViewGeometry(instance, control, RAIL, 'after the shortcut round trip');
+  log('Ctrl+2 pressed inside the PWA went to the control center');
+
+  // The overview's "Abrir sessões" button goes to the section (Sessões is an item of the list: the sidebar has no second way in).
+  await openSection(control, SECTIONS[0]);
+  await control.locator('main').getByRole('button', { name: 'Abrir sessões', exact: true }).click();
+  await until('the overview "Abrir sessões" goes to Sessões', () => sectionIsCurrent(control, SESSIONS), 10_000, control);
+  await expectViewGeometry(instance, control, RAIL, 'overview button');
+  log('the overview "Abrir sessões" button navigates to Sessões');
+
+  // The tray item brings the control center (even a hidden one) to Sessões.
+  await installMenuHook(instance);
+  await rebuildTray(control);
+  await until('the tray menu was rebuilt', async () => (await trayLabels(instance)) !== null, 10_000);
+  assert.deepEqual(await trayLabels(instance), LANGUAGE_EXPECTATIONS['pt-BR'].tray, 'the tray menu of the first run (pt-BR)');
+  await openSection(control, SECTIONS[0]);
+  const window = await instance.browserWindow(control);
+  await control.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await until('Fechar hides the window', async () => !(await window.evaluate((w) => w.isVisible())), 10_000, control);
+  await clickTrayItem(instance, 'Abrir sessões');
+  await until('the tray item shows the window again', () => window.evaluate((w) => w.isVisible() && !w.isMinimized()), 10_000, control);
+  await until('the tray item opens the Sessões section', () => sectionIsCurrent(control, SESSIONS), 10_000, control);
+  await expectViewGeometry(instance, control, RAIL, 'tray item');
+  log('the tray item "Abrir sessões" opened the hidden control center on Sessões');
+
+  await pwa.getByRole('button', { name: 'Ajustes', exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  await control.waitForTimeout(500);
+  await shotWindow(instance, control, '08-sessions', pwa);
+  assertNoControlProblems('Sessões');
+  return pwa;
+}
+
+/**
+ * A daemon restart while Sessões is open: the page shows its own "starting" state instead of the PWA (the view is hidden),
+ * and the view loads the PWA again when the daemon is back. Returns the new daemon pid.
+ */
+async function checkRestartReloadsView(instance, control, pwa) {
+  const before = await overviewOf(control);
+  const oldPid = before.daemon.pid;
+  const bornAt = await pwa.evaluate(() => performance.timeOrigin);
+  const restart = control.evaluate(() => window.nanachiControl.restartDaemon());
+  await control.locator('[data-slot=sessions-unavailable]').waitFor({ state: 'visible', timeout: 30_000 });
+  assert.equal((await sessionsViewState(instance)).visible, false, 'while the daemon is not ready the section shows its own state, not the PWA');
+  await shotControl(instance, control, '08-sessions-daemon-starting');
+  const restarted = await restart;
+  assert.equal(restarted.ok, true, `restartDaemon failed: ${JSON.stringify(restarted)}`);
+  const newPid = restarted.value.pid;
+  assert.ok(Number.isInteger(newPid) && newPid !== oldPid, 'the daemon was restarted');
+  pids.add(newPid);
+  await until('the old daemon process is gone', () => !isAlive(oldPid), 15_000);
+  await until('the PWA view loads again after the restart', async () => (await pwa.evaluate(() => performance.timeOrigin).catch(() => bornAt)) !== bornAt, 60_000, control);
+  await until('the view is shown again', async () => (await sessionsViewState(instance)).visible === true, 20_000, control);
+  await expectViewGeometry(instance, control, RAIL, 'after the restart');
+  await pwa.getByRole('button', { name: 'Ajustes', exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  assert.equal(await daemonPid(pwa), newPid, 'the reloaded PWA talks to the new daemon');
+  log(`the daemon restarted under Sessões (pid ${oldPid} -> ${newPid}): the section showed its own state, then the PWA loaded again`);
+  return newPid;
+}
+
+/**
+ * A PWA page whose renderer keeps dying. The first death is replaced at once by a fresh view that shows the PWA; a second death
+ * within 30 s is not replaced: the view is gone, the section says why, and opening the section again tries once more.
+ * Returns the PWA page of the view that came back.
+ */
+async function checkSessionsCrashRecovery(instance, control, pwa) {
+  const crash = () =>
+    instance.evaluate(({ BrowserWindow }, base) => {
+      const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().endsWith('/control/index.html'));
+      const view = win.contentView.children.find((child) => child.webContents.getURL().startsWith(base));
+      view.webContents.forcefullyCrashRenderer();
+    }, origin);
+  const freshPage = async (older, why) => {
+    let found = null;
+    await until(
+      why,
+      async () => {
+        found = instance.windows().find((window) => window.url().startsWith(`${origin}/`) && !window.isClosed() && window !== older) ?? null;
+        return found !== null && (await sessionsViewState(instance))?.visible === true;
+      },
+      90_000,
+      control,
+    );
+    await found.waitForLoadState('domcontentloaded');
+    await found.getByRole('button', { name: 'Ajustes', exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    return found;
+  };
+
+  await openSection(control, SESSIONS);
+  await crash();
+  const second = await freshPage(pwa, 'the first death is replaced by a new view that shows the PWA');
+  await expectViewGeometry(instance, control, RAIL, 'after the first death');
+  log('the first death of the PWA page was replaced by a fresh view');
+
+  await crash();
+  await control.locator('[data-slot=sessions-unavailable][data-state=crashed]').waitFor({ state: 'visible', timeout: 30_000 });
+  const gone = await sessionsViewState(instance);
+  assert.equal(gone.children, 0, 'the second death within 30 s is not replaced: the control window carries no view');
+  assert.match((await control.locator('[data-slot=sessions-unavailable]').textContent()) ?? '', /As sessões pararam de funcionar/);
+  await shotControl(instance, control, '08-sessions-crashed');
+  log('the second death within 30 s was not replaced: the section says the sessions stopped working');
+
+  await openSection(control, SECTIONS[0]);
+  await openSection(control, SESSIONS);
+  const third = await freshPage(second, 'opening the section again brings the PWA back');
+  await expectViewGeometry(instance, control, RAIL, 'after the section was opened again');
+  assert.equal(await control.locator('[data-slot=sessions-unavailable]').count(), 0, 'the explanation is gone with the view back');
+  log('opening Sessões again tried once more, and the PWA is back');
+  return third;
+}
+
+const LANGUAGE_RADIO = { 'pt-BR': 'Português (Brasil)', en: 'English', es: 'Español' };
+const LANGUAGE_EXPECTATIONS = {
+  'pt-BR': {
+    settings: 'Ajustes',
+    sections: ['Visão geral', 'Pastas e discos', 'Aparelhos', 'Contas dos agentes', 'Tailscale', 'Logs', 'Ajustes', 'Sessões'],
+    minimize: 'Minimizar',
+    tray: ['Nanachi · rodando', 'separator', 'Abrir Nanachi', 'Abrir sessões', 'Gerar código de pareamento', 'Iniciar com o Windows', 'separator', 'Sair'],
+  },
+  en: {
+    settings: 'Settings',
+    sections: ['Overview', 'Folders and drives', 'Devices', 'Agent accounts', 'Tailscale', 'Logs', 'Settings', 'Sessions'],
+    minimize: 'Minimize',
+    tray: ['Nanachi · running', 'separator', 'Open Nanachi', 'Open sessions', 'Generate pairing code', 'Start with Windows', 'separator', 'Quit'],
+  },
+  es: {
+    settings: 'Ajustes',
+    sections: ['Resumen', 'Carpetas y discos', 'Dispositivos', 'Cuentas de los agentes', 'Tailscale', 'Registros', 'Ajustes', 'Sesiones'],
+    minimize: 'Minimizar',
+    tray: ['Nanachi · en ejecución', 'separator', 'Abrir Nanachi', 'Abrir sesiones', 'Generar código de emparejamiento', 'Iniciar con Windows', 'separator', 'Salir'],
+  },
+};
+
+/** The Sessões section as the sidebar names it in a language. */
+const sessionsIn = (code) => ({ ...SESSIONS, label: LANGUAGE_EXPECTATIONS[code].sections[7] });
+
+const storedLanguage = () => JSON.parse(readFileSync(join(userData, 'desktop-settings.json'), 'utf8')).language;
+
+/** The width of the sidebar, in whole pixels (it animates for 150 ms when it changes). */
+const sidebarWidth = (page) => sidebar(page).evaluate((element) => Math.round(element.getBoundingClientRect().width));
+
+/** The "Idioma" row of Ajustes: the control center, the tray menu and the stored setting follow at once. */
+async function switchLanguage(instance, control, code) {
+  const expected = LANGUAGE_EXPECTATIONS[code];
+  await control.keyboard.press('Control+7');
+  const radio = control.getByRole('radio', { name: LANGUAGE_RADIO[code], exact: true });
+  await radio.waitFor({ state: 'visible', timeout: 10_000 });
+  await radio.click();
+  await until(`the control center speaks ${code}`, async () => (await control.evaluate(() => document.documentElement.lang)) === code && (await control.locator('#page-title').textContent()) === expected.settings, 10_000, control);
+  assert.deepEqual(await sidebar(control).locator('ul li button span.truncate').allTextContents(), expected.sections, `the sidebar in ${code}`);
+  await control.locator('header').first().getByRole('button', { name: expected.minimize, exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+  assert.equal(await control.getByRole('radio', { name: LANGUAGE_RADIO[code], exact: true }).getAttribute('aria-checked'), 'true');
+  await until(`the tray menu speaks ${code}`, async () => JSON.stringify(await trayLabels(instance)) === JSON.stringify(expected.tray), 10_000);
+  await until(`${code} is stored`, async () => storedLanguage() === code, 5_000);
+  assertNoControlProblems(`language ${code}`);
+  log(`language ${code}: sidebar, title bar, headings and tray menu changed; desktop-settings.json says ${code}`);
+}
+
+/** What the PWA in the view says about its language (the key Desktop writes, and the document language). */
+async function pwaLanguage(pwa) {
+  return pwa.evaluate(() => ({ stored: localStorage.getItem('nanachi.language'), lang: document.documentElement.lang })).catch(() => null);
+}
+
+async function expectPwaLanguage(pwa, code, why) {
+  let last = null;
+  await until(
+    `${why}: the PWA has nanachi.language = ${code}`,
+    async () => {
+      last = await pwaLanguage(pwa);
+      return last !== null && last.stored === code && last.lang === code;
+    },
+    30_000,
+  ).catch((error) => {
+    throw new Error(`${error.message}; last seen ${JSON.stringify(last)}`);
+  });
+}
+
+/** pt-BR -> English -> Spanish -> pt-BR, with the PWA following Desktop on each change, and a change made inside the PWA staying there. */
+async function checkLanguages(instance, control) {
+  assert.equal(storedLanguage(), 'pt-BR');
+  await installMenuHook(instance);
+  await rebuildTray(control);
+  await until('the tray menu was rebuilt', async () => (await trayLabels(instance)) !== null, 10_000);
+  assert.deepEqual(await trayLabels(instance), LANGUAGE_EXPECTATIONS['pt-BR'].tray);
+
+  let pwa = await showSessions(instance, control);
+  const bornAt = await pwa.evaluate(() => performance.timeOrigin);
+  await switchLanguage(instance, control, 'en');
+  await shotControl(instance, control, '09-settings-english');
+  pwa = await showSessions(instance, control, 'keyboard', sessionsIn('en'));
+  await expectPwaLanguage(pwa, 'en', 'after Desktop switched to English');
+  assert.equal(storedLanguage(), 'en');
+  assert.equal(await pwa.evaluate(() => performance.timeOrigin), bornAt, 'a language change in Desktop switches the PWA live: the page is not reloaded');
+
+  // A language chosen inside the PWA stays in the PWA: Desktop writes again only when ITS language changes.
+  await pwa.evaluate(() => localStorage.setItem('nanachi.language', 'pt-BR'));
+  await pwa.reload();
+  await expectPwaLanguage(pwa, 'pt-BR', 'after the user chose pt-BR inside the PWA and the page reloaded');
+  assert.equal(storedLanguage(), 'en', "the PWA's own choice does not change Desktop's language");
+  assert.equal(await control.evaluate(() => document.documentElement.lang), 'en');
+  log("a language chosen inside the PWA survived a reload, and Desktop's stayed English");
+
+  await switchLanguage(instance, control, 'es');
+  await shotControl(instance, control, '09-settings-spanish');
+  pwa = await showSessions(instance, control, 'keyboard', sessionsIn('es'));
+  await expectPwaLanguage(pwa, 'es', 'after Desktop switched to Spanish');
+  await shotWindow(instance, control, '09-sessions-spanish', pwa);
+
+  await switchLanguage(instance, control, 'pt-BR');
+  pwa = await showSessions(instance, control, 'keyboard', sessionsIn('pt-BR'));
+  await expectPwaLanguage(pwa, 'pt-BR', 'after Desktop switched back to pt-BR');
+  log('the PWA in the view got nanachi.language from Desktop on every change (English, Spanish, pt-BR)');
+  return pwa;
 }
 
 async function daemonPid(page) {
@@ -611,7 +1041,7 @@ async function daemonPid(page) {
 }
 
 async function openSettings(page) {
-  const settings = page.getByRole('button', { name: 'Ajustes', exact: true });
+  const settings = page.getByRole('button', { name: 'Ajustes', exact: true }).first();
   await settings.waitFor({ state: 'visible', timeout: 30_000 });
   await settings.click();
   await page.getByRole('heading', { name: 'Desktop', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
@@ -654,7 +1084,8 @@ async function run() {
   const typingCode = JSON.parse(typing.stdout.trim().split('\n').at(-1)).code;
 
   // ----- 1. first launch: the control center is the main window -----
-  app = await launch();
+  // `--lang=pt-BR` is the operating system's locale for the very first run: Desktop takes its language from it and saves it.
+  app = await launch('pt-BR');
   const control = await controlPage(app);
   log(`control center loaded: ${decodeURI(control.url())}`);
   assert.equal(await control.evaluate(() => typeof window.nanachiControl), 'object', 'the preload exposes window.nanachiControl');
@@ -678,6 +1109,7 @@ async function run() {
   assert.ok(phoneToken.length > 0);
   log('o código que estava valendo antes de o Desktop se parear continua valendo (device add, não pair)');
   checkHomeAfterStart();
+  assert.equal(storedLanguage(), 'pt-BR', "the first run saved the language the system locale suggests");
 
   await checkTitleBar(app, control);
   let daemon = await checkControlCenter(app, control);
@@ -688,10 +1120,13 @@ async function run() {
     nativeTheme.themeSource = 'system';
   });
 
-  // ----- 2. "Abrir sessões": the PWA window -----
-  let page = await openSessionsWindow(app, control);
-  log(`painel carregado: ${page.url()}`);
-  assert.equal(await daemonPid(page), daemon, 'the sessions window reports the daemon the control center restarted');
+  // ----- 2. "Sessões": the PWA in a view of the control center -----
+  let page = await checkSessionsSection(app, control);
+  log(`PWA na vista: ${page.url()}`);
+  assert.equal(await daemonPid(page), daemon, 'the PWA in the view reports the daemon the control center restarted');
+  daemon = await checkRestartReloadsView(app, control, page);
+  page = await showSessions(app, control);
+  page = await checkSessionsCrashRecovery(app, control, page);
 
   await openSettings(page);
   const section = page.locator('[data-slot=desktop-section]');
@@ -772,13 +1207,17 @@ async function run() {
   await control.getByText('https://nanachi-smoke.tail-fake.ts.net', { exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
   await shotControl(app, control, '05-tailscale-running');
   assertNoControlProblems('Tailscale running');
+  // The PWA is only drawn (and clickable) while Sessões is on screen.
+  page = await showSessions(app, control);
 
   // ----- 6. desligar: parada educada (stdin fechado) -----
   await tailscaleSwitch(page).click();
   await until('o sidecar falso terminar após fechar o stdin', () => recordEvents().includes('stdin-eof') && !isAlive(launched.pid), 15_000, page);
   await page.locator('[data-slot=desktop-tailscale-status]').waitFor({ state: 'detached', timeout: 10_000 });
   assert.equal(await tailscaleSwitch(page).getAttribute('aria-checked'), 'false');
+  await openSection(control, SECTIONS[4]);
   await control.getByText('Desligado', { exact: true }).first().waitFor({ state: 'visible', timeout: 10_000 });
+  page = await showSessions(app, control);
   log('desligar fechou o stdin e o sidecar falso saiu');
 
   // ----- 7. sair com o Tailscale ligado: nada fica para trás -----
@@ -799,11 +1238,14 @@ async function run() {
   const savedWindow = JSON.parse(readFileSync(join(userData, 'desktop-settings.json'), 'utf8')).controlWindow;
   assert.ok(savedWindow !== undefined && Number.isInteger(savedWindow.width) && Number.isInteger(savedWindow.height), 'desktop-settings.json keeps the control center bounds');
   assert.equal(savedWindow.maximized, false);
-  app = await launch();
+  // The system locale is English this time, but the language Desktop saved (pt-BR) wins: only the first run reads the locale.
+  app = await launch('en-US');
   const controlAgain = await controlPage(app);
+  assert.equal(storedLanguage(), 'pt-BR');
+  log('a stored language wins over the system locale (--lang=en-US, the control center is still in pt-BR)');
   const reopened = await (await app.browserWindow(controlAgain)).evaluate((w) => w.getBounds());
   assert.deepEqual({ width: reopened.width, height: reopened.height }, { width: savedWindow.width, height: savedWindow.height }, 'the control center reopens at the saved size');
-  page = await openSessionsWindow(app, controlAgain);
+  page = await showSessions(app, controlAgain);
   await until('o Desktop reiniciar o sidecar falso sozinho', () => recordEvents().filter((event) => event === 'start').length === startsBefore + 1, 30_000, page);
   const third = readRecord();
   pids.add(third.pid);
@@ -817,7 +1259,12 @@ async function run() {
   const config = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
   assert.deepEqual(config.allowedRoots.map(keyOf), [home, allowedFolder].map(keyOf), 'the saved folder list survives a Desktop restart');
 
-  // Deixa o ajuste desligado e fecha.
+  // ----- 10. idiomas -----
+  await checkLanguages(app, controlAgain);
+  checkDesktopLog();
+
+  // Deixa o ajuste desligado e fecha. (A PWA recarregou a cada troca de idioma: abre Ajustes de novo.)
+  await openSettings(page);
   await tailscaleSwitch(page).click();
   await until('o sidecar falso terminar', () => !isAlive(third.pid), 15_000, page);
   const finalElectron = app.process().pid;

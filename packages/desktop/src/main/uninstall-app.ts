@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, dialog, type BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent, shell } from 'electron';
+import { DEFAULT_LANGUAGE, setLanguage, t, type Language } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import { parseInstallFlags } from '../install/args.js';
 import { APP_USER_MODEL_ID } from '../install/constants.js';
@@ -21,6 +22,7 @@ import { createShellWindow } from '../install/window.js';
 import { HIDDEN_ARG } from './autostart.js';
 import { readConfiguredPort, resolveHome, standaloneHomes } from './daemon-runtime.js';
 import { fetchHealth } from './system.js';
+import { readUninstallLanguage } from './uninstall-language.js';
 
 /**
  * `Nanachi.exe --uninstall`, what the Windows "Apps" page runs: a confirmation window in the installer's style, then the
@@ -37,20 +39,29 @@ const originalFs = require('original-fs') as FsLike;
 
 export function runUninstaller(): void {
   const here = dirname(fileURLToPath(import.meta.url));
+  // Desktop's own profile (paired-device token, settings): computed before this process points userData at a temp folder.
+  const override = process.env.NANACHI_DESKTOP_USER_DATA;
+  const desktopDataDir = override !== undefined && override !== '' ? override : app.getPath('userData');
+  // The window speaks the language Desktop is set to; without a setting (it never ran) the system's. The locale is only
+  // known once the app is ready, so the language is picked there.
+  let language: Language = DEFAULT_LANGUAGE;
+  function pickLanguage(): void {
+    language = readUninstallLanguage(join(desktopDataDir, 'desktop-settings.json'), app.getLocale());
+    setLanguage(language);
+  }
+
   let flags: ReturnType<typeof parseInstallFlags>;
   try {
     flags = parseInstallFlags(process.argv.slice(1));
   } catch (error) {
     void app.whenReady().then(() => {
-      dialog.showErrorBox('Desinstalar o Nanachi', messageOf(error));
+      pickLanguage();
+      dialog.showErrorBox(t('installer.uninstall.title'), messageOf(error));
       app.exit(2);
     });
     return;
   }
 
-  // Desktop's own profile (paired-device token, settings): computed before this process points userData at a temp folder.
-  const override = process.env.NANACHI_DESKTOP_USER_DATA;
-  const desktopDataDir = override !== undefined && override !== '' ? override : app.getPath('userData');
   const uiProfile = join(tmpdir(), 'nanachi-uninstall-ui');
   app.setPath('userData', uiProfile);
   app.setAppUserModelId(APP_USER_MODEL_ID);
@@ -85,8 +96,8 @@ export function runUninstaller(): void {
   }
 
   async function uninstall(deleteData: boolean): Promise<UninstallOutcome> {
-    if (installDir === null) return { ok: false, message: 'Abra o desinstalador pelo Nanachi instalado (Configurações do Windows, Aplicativos).' };
-    if (running) return { ok: false, message: 'A remoção já está em andamento.' };
+    if (installDir === null) return { ok: false, message: t('installer.uninstall.openFromInstalled') };
+    if (running) return { ok: false, message: t('installer.uninstall.alreadyRunning') };
     running = true;
     try {
       const result = await runUninstall(
@@ -149,12 +160,13 @@ export function runUninstaller(): void {
       dataDir: desktopHome,
       testMode,
       deleteData: flags.deleteData,
+      language,
     };
   });
   ipcMain.handle(channels.start, (event, request: unknown): Promise<UninstallOutcome> => {
     assertOwnPage(event);
     const deleteData = typeof request === 'object' && request !== null ? (request as { deleteData?: unknown }).deleteData : undefined;
-    if (typeof deleteData !== 'boolean') return Promise.resolve({ ok: false, message: 'Pedido inválido.' });
+    if (typeof deleteData !== 'boolean') return Promise.resolve({ ok: false, message: t('installer.errors.invalidRequest') });
     return uninstall(deleteData);
   });
   ipcMain.on(channels.minimize, (event) => {
@@ -170,16 +182,17 @@ export function runUninstaller(): void {
   });
 
   void app.whenReady().then(() => {
+    pickLanguage();
     window = createShellWindow({
       width: 584,
       height: 464,
-      title: 'Desinstalar o Nanachi',
+      title: t('installer.uninstall.title'),
       preloadPath: join(here, '..', 'preload', 'uninstall.cjs'),
       htmlPath: join(here, '..', 'ui', 'uninstall.html'),
       iconPath: join(here, '..', 'ui', 'icon.png'),
       visible: !flags.yes,
       onLoadError: (error) => {
-        dialog.showErrorBox('Desinstalar o Nanachi', `Não foi possível abrir a janela: ${error.message}`);
+        dialog.showErrorBox(t('installer.uninstall.title'), t('installer.uninstall.windowOpenFailed', { detail: error.message }));
         app.exit(2);
       },
     });

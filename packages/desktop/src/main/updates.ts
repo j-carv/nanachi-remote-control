@@ -1,4 +1,5 @@
 import semver from 'semver';
+import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
 import type { UpdateCheckResult } from '../common/types.js';
 
@@ -63,20 +64,20 @@ export async function checkForUpdate(options: CheckForUpdateOptions): Promise<Up
       signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     });
   } catch (error) {
-    return { status: 'error', current: currentVersion, message: `Não foi possível consultar o GitHub: ${messageOf(error)}` };
+    return { status: 'error', current: currentVersion, message: t('main.updates.githubUnreachable', { detail: messageOf(error) }) };
   }
 
   // No release published yet.
   if (response.status === 404) return { status: 'up-to-date', current: currentVersion };
   if (!response.ok) {
-    return { status: 'error', current: currentVersion, message: `O GitHub respondeu HTTP ${response.status}.` };
+    return { status: 'error', current: currentVersion, message: t('main.updates.githubHttp', { status: response.status }) };
   }
 
   let body: unknown;
   try {
     body = await response.json();
   } catch {
-    return { status: 'error', current: currentVersion, message: 'Resposta do GitHub ilegível.' };
+    return { status: 'error', current: currentVersion, message: t('main.updates.githubUnreadable') };
   }
   return evaluateRelease(currentVersion, body);
 }

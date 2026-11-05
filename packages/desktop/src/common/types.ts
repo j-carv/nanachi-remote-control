@@ -1,3 +1,5 @@
+import type { Language } from './i18n/languages.js';
+
 /** Shapes shared by the main process, the preload bridge and the tests. No Electron imports here. */
 
 /** `starting` while a spawned daemon is not answering yet; `attached` when one already answered. */
@@ -18,7 +20,7 @@ export interface DaemonStatus {
    * is set in its config.json), so the local panel cannot use it. The state is still running or attached.
    */
   restricted: boolean;
-  /** Reason shown to the user (Portuguese), for `error`, `restricted` and a give-up. */
+  /** Reason shown to the user, in Desktop's current language, for `error`, `restricted` and a give-up. */
   message: string | null;
   /** Last lines of `desktop-daemon.log`, filled when `state` is `error`. */
   logTail: string[];
@@ -52,10 +54,15 @@ export interface SeedMachine {
   token: string;
 }
 
-/** Answer to the synchronous preload handshake. `machine` is null until Desktop is paired. */
+/**
+ * Answer to the synchronous preload handshake. `machine` is null until Desktop is paired. `language` is Desktop's language
+ * when the PWA's own storage has not been given it yet (the first load, and after Desktop's language changed); null
+ * otherwise, so a language the user chose inside the PWA is not overwritten at every load.
+ */
 export interface PreloadInit {
   version: string;
   machine: SeedMachine | null;
+  language: Language | null;
 }
 
 /** `window.nanachiDesktop`. The PWA declares its own copy of this type; it never imports from here. */
@@ -63,6 +70,8 @@ export interface NanachiDesktopBridge {
   readonly version: string;
   status(): Promise<DaemonStatus>;
   onStatus(callback: (status: DaemonStatus) => void): () => void;
+  /** Desktop's language changed (from the control center): the page switches at once. Absent from a Desktop older than this. */
+  onLanguage(callback: (language: Language) => void): () => void;
   pairingCode(): Promise<PairingCode>;
   getAutostart(): Promise<boolean>;
   setAutostart(value: boolean): Promise<boolean>;

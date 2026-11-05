@@ -48,7 +48,7 @@ Your own PC serves the dashboard inside your Tailscale network. **There is no ne
 - **Resume PC sessions** when the agent supports listing and reopening its history.
 - **Keep several logins per agent** for Claude Code and Codex, and [switch between them](#agent-accounts) per session.
 - **Spend saved rate-limit resets** for Oh My Pi and Codex from the [usage drawer](#saved-rate-limit-resets).
-- **Use the app in Portuguese or English** ([language](#language)).
+- **Use the app in Portuguese, English or Spanish** ([language](#language)).
 - **Send photos and files** and receive files or PC screenshots in chat.
 - **View Git changes** and open sessions in separate worktrees without changing the main checkout.
 - **Switch between PCs**, mute projects, and revoke paired devices.
@@ -152,7 +152,7 @@ This displays a **6-digit code**, valid for **5 minutes** and usable only once. 
 
 ## Install on your phone
 
-The app opens in Brazilian Portuguese, and an English interface is available under [Language](#language). This README gives the Portuguese labels with their English meanings, so you can find them in either language.
+The app opens in Brazilian Portuguese, and English and Spanish interfaces are available under [Language](#language). This README gives the Portuguese labels with their English meanings, so you can find them in any language.
 
 ### Android
 
@@ -299,19 +299,18 @@ This applies to **Configure session (Configurar sessão)**, the new-session shee
 
 ### Language
 
-The app is available in Brazilian Portuguese (the default) and English.
+The app is available in Brazilian Portuguese (the default), English, and Spanish. The Spanish interface is neutral Latin American Spanish, addressing you as "tú".
 
-1. Open **Settings → Language (Ajustes → Idioma / Language)**.
-2. Choose **Português (Brasil)** or **English**. The change applies immediately, without reloading.
+1. Open **Settings → Language (Ajustes → Idioma / Language)**. In Spanish the screen is called **Configuración**.
+2. Choose **Português (Brasil)**, **English**, or **Español**. The change applies immediately, without reloading.
 
-The choice is saved on each device, so set it on every phone or browser you use. The section title and the option names stay the same in both languages, so you can find the row after switching.
+The choice is saved on each device, so set it on every phone or browser you use. The section title and the option names stay the same in every language, so you can find the row after switching.
 
 Not translated:
 
 - Text that agents and the daemon send, such as agent output, session titles, their error messages, login output, and the lines Oh My Pi prints for resets.
 - Command names such as `/model`.
 - Push notifications. The daemon builds them in Portuguese.
-- The Nanachi Desktop tray, windows, and installer (see [Nanachi Desktop](#nanachi-desktop)).
 
 ## Keep it ready when you need it
 
@@ -356,10 +355,11 @@ Nanachi Desktop is a Windows app that runs the daemon for you. It adds a tray ic
 
 - **Runs the daemon** with its own bundled Node.js and restarts it after a crash (it stops retrying after more than 5 crashes in 2 minutes and shows an error). It has its own data folder, `%USERPROFILE%\.nanachi-desktop` (set `NANACHI_DESKTOP_HOME` to move it), separate from a standalone daemon or the supervisor, which keep using `%USERPROFILE%\.nanachi-remote`. Desktop never reads `NANACHI_HOME`, so sessions, paired devices and `config.json` are not shared with them. On a fresh folder it writes `config.json` with `"port": 7780` (an existing `config.json` is never rewritten, and its port wins), so Desktop and a standalone daemon on 7777 run side by side. The daemon's log is `desktop-daemon.log` in that folder.
 - **Attaches to a daemon that is already running.** If a Nanachi daemon already answers on Desktop's port (another copy of Desktop, for example; not the supervisor on 7777 unless you point Desktop's `config.json` at it), Desktop starts nothing, shows "conectado ao daemon existente" (connected to the existing daemon), and never stops that daemon when you quit.
-- **Tray icon.** The first menu line is the status: `Nanachi · rodando` (running), `· iniciando` (starting), `· conectado ao daemon existente`, `· parado` (stopped), or `· erro` (error). The items are **Abrir Nanachi** (open the control center), **Abrir sessões** (open the sessions window), **Gerar código de pareamento** (generate a pairing code: a 6-digit code with its expiry and a QR code), **Iniciar com o Windows** (start in the tray when you sign in), and **Sair** (quit). Quitting stops the daemon only if Desktop started it.
-- **Control center.** The main window is a desktop control panel for this PC, with its own title bar and a sidebar: **Visão geral** (overview: daemon, built-in Tailscale, activity), **Pastas e discos** (folders and drives), **Aparelhos** (paired devices and pairing codes), **Contas dos agentes** (agent accounts), **Tailscale**, **Logs**, and **Ajustes** (settings: start with Windows, updates, uninstall). Ctrl+1 to Ctrl+7 switch sections and Ctrl+B collapses the sidebar. Closing the window keeps Desktop running in the tray.
+- **Tray icon.** The first menu line is the status: `Nanachi · rodando` (running), `· iniciando` (starting), `· conectado ao daemon existente`, `· parado` (stopped), or `· erro` (error). The items are **Abrir Nanachi** (open the control center), **Abrir sessões** (open the control center on its **Sessões** section), **Gerar código de pareamento** (generate a pairing code: a 6-digit code with its expiry and a QR code), **Iniciar com o Windows** (start in the tray when you sign in), and **Sair** (quit). Quitting stops the daemon only if Desktop started it.
+- **Control center.** The main window is a desktop control panel for this PC, with its own title bar and a sidebar: **Visão geral** (overview: daemon, built-in Tailscale, activity), **Pastas e discos** (folders and drives), **Aparelhos** (paired devices and pairing codes), **Contas dos agentes** (agent accounts), **Tailscale**, **Logs**, **Ajustes** (settings: language, start with Windows, updates, uninstall), and **Sessões** (the sessions and chat, below). Ctrl+1 to Ctrl+8 switch sections and Ctrl+B collapses the sidebar (on **Sessões** it is always the narrow icon rail, whatever you saved). The window cannot be made smaller than 980 x 620. Closing the window keeps Desktop running in the tray.
 - **Folders and drives.** **Pastas e discos** edits `allowedRoots` in Desktop's `config.json`: pick folders with the Windows folder picker or allow a whole drive. Saving restarts Desktop's own daemon; every session comes back stopped and resumes on its next message, and the app asks first when sessions are busy. Only the PC can change this list; the phone only reads it. It chooses where sessions can open; it is not a sandbox.
-- **Sessions window.** **Abrir sessões** opens this same web app, loaded from the local daemon, for the sessions and chat, with an extra **Desktop** group in Settings. On first run Desktop registers itself as a device named "Nanachi Desktop (PC name)", shown as **Este app** in **Aparelhos**.
+- **Sessions.** The **Sessões** section (Ctrl+8; the **Abrir sessões** buttons and the tray item go there) shows this same web app, loaded from the local daemon, inside the control center window, for the sessions and chat, with an extra **Desktop** group in its Settings. While the daemon is starting, stopped, failed, or only accepts Tailscale, the section explains that instead. The web app there is in its wide layout (a list of workspaces and sessions beside the screen), because the window cannot get smaller than that layout needs. There is no separate sessions window. If the web app's page keeps closing (twice within 30 seconds), the section says so and tries again when you open it again. On first run Desktop registers itself as a device named "Nanachi Desktop (PC name)", shown as **Este app** in **Aparelhos**.
+- **Languages.** Português (Brasil), English and Español. On its first run Desktop takes the language of Windows (anything other than Spanish or Portuguese becomes English); change it in **Ajustes → Idioma**. The control center, the tray menu, Desktop's messages and the web app inside **Sessões** switch at once. The web app switches live, without reloading, and keeps a language you later choose inside it until Desktop's own language changes again. A Desktop installed before the languages existed stays in Português (Brasil) until you change it. The installer speaks the language the installed Desktop is set to (the Windows language on a first install); the uninstaller uses the language Desktop saved.
 
 ### Build it
 
@@ -412,7 +412,7 @@ On start and from **Procurar atualização**, Desktop asks GitHub for the latest
 - **Not code-signed.** Windows SmartScreen will warn that the publisher is unknown.
 - **Large.** The installer is about 850 MiB (844 MiB for the first build) and the installed app about 1.3 GiB, mostly Electron, Node.js, and the native binaries of the Claude Code and Codex SDKs.
 - **Windows x64 only.**
-- **Portuguese only.** The tray, the installer, and the uninstaller are not translated. The panel's content follows the app [language](#language).
+- **Support logs stay in Portuguese.** `desktop-daemon.log` and the installer log are written in Portuguese, for support; everything you read in a window, the tray, or a dialog follows [Desktop's language](#nanachi-desktop).
 - **The local panel needs an empty `allowedTailscaleLogins`.** With that list set, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`, so it shows an explanation page instead of the app. Desktop's own `config.json` (in `.nanachi-desktop`) has no allowlist unless you add one, and the daemon's authentication is unchanged. An empty list accepts any tailnet login that Tailscale forwards, but a device token is still required. Read [Security](#security-without-the-fine-print) before relying on that, and keep the list empty only in Desktop's folder.
 - **Not tested on a clean machine or a real iPhone.** The unit tests, the Go tests, and the smoke scripts use temporary folders and a fake sidecar. Not checked: the installer on a fresh Windows, the SmartScreen prompt, the Tailscale login and HTTPS serving to a phone through the built-in node, and start with Windows after a reboot.
 

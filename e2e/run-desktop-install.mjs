@@ -13,19 +13,26 @@
  *   1. o instalador de verdade (Nanachi-Setup-<versão>.exe, portable) com --yes instala na pasta A e sai com código 0;
  *   2. os arquivos instalados batem com o payload; o app instalado sobe o daemon com o node.exe embutido; o centro de
  *      controle (a janela principal, carregado do app.asar) abre com a ponte e os botões da barra de título e as seções
- *      carregam sem erro; "Abrir sessões" abre o painel, que carrega a PWA; /api/health responde; sair deixa nada para trás;
+ *      carregam sem erro; a seção "Sessões" (Ctrl+8) mostra a PWA numa vista sobre a área de conteúdo (o tamanho da vista é
+ *      conferido pela própria página da PWA: innerWidth/innerHeight contra o retângulo do <main>; a posição exata e o
+ *      esconder ao trocar de seção, view.getBounds() e view.getVisible(), são conferidos por e2e/run-desktop.mjs); o idioma (pt-BR, English, Español) troca o centro de controle e a PWA (nanachi.language); o app
+ *      salva o idioma da primeira execução (`--lang`); /api/health responde; sair deixa nada para trás. O menu da bandeja
+ *      NÃO é conferido aqui (o app empacotado não tem o inspetor do Node, então o processo principal fica fora de alcance):
+ *      isso é feito por e2e/run-desktop.mjs, que roda o mesmo código em desenvolvimento;
  *   3. com o app da pasta A aberto, a janela do instalador (o mesmo app do exe portable, desempacotado) pergunta se pode
  *      fechá-lo, fecha o app e o daemon dele e reinstala por cima (atualização);
- *   4. a janela do instalador, na pasta B: tela inicial (claro e escuro), Opções, pasta recusada, progresso, pronto;
- *   5. com o app da pasta B aberto, a janela de desinstalação pergunta, remove e fecha o app e o daemon dele; a pasta B some
- *      e os dados (NANACHI_HOME, userData) ficam;
+ *   4. a janela do instalador, na pasta B: tela inicial (claro e escuro), Opções, pasta recusada, progresso, pronto; antes
+ *      disso o instalador abre em espanhol e em inglês pelo idioma do sistema (`--lang`), sem instalar nada;
+ *   5. com o app da pasta B aberto (idioma salvo: español), a janela de desinstalação abre em espanhol (o idioma salvo vale mais
+ *      que o do sistema), pergunta, remove e fecha o app e o daemon dele; a pasta B some e os dados (NANACHI_HOME, userData) ficam;
  *   6. a pasta A é removida por `--uninstall --yes --delete-data` (sem janela de pergunta); desta vez os dados vão junto;
  *   7. nenhum processo sobra; o sistema de verdade está igual ao começo.
  *
  * Como rodar (da raiz, depois de `npm run package -w @nanachi/desktop`; não usa a porta 7777):
  *   node e2e/run-desktop-install.mjs
  *
- * Screenshots em e2e/screenshots/desktop/.
+ * Screenshots dos instaladores em e2e/screenshots/desktop/; os da seção Sessões (centro de controle e PWA, claro e escuro) numa
+ * pasta temporária fora do repositório, cujo caminho é impresso no fim.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -45,8 +52,12 @@ const repoRoot = resolve(here, '..');
 const desktopDir = join(repoRoot, 'packages', 'desktop');
 const shotsDir = join(here, 'screenshots', 'desktop');
 const log = (line) => console.log(`[e2einstall] ${line}`);
+// Screenshots of the Sessões section: a temp folder outside the repository that survives the run (the run prints its path).
+const sessionShots = join(tmpdir(), `nanachi-install-shots-${randomBytes(4).toString('hex')}`);
 // A pasta temporária sai pelo mesmo removedor do app (nunca `rmSync` recursivo: ele segue junções no Node do Electron).
 const { removeTree } = await import(pathToFileURL(join(desktopDir, 'dist', 'install', 'safe-remove.js')).href);
+// The texts the pages and the control center show, from the compiled dictionary (the same one the apps carry).
+const { translate } = await import(pathToFileURL(join(desktopDir, 'dist', 'common', 'i18n', 'index.js')).href);
 
 const version = JSON.parse(readFileSync(join(desktopDir, 'package.json'), 'utf8')).version;
 const buildDir = process.env.NANACHI_DESKTOP_BUILD_DIR ?? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'nanachi-desktop-build');
@@ -160,7 +171,7 @@ function walkFiles(dir) {
 }
 
 function setupFolders() {
-  for (const dir of [home, userData, shotsDir, dirname(targetA), dirname(targetB)]) mkdirSync(dir, { recursive: true });
+  for (const dir of [home, userData, shotsDir, sessionShots, dirname(targetA), dirname(targetB)]) mkdirSync(dir, { recursive: true });
   // Desktop only creates config.json (port 7780) when it is missing. This script picks a free port and writes the file
   // first, so port 7780 (which may be taken) never comes into play.
   // Allowlist vazia: o painel local usa o daemon sem a "chave local".
@@ -339,7 +350,7 @@ const isControlUrl = (url) => url.startsWith('file:') && url.endsWith('/control/
 const controlProblems = [];
 
 /** The control center is the main window: it opens on launch, from the app.asar, with the real preload. */
-async function controlPage(instance) {
+async function controlPage(instance, heading = 'Visão geral') {
   let found = null;
   await until('a janela do centro de controle abrir', () => {
     found = instance.pages().find((page) => isControlUrl(page.url())) ?? null;
@@ -350,21 +361,23 @@ async function controlPage(instance) {
   });
   found.on('pageerror', (error) => controlProblems.push(`pageerror: ${error.message}`));
   await found.waitForLoadState('domcontentloaded');
-  await found.getByRole('heading', { name: 'Visão geral', level: 1 }).waitFor({ state: 'visible', timeout: 30_000 });
+  await found.getByRole('heading', { name: heading, level: 1 }).waitFor({ state: 'visible', timeout: 30_000 });
   return found;
 }
 
-/** The sessions window (the PWA), opened from the control center with "Abrir sessões". */
-async function panelPage(instance) {
-  const control = await controlPage(instance);
-  await control.locator('nav#sidebar').getByRole('button', { name: 'Abrir sessões', exact: true }).click();
+/**
+ * The "Sessões" section of the control center (Ctrl+8): the PWA is drawn in a view over the content area, so it is one more
+ * page of the same window. Returns both pages.
+ */
+async function sessionsPage(instance, control) {
+  await control.keyboard.press('Control+8');
   let page = null;
-  await until('a PWA carregar no painel', () => {
+  await until('a PWA carregar na vista das sessões', () => {
     page = instance.pages().find((candidate) => candidate.url().startsWith(`${origin}/`)) ?? null;
     return page !== null;
   }, 90_000);
   await page.waitForLoadState('domcontentloaded');
-  return { page, control };
+  return page;
 }
 
 async function health() {
@@ -372,12 +385,14 @@ async function health() {
   return { status: response.status, body: await response.json() };
 }
 
-async function runInstalledApp(target) {
+/** `locale` is what the system would say (`--lang`): only the first run of an installation reads it; a saved language wins. */
+async function runInstalledApp(target, locale = 'pt-BR') {
   const exe = join(target, 'Nanachi.exe');
-  const instance = await launch(exe, [], desktopEnv());
+  const instance = await launch(exe, [`--lang=${locale}`], desktopEnv());
   const electronPid = instance.process().pid;
-  const { page, control } = await panelPage(instance);
-  log(`   painel carregado: ${page.url()}`);
+  const control = await controlPage(instance);
+  const page = await sessionsPage(instance, control);
+  log(`   PWA carregada na vista das sessões: ${page.url()}`);
   const status = await page.evaluate(async () => await window.nanachiDesktop.status());
   assert.equal(status.mode, 'spawned', 'o app instalado deveria ter subido o próprio daemon');
   assert.ok(Number.isInteger(status.pid));
@@ -406,7 +421,7 @@ async function verifyControlCenter(control) {
   ];
   const sidebar = control.locator('nav#sidebar');
   for (const [label, marker] of tour) {
-    await sidebar.getByRole('button', { name: label }).click();
+    await sidebar.locator('ul').getByRole('button', { name: label, exact: true }).click();
     await control.getByRole('heading', { name: label, level: 1 }).waitFor({ state: 'visible', timeout: 10_000 });
     await until(`${label} terminar de carregar`, async () => (await control.locator('[aria-busy="true"]').count()) === 0, 30_000);
     await control.locator('main').getByText(marker).first().waitFor({ state: 'visible', timeout: 15_000 });
@@ -417,14 +432,145 @@ async function verifyControlCenter(control) {
   assert.equal(overview.ok, true, JSON.stringify(overview));
   assert.equal(overview.value.daemon.mode, 'spawned');
   assert.notEqual(overview.value.activity, null, 'o daemon embutido respondeu às chamadas autenticadas do Desktop');
-  await sidebar.getByRole('button', { name: 'Visão geral' }).click();
+  await sidebar.locator('ul').getByRole('button', { name: 'Visão geral', exact: true }).click();
   await shot(control, 'app-instalado-centro-de-controle');
   log('   centro de controle do app instalado: seis seções abrem sem erro, a ponte e os botões da barra de título existem');
 }
 
+const storedLanguage = () => JSON.parse(readFileSync(join(userData, 'desktop-settings.json'), 'utf8')).language;
+
+/** The view as the PWA's own page sees it, and the content area as the control center's page sees it (both in DIP). */
+async function viewAndContent(control, pwa) {
+  const content = await control.evaluate(() => {
+    const rect = document.querySelector('main#main').getBoundingClientRect();
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, screenX: window.screenX, screenY: window.screenY };
+  });
+  const view = await pwa.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight, screenX: window.screenX, screenY: window.screenY, visibility: document.visibilityState }));
+  return { content, view };
+}
+
+const near = (a, b, tolerance = 1.5) => Math.abs(a - b) <= tolerance;
+
+/**
+ * The PWA's view is as big as the content area and shown. Its place (x 232, y 40) is not visible to a page (`screenX` is the
+ * window's): `e2e/run-desktop.mjs` reads it from `view.getBounds()` in the main process, which a packaged app does not allow.
+ */
+async function expectViewOverContent(control, pwa, why) {
+  let last = null;
+  await until(
+    `${why}: the view covers the content area`,
+    async () => {
+      last = await viewAndContent(control, pwa);
+      const { content, view } = last;
+      return (
+        view.visibility === 'visible' &&
+        near(view.width, content.width) &&
+        near(view.height, content.height) &&
+        // `screenX/screenY` of a view's page are those of its window, so the view starts where the window does.
+        view.screenX === content.screenX &&
+        view.screenY === content.screenY
+      );
+    },
+    15_000,
+  ).catch((error) => {
+    throw new Error(`${error.message}; last seen ${JSON.stringify(last)}`);
+  });
+}
+
+/** Screenshots of the Sessões section: the control center page and the PWA page, light and dark, in the temp folder. */
+async function shotSessions(control, pwa, name) {
+  for (const [scheme, label] of [['light', 'claro'], ['dark', 'escuro']]) {
+    await control.emulateMedia({ colorScheme: scheme });
+    await pwa.emulateMedia({ colorScheme: scheme });
+    await sleep(600);
+    await control.screenshot({ path: join(sessionShots, `${name}-centro-de-controle-${label}.png`) });
+    await pwa.screenshot({ path: join(sessionShots, `${name}-pwa-${label}.png`) });
+  }
+  await control.emulateMedia({ colorScheme: 'light' });
+  await pwa.emulateMedia({ colorScheme: 'light' });
+  log(`   screenshots de ${name} (claro e escuro) em ${sessionShots}`);
+}
+
+const LANGUAGE_RADIO = { 'pt-BR': 'Português (Brasil)', en: 'English', es: 'Español' };
+
+/** The "Idioma" row of Ajustes: the control center changes at once and the PWA in the view gets `nanachi.language`. */
+async function switchLanguage(control, pwa, code) {
+  const label = (key) => translate(code, key);
+  await control.keyboard.press('Control+7');
+  const radio = control.getByRole('radio', { name: LANGUAGE_RADIO[code], exact: true });
+  await radio.waitFor({ state: 'visible', timeout: 10_000 });
+  await radio.click();
+  await until(`o centro de controle fala ${code}`, async () => (await control.evaluate(() => document.documentElement.lang)) === code && (await control.locator('#page-title').textContent()) === label('control.sections.settings.label'), 10_000);
+  const sections = ['overview', 'folders', 'devices', 'accounts', 'tailscale', 'logs', 'settings', 'sessions'];
+  assert.deepEqual(
+    await control.locator('nav#sidebar ul li button span.truncate').allTextContents(),
+    sections.map((id) => label(`control.sections.${id}.label`)),
+    `a barra lateral em ${code}`,
+  );
+  await control.locator('header').first().getByRole('button', { name: label('control.shell.titleBar.minimize'), exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+  await until(`${code} fica salvo`, async () => storedLanguage() === code, 5_000);
+  await until(
+    `a PWA recebe nanachi.language = ${code} do Desktop`,
+    async () => (await pwa.evaluate(() => ({ stored: localStorage.getItem('nanachi.language'), lang: document.documentElement.lang })).catch(() => null))?.stored === code,
+    30_000,
+  );
+  log(`   idioma ${code}: barra lateral, barra de título e títulos mudaram; salvo em desktop-settings.json; a PWA recebeu nanachi.language`);
+}
+
+/** Sessões: the view's size, Ctrl+8, the sidebar item, the "Abrir sessões" button, then the three languages. */
+async function verifySessionsAndLanguages(control, pwa) {
+  const sidebar = control.locator('nav#sidebar');
+  assert.equal(storedLanguage(), 'pt-BR', 'a primeira execução salvou o idioma que o sistema sugeriu (--lang=pt-BR)');
+  assert.equal(await pwa.evaluate(() => typeof window.nanachiControl), 'undefined', 'a PWA na vista nunca recebe a API do centro de controle');
+  assert.equal(await pwa.evaluate(() => typeof window.nanachiDesktop?.status), 'function', 'a PWA na vista recebe a ponte pequena do painel');
+  assert.equal(control.context().pages().filter((candidate) => isControlUrl(candidate.url())).length, 1, 'o centro de controle é a única janela do app (a janela separada da PWA acabou)');
+
+  // Sessões is the current section (Ctrl+8) and the view sits exactly over the content area.
+  assert.equal(await control.locator('#page-title').textContent(), 'Sessões');
+  assert.equal(await sidebar.locator('ul').getByRole('button', { name: 'Sessões', exact: true }).getAttribute('aria-current'), 'page');
+  await expectViewOverContent(control, pwa, 'Sessões aberta');
+  await pwa.getByRole('button', { name: 'Ajustes', exact: true }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  log('   Sessões: a PWA renderizou na vista, que cobre a área de conteúdo (abaixo da barra de título, à direita da barra lateral)');
+  await shotSessions(control, pwa, 'sessoes');
+
+  // On Sessões the sidebar is always the 64 px rail (nothing to collapse, no "Abrir sessões" button of its own), so the PWA in
+  // the view keeps its wide layout. Another section hides the view.
+  assert.equal(await control.getByRole('button', { name: 'Recolher a barra lateral' }).count(), 0, 'Sessões não tem botão de recolher a barra lateral');
+  assert.equal(await sidebar.getByRole('button', { name: 'Abrir sessões', exact: true }).count(), 0, 'a barra lateral não tem mais o botão "Abrir sessões"');
+  assert.equal(await sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().width)), 64, 'a barra lateral é o trilho de 64 px em Sessões');
+  // Whether the view is hidden is `view.getVisible()` in the main process (e2e/run-desktop.mjs); a CDP-attached page keeps
+  // reporting `visible`, so here only the page's own section is checked.
+  await control.keyboard.press('Control+1');
+  await until('Ctrl+1 leaves Sessões', async () => (await control.locator('#page-title').textContent()) === 'Visão geral', 10_000);
+  await control.keyboard.press('Control+8');
+  await expectViewOverContent(control, pwa, 'Ctrl+8');
+  await sidebar.locator('ul').getByRole('button', { name: 'Visão geral', exact: true }).click();
+  await until('o item Visão geral sai de Sessões', async () => (await control.locator('#page-title').textContent()) === 'Visão geral', 10_000);
+  await sidebar.locator('ul').getByRole('button', { name: 'Sessões', exact: true }).click();
+  await expectViewOverContent(control, pwa, 'item da barra lateral');
+  await control.locator('nav#sidebar').getByRole('button', { name: 'Visão geral', exact: true }).click();
+  await control.locator('main').getByRole('button', { name: 'Abrir sessões', exact: true }).click();
+  await expectViewOverContent(control, pwa, 'botão "Abrir sessões" da Visão geral');
+  log('   a vista volta com Ctrl+8, com o item da barra lateral e com "Abrir sessões" da Visão geral');
+
+  // Languages: pt-BR -> English -> Spanish -> pt-BR. A language chosen inside the PWA stays there.
+  await switchLanguage(control, pwa, 'en');
+  await pwa.evaluate(() => localStorage.setItem('nanachi.language', 'pt-BR'));
+  await pwa.reload();
+  await until('a escolha feita dentro da PWA sobrevive ao recarregamento', async () => (await pwa.evaluate(() => localStorage.getItem('nanachi.language')).catch(() => null)) === 'pt-BR', 30_000);
+  assert.equal(storedLanguage(), 'en', 'a escolha dentro da PWA não muda o idioma do Desktop');
+  await switchLanguage(control, pwa, 'es');
+  await control.keyboard.press('Control+8');
+  await expectViewOverContent(control, pwa, 'Sessões em espanhol');
+  await shotSessions(control, pwa, 'sessoes-espanhol');
+  await switchLanguage(control, pwa, 'pt-BR');
+  await control.keyboard.press('Control+1');
+  assert.deepEqual(controlProblems, [], 'o centro de controle logou erros');
+}
+
 async function verifyInstalledApp() {
   log(`2. app instalado em ${targetA} (porta ${port})`);
-  const { instance, page, control, electronPid, daemonPid } = await runInstalledApp(targetA);
+  const { instance, page, control, electronPid, daemonPid } = await runInstalledApp(targetA, 'pt-BR');
 
   const { status, body } = await health();
   assert.equal(status, 200);
@@ -438,9 +584,12 @@ async function verifyInstalledApp() {
 
   assert.equal(await page.evaluate(() => typeof window.nanachiDesktop?.status), 'function', 'a ponte window.nanachiDesktop tem que existir');
   await verifyControlCenter(control);
+  await control.keyboard.press('Control+8');
+  await expectViewOverContent(control, page, 'Sessões do app instalado');
   const title = await page.title();
-  log(`   título do painel: ${JSON.stringify(title)}`);
+  log(`   título da PWA: ${JSON.stringify(title)}`);
   await shot(page, 'app-instalado-painel');
+  await verifySessionsAndLanguages(control, page);
 
   assertDesktopHome();
   const logText = readFileSync(join(home, 'desktop-daemon.log'), 'utf8');
@@ -461,7 +610,7 @@ async function installOverRunningApp() {
   const oldMarker = JSON.parse(readFileSync(join(targetA, '.nanachi-install.json'), 'utf8'));
   writeFileSync(join(targetA, 'resources', 'sobra-de-versao-antiga.txt'), 'deve sumir na atualização');
 
-  const instance = await launch(installerAppExe, testFlags(targetA), { NANACHI_INSTALLER_LOG: installerLog });
+  const instance = await launch(installerAppExe, [...testFlags(targetA), '--lang=pt-BR'], { NANACHI_INSTALLER_LOG: installerLog });
   const page = await instance.firstWindow();
   await page.waitForSelector('[data-slot=install]', { state: 'visible', timeout: 30_000 });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -488,11 +637,34 @@ async function installOverRunningApp() {
   log('   o instalador fechou o app e o daemon e atualizou a instalação');
 }
 
+/**
+ * The installer runs before any setting exists: it speaks the language of the system locale (`--lang` here). Spanish and
+ * English windows are opened and closed without installing anything.
+ */
+async function installerInOtherLanguages() {
+  for (const [locale, code] of [['es-419', 'es'], ['en-US', 'en'], ['de-DE', 'en']]) {
+    const instance = await launch(installerAppExe, [...testFlags(targetB), `--lang=${locale}`], { NANACHI_INSTALLER_LOG: installerLog });
+    const page = await instance.firstWindow();
+    await page.waitForSelector('[data-slot=install]', { state: 'visible', timeout: 30_000 });
+    assert.equal(await page.evaluate(() => document.documentElement.lang), code, `${locale}: o instalador fala ${code}`);
+    assert.equal(await page.locator('[data-slot=options-open]').textContent(), translate(code, 'installer.setup.options'));
+    assert.equal(await page.locator('[data-view=idle] p.muted').textContent(), translate(code, 'installer.setup.tagline'));
+    assert.equal(await page.locator('[data-slot=version]').textContent(), translate(code, 'installer.common.version', { version }));
+    const pid = instance.process().pid;
+    await page.locator('[data-slot=close]').click();
+    await until('o instalador fechar', () => !isAlive(pid), 20_000);
+    apps.delete(instance);
+    log(`   o instalador em ${locale} fala ${code} (nada foi instalado)`);
+  }
+  assert.equal(existsSync(targetB), false, 'abrir e fechar o instalador não instala nada');
+}
+
 /** Dirige a janela do instalador (o mesmo app do exe portable, desempacotado) e instala na pasta B. */
 async function installWithWindow() {
   log(`4. janela do instalador, pasta ${targetB}`);
   assert.ok(existsSync(installerAppExe), `faltou ${installerAppExe}; rode npm run package -w @nanachi/desktop`);
-  const instance = await launch(installerAppExe, testFlags(targetB), { NANACHI_INSTALLER_LOG: installerLog });
+  await installerInOtherLanguages();
+  const instance = await launch(installerAppExe, [...testFlags(targetB), '--lang=pt-BR'], { NANACHI_INSTALLER_LOG: installerLog });
   const page = await instance.firstWindow();
   await page.waitForSelector('[data-slot=install]', { state: 'visible', timeout: 30_000 });
   assert.equal(await page.locator('[data-slot=target]').inputValue(), targetB);
@@ -556,13 +728,20 @@ async function installWithWindow() {
 /** App da pasta B aberto + janela de desinstalação: ela fecha o app e o daemon, remove a pasta e mantém os dados. */
 async function uninstallWithWindow() {
   log(`5. desinstalar ${targetB} pela janela, com o app aberto`);
-  const running = await runInstalledApp(targetB);
+  const running = await runInstalledApp(targetB, 'pt-BR');
   assert.ok(isAlive(running.electronPid) && isAlive(running.daemonPid));
+  // The language Desktop saved is what the uninstall window speaks, whatever the system locale says (`--lang=pt-BR` below).
+  assert.equal(await running.control.evaluate(() => window.nanachiControl.settings.setLanguage('es')), 'es');
+  await until('el español queda guardado', async () => storedLanguage() === 'es', 5_000);
 
-  const uninstaller = await launch(join(targetB, 'Nanachi.exe'), ['--uninstall', '--target', targetB, '--no-shortcuts', '--no-registry'], desktopEnv());
+  const uninstaller = await launch(join(targetB, 'Nanachi.exe'), ['--uninstall', '--target', targetB, '--no-shortcuts', '--no-registry', '--lang=pt-BR'], desktopEnv());
   const uninstallerPid = uninstaller.process().pid;
   const page = await uninstaller.firstWindow();
   await page.waitForSelector('[data-slot=remove]', { state: 'visible', timeout: 30_000 });
+  assert.equal(await page.evaluate(() => document.documentElement.lang), 'es', 'a janela de desinstalação usa o idioma salvo');
+  assert.equal(await page.locator('[data-slot=remove]').textContent(), translate('es', 'installer.uninstall.remove'));
+  assert.equal(await page.locator('h2').first().textContent(), translate('es', 'installer.uninstall.confirmTitle'));
+  log('   a janela de desinstalação abriu em espanhol (idioma salvo), com o sistema em pt-BR');
   assert.equal(await page.locator('[data-slot=delete-data]').isChecked(), false, '"Apagar também os dados" começa desmarcado');
   assert.equal(await page.locator('[data-slot=data-dir]').textContent(), home);
   for (const [scheme, label] of [['light', 'claro'], ['dark', 'escuro']]) {
@@ -582,7 +761,8 @@ async function uninstallWithWindow() {
   assert.equal(isAlive(running.daemonPid), false, 'o daemon do app tem que ser fechado pelo desinstalador');
   apps.delete(running.instance);
 
-  await page.locator('[data-slot=done-close]').click();
+  // O clique fecha a janela e o processo sai junto: o Playwright pode ver a página sumir antes de o clique "terminar".
+  await page.locator('[data-slot=done-close]').click().catch(() => undefined);
   await until('o desinstalador sair', () => !isAlive(uninstallerPid), 20_000);
   apps.delete(uninstaller);
   await until('a pasta da instalação sumir (limpeza agendada)', () => !existsSync(targetB), 90_000);
@@ -643,6 +823,7 @@ async function run() {
   const listing = spawnSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf8' }).stdout.split(String.fromCharCode(10));
   const tasks = listing.filter((line) => /^"Nanachi/i.test(line.trim()));
   log(`tasklist: ${tasks.length === 0 ? 'nenhum processo Nanachi*.exe' : tasks.join(' | ')}`);
+  log(`screenshots da seção Sessões: ${sessionShots}`);
   log('OK');
 }
 
@@ -662,5 +843,6 @@ try {
   const survivors = processesUnder(root);
   if (survivors.length > 0) console.error(`[e2einstall] processos que sobraram: ${JSON.stringify(survivors)}`);
   removeTree(root, undefined, { retries: 5, retryDelayMs: 500 });
+  console.log(`[e2einstall] screenshots da seção Sessões: ${sessionShots}`);
 }
 process.exit(failed ? 1 : 0);

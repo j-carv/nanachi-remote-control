@@ -1,7 +1,9 @@
 import type { EventEmitter } from 'node:events';
 import { dirname, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { DEFAULT_LANGUAGE } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
+import { reasonOf, reasonText, type Reason } from '../common/reason.js';
 import type { TailscaleStatus } from '../common/types.js';
 import { stageDirOf } from './build-dir.js';
 import type { ChildLike, SpawnOptions } from './daemon-host.js';
@@ -223,8 +225,13 @@ function clip(text: string): string {
   return text.length > LOG_LINE_CHARS ? `${text.slice(0, LOG_LINE_CHARS)}…` : text;
 }
 
-function exitReason(code: number | null, signal: NodeJS.Signals | null): string {
-  return signal !== null ? `sinal ${signal}` : `código ${code ?? '?'}`;
+function exitReason(code: number | null, signal: NodeJS.Signals | null): Reason {
+  return signal !== null ? reasonOf('main.reasons.signal', { signal }) : reasonOf('main.reasons.exitCode', { code: code ?? '?' });
+}
+
+/** The log is for support and stays in Portuguese, whatever language Desktop speaks. */
+function logText(reason: Reason): string {
+  return reasonText(reason, DEFAULT_LANGUAGE);
 }
 
 function ignoreError(): void {
@@ -240,6 +247,11 @@ export class SidecarTsnetHost implements TsnetHost {
   private readonly deps: TsnetHostDeps;
   private readonly listeners = new Set<(status: TailscaleStatus) => void>();
   private current: TailscaleStatus = { state: 'off' };
+  /**
+   * Why `current` is an error that Desktop worded itself (the sidecar's own `error` lines are not here: they are what the
+   * sidecar printed). Kept as a reason, so `status()` writes it in the language in effect when it is read.
+   */
+  private currentReason: Reason | null = null;
   private enabled = false;
   private child: TsnetChild | null = null;
   private childExited = true;
@@ -260,7 +272,7 @@ export class SidecarTsnetHost implements TsnetHost {
   }
 
   status(): TailscaleStatus {
-    return this.current;
+    return this.currentReason === null ? this.current : { state: 'error', message: reasonText(this.currentReason) };
   }
 
   onStatus(listener: (status: TailscaleStatus) => void): () => void {
@@ -321,11 +333,11 @@ export class SidecarTsnetHost implements TsnetHost {
     try {
       exe = this.deps.exePath();
     } catch (error) {
-      this.giveUp(`Não foi possível localizar o Tailscale embutido: ${messageOf(error)}`);
+      this.giveUp(reasonOf('main.tailscale.locateFailed', { detail: messageOf(error) }));
       return;
     }
     if (!this.deps.exists(exe)) {
-      this.giveUp(`Não achei o programa do Tailscale embutido (${SIDECAR_EXE_NAME}) em ${exe}.`);
+      this.giveUp(reasonOf('main.tailscale.programMissing', { name: SIDECAR_EXE_NAME, path: exe }));
       return;
     }
 
@@ -343,7 +355,7 @@ export class SidecarTsnetHost implements TsnetHost {
         },
       );
     } catch (error) {
-      this.onGone(generation, `não foi possível iniciar: ${messageOf(error)}`, null);
+      this.onGone(generation, reasonOf('main.reasons.spawnFailed', { detail: messageOf(error) }), null);
       return;
     }
 
@@ -360,7 +372,7 @@ export class SidecarTsnetHost implements TsnetHost {
 
     let finished = false;
     let closeTimer: ReturnType<typeof setTimeout> | null = null;
-    const finish = (reason: string, code: number | null): void => {
+    const finish = (reason: Reason, code: number | null): void => {
       if (finished) return;
       finished = true;
       if (closeTimer !== null) clearTimeout(closeTimer);
@@ -376,7 +388,7 @@ export class SidecarTsnetHost implements TsnetHost {
       closeTimer = setTimeout(() => finish(exitReason(code, signal), code), CLOSE_GRACE_MS);
     });
     child.on('close', (code: number | null, signal: NodeJS.Signals | null) => finish(exitReason(code, signal), code));
-    child.on('error', (error: Error) => finish(`erro no processo: ${error.message}`, null));
+    child.on('error', (error: Error) => finish(reasonOf('main.reasons.processError', { detail: error.message }), null));
   }
 
   private readLines(stream: EventEmitter | null, onLine: (line: string) => void): { flush(): void } {
@@ -425,15 +437,16 @@ export class SidecarTsnetHost implements TsnetHost {
   }
 
   /** The process is gone and nobody asked for it (`stop` bumps the generation first). */
-  private onGone(generation: number, reason: string, code: number | null): void {
+  private onGone(generation: number, reason: Reason, code: number | null): void {
     if (generation !== this.generation) return;
     this.child = null;
-    this.log(`processo encerrado (${reason})`);
+    this.log(`processo encerrado (${logText(reason)})`);
 
-    const base = this.lastError ?? `O Tailscale embutido parou (${reason})`;
+    // What the sidecar said last explains the exit better than the exit does; it is shown as it was printed.
+    const base: Reason = this.lastError !== null ? { text: sentence(this.lastError) } : reasonOf('main.tailscale.stopped', { reason });
     if (code === EXIT_USAGE) {
       // Invalid flags: the same flags would fail again.
-      this.giveUp(sentence(base));
+      this.giveUp(base);
       return;
     }
 
@@ -442,7 +455,8 @@ export class SidecarTsnetHost implements TsnetHost {
     this.crashCount += 1;
     const backoff = this.deps.backoffMs ?? DEFAULT_BACKOFF_MS;
     const wait = backoff[Math.min(this.crashCount - 1, backoff.length - 1)] ?? 30_000;
-    this.set({ state: 'error', message: `${sentence(base)} Tentando de novo em ${Math.max(1, Math.round(wait / 1000))} s.` });
+    const retry = reasonOf('main.tailscale.retry', { message: base, seconds: Math.max(1, Math.round(wait / 1000)) });
+    this.set({ state: 'error', message: reasonText(retry) }, retry);
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       this.launch();
@@ -450,10 +464,10 @@ export class SidecarTsnetHost implements TsnetHost {
   }
 
   /** An error a restart cannot fix: shown as is, with no retry until the user turns the switch off and on. */
-  private giveUp(message: string): void {
+  private giveUp(reason: Reason): void {
     this.child = null;
-    this.log(message);
-    this.set({ state: 'error', message });
+    this.log(logText(reason));
+    this.set({ state: 'error', message: reasonText(reason) }, reason);
   }
 
   private async terminate(): Promise<void> {
@@ -506,10 +520,13 @@ export class SidecarTsnetHost implements TsnetHost {
   }
 
   /** Emits only when the status changed (the sidecar repeats a `running` line after an `error`). */
-  private set(next: TailscaleStatus): void {
-    if (JSON.stringify(next) === JSON.stringify(this.current)) return;
+  private set(next: TailscaleStatus, reason: Reason | null = null): void {
+    const before = JSON.stringify(this.status());
     this.current = next;
-    for (const listener of this.listeners) listener(next);
+    this.currentReason = reason;
+    const now = this.status();
+    if (JSON.stringify(now) === before) return;
+    for (const listener of this.listeners) listener(now);
   }
 }
 

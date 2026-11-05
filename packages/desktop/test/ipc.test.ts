@@ -35,7 +35,7 @@ function fakeIpcMain(): IpcMainLike & {
 function setup(overrides: Partial<IpcDeps> = {}) {
   const ipcMain = fakeIpcMain();
   const setAutostart = vi.fn((value: boolean) => value);
-  const init: PreloadInit = { version: '0.1.0', machine: { id: 'm', name: 'PC', baseUrl: ORIGIN, token: 't' } };
+  const init: PreloadInit = { version: '0.1.0', machine: { id: 'm', name: 'PC', baseUrl: ORIGIN, token: 't' }, language: null };
   const dispose = registerIpc({
     ipcMain,
     isTrustedUrl: (url) => url === `${ORIGIN}/` || url?.startsWith(`${ORIGIN}/`) === true,

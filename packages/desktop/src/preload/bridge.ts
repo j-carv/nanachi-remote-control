@@ -1,4 +1,5 @@
 import { ALLOWED_EVENT_CHANNELS, ALLOWED_INVOKE_CHANNELS, EVENT_CHANNELS, INVOKE_CHANNELS } from '../common/channels.js';
+import type { Language } from '../common/i18n/languages.js';
 import type {
   DaemonStatus,
   NanachiDesktopBridge,
@@ -37,6 +38,7 @@ export function createBridge(ipc: BridgeIpc, version: string): NanachiDesktopBri
     version,
     status: () => invoke<DaemonStatus>(INVOKE_CHANNELS.status),
     onStatus: (callback) => subscribe<DaemonStatus>(EVENT_CHANNELS.status, callback),
+    onLanguage: (callback) => subscribe<Language>(EVENT_CHANNELS.language, callback),
     pairingCode: () => invoke<PairingCode>(INVOKE_CHANNELS.pairingCode),
     getAutostart: () => invoke<boolean>(INVOKE_CHANNELS.getAutostart),
     setAutostart: (value) => invoke<boolean>(INVOKE_CHANNELS.setAutostart, value),

@@ -1,11 +1,14 @@
+import { t } from '../../src/common/i18n/index.js';
 import type { InstallerApi, InstallerInit } from '../../src/install/ipc.js';
-import { createProgressView, showView, slot } from './common.js';
+import { applyLanguage, browserLanguage, createProgressView, showBridgeMissing, showView, slot } from './common.js';
 
 /** The installer window: idle, options, progress, done, error, and the "close Nanachi first" question. */
 
 const bridge: InstallerApi | undefined = window.installer;
 
 function start(api: InstallerApi, init: InstallerInit): void {
+  // The installer runs before any setting exists: the main process picked the language from the system locale.
+  applyLanguage(init.language);
   const target = slot<HTMLInputElement>('target');
   const targetError = slot('target-error');
   const desktopShortcut = slot<HTMLInputElement>('desktop-shortcut');
@@ -16,10 +19,10 @@ function start(api: InstallerApi, init: InstallerInit): void {
   target.value = init.target;
   desktopShortcut.checked = init.desktopShortcut;
   startWithWindows.checked = init.startWithWindows;
-  slot('version').textContent = `Versão ${init.version}`;
+  slot('version').textContent = t('installer.common.version', { version: init.version });
   if (init.testMode) {
     const scope = slot('scope');
-    scope.textContent = 'modo de teste';
+    scope.textContent = t('installer.common.testMode');
     scope.classList.add('badge');
   }
 
@@ -54,7 +57,7 @@ function start(api: InstallerApi, init: InstallerInit): void {
     installing = false;
     closeButton.disabled = false;
     if (outcome.ok) {
-      slot('done-detail').textContent = init.testMode ? 'Instalado em modo de teste.' : 'Tudo pronto. O Nanachi fica na bandeja do Windows.';
+      slot('done-detail').textContent = init.testMode ? t('installer.setup.doneDetailTestMode') : t('installer.setup.doneDetail');
       showView('done');
       slot<HTMLButtonElement>('launch').focus();
     } else {
@@ -68,7 +71,7 @@ function start(api: InstallerApi, init: InstallerInit): void {
   });
   api.onAskClose((processes) => {
     const names = [...new Set(processes.map((entry) => entry.name))].join(', ');
-    slot('close-detail').textContent = `Para continuar, ele precisa ser fechado (${names}). Nada se perde: o Nanachi guarda suas sessões.`;
+    slot('close-detail').textContent = t('installer.setup.closeDetail', { names });
     showView('close');
   });
   slot('close-confirm').addEventListener('click', () => {
@@ -104,7 +107,11 @@ function start(api: InstallerApi, init: InstallerInit): void {
 }
 
 if (bridge === undefined) {
-  document.body.textContent = 'O instalador não conseguiu iniciar (sem ponte com o aplicativo).';
+  showBridgeMissing('installer.setup.bridgeMissing');
 } else {
-  void bridge.init().then((init) => start(bridge, init));
+  // If the main process cannot answer, the page still shows itself (in the browser's language) instead of staying hidden.
+  void bridge.init().then(
+    (init) => start(bridge, init),
+    () => applyLanguage(browserLanguage()),
+  );
 }

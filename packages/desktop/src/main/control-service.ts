@@ -8,7 +8,9 @@ import type {
   LogsInfo,
   OverviewInfo,
   SaveRootsResult,
+  SessionsViewport,
 } from '../common/control-api.js';
+import { t, type Language } from '../common/i18n/index.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from '../common/types.js';
 import { controlFailure, toControlError } from './control-errors.js';
 import { isAllowedLoginUrl, isAllowedReleaseUrl } from './control-policy.js';
@@ -19,10 +21,11 @@ import { normalizeRoot, type RootsStore } from './roots-config.js';
  * What the control center can ask Desktop to do: everything of `ControlApi` except the window, the version and the
  * event subscriptions (those belong to the window and the preload). The IPC layer validates the shape of what the page
  * sends; this layer validates its meaning (ids, paths, addresses) and never lets an expected failure escape as an
- * exception: a `ControlResult` carries it, in Portuguese.
+ * exception: a `ControlResult` carries it, in Desktop's language.
  */
-export type ControlActions = Omit<ControlApi, 'version' | 'window' | 'onDaemonStatus' | 'tailscale'> & {
+export type ControlActions = Omit<ControlApi, 'version' | 'language' | 'window' | 'onDaemonStatus' | 'onNavigate' | 'onLanguage' | 'tailscale' | 'sessions'> & {
   tailscale: Omit<ControlApi['tailscale'], 'onStatus'>;
+  sessions: Omit<ControlApi['sessions'], 'onState'>;
 };
 
 /** A restart that did not end in a running daemon; carries the text for the user. */
@@ -52,7 +55,8 @@ export interface ControlSystem {
   showItemInFolder(path: string): void;
   /** `shell.openExternal` for an address this layer already checked. */
   openExternal(url: string): Promise<void>;
-  openSessions(): void;
+  /** Where the page says the sessions view may be drawn (already validated). */
+  setSessionsViewport(viewport: SessionsViewport): void;
   startUninstaller(): void;
 }
 
@@ -70,6 +74,8 @@ export interface ControlServiceDeps {
     stop(): Promise<TailscaleStatus>;
   };
   pairingCode(): Promise<PairingCode>;
+  /** Switches Desktop's language everywhere (tray, messages, pages, the PWA); returns the language now in effect. */
+  language: { set(language: Language): Language };
   readLogs(): LogsInfo;
   autostart: { readonly supported: boolean; get(): boolean; set(enabled: boolean): boolean };
   checkForUpdate(): Promise<UpdateCheckResult>;
@@ -92,12 +98,12 @@ function ok<T>(value: T): ControlResult<T> {
 }
 
 function invalidId(): ControlError {
-  return controlFailure('invalid_input', 'Identificador inválido.');
+  return controlFailure('invalid_input', t('main.control.invalidId'));
 }
 
 /** What the lists that need the daemon answer while it cannot be asked (stopped, starting, in error or Tailscale-only). */
 function daemonNotAskable(): ControlError {
-  return controlFailure('daemon_unavailable', 'O daemon não está disponível agora, então o Nanachi não consegue consultá-lo.');
+  return controlFailure('daemon_unavailable', t('main.control.daemonNotAvailable'));
 }
 
 /** The number of sessions the user agreed to interrupt: a whole number from zero up, or nothing. */
@@ -194,11 +200,11 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
   /** The text for a restart that did not end in a running daemon of Desktop's own. */
   function restartFailure(): ControlError {
     const status = host.status();
-    const detail = status.message === null ? '' : ` ${status.message}`;
-    if (status.state === 'attached') {
-      return controlFailure('daemon_unavailable', 'O daemon foi parado, mas outro programa já usava a porta e o Nanachi se conectou a ele em vez de iniciar o seu.');
-    }
-    return controlFailure('daemon_unavailable', `O daemon foi parado, mas não conseguiu iniciar de novo.${detail} Veja a aba Logs.`);
+    if (status.state === 'attached') return controlFailure('daemon_unavailable', t('main.control.restartAttached'));
+    return controlFailure(
+      'daemon_unavailable',
+      status.message === null ? t('main.control.restartFailed') : t('main.control.restartFailedDetail', { detail: status.message }),
+    );
   }
 
   async function openFolder(path: string): Promise<void> {
@@ -280,7 +286,7 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
     restartDaemon: () => {
       restarting ??= exclusive(async (): Promise<ControlResult<DaemonStatus>> => {
         if (host.status().mode === 'attached') {
-          return controlFailure('not_own_daemon', 'O Nanachi está usando um daemon que ele não iniciou, então não pode reiniciá-lo por aqui.');
+          return controlFailure('not_own_daemon', t('main.control.restartNotOwn'));
         }
         return safely(async () => {
           const outcome = await restart();
@@ -293,9 +299,11 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
       return restarting;
     },
 
-    openSessions: () => {
-      system.openSessions();
-      return Promise.resolve();
+    sessions: {
+      setViewport: (viewport) => {
+        system.setSessionsViewport(viewport);
+        return Promise.resolve();
+      },
     },
 
     openDataFolder: () => openFolder(deps.home),
@@ -321,13 +329,10 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
       save: (input, restartNow, confirmedBusy) =>
         exclusive(async (): Promise<ControlResult<SaveRootsResult>> => {
           if (confirmedBusy !== undefined && !isCount(confirmedBusy)) {
-            return controlFailure('invalid_input', 'A confirmação de sessões em andamento é inválida.');
+            return controlFailure('invalid_input', t('main.control.invalidBusyConfirmation'));
           }
           if (host.status().mode === 'attached') {
-            return controlFailure(
-              'not_own_daemon',
-              'O Nanachi está conectado a um daemon que ele não iniciou; a lista de pastas dele não pode ser editada por aqui.',
-            );
+            return controlFailure('not_own_daemon', t('main.control.foldersNotOwn'));
           }
           return safely(async () => {
             // Only a daemon Desktop runs itself is restarted. With nothing running, the next start reads the new list.
@@ -375,7 +380,7 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
           // Already gone: nothing to do.
           if (target === undefined) return ok(before);
           if (target.isThisApp) {
-            return controlFailure('invalid_input', 'Este é o dispositivo que o próprio Nanachi Desktop usa; revogá-lo o desconectaria do daemon.');
+            return controlFailure('invalid_input', t('main.control.revokeThisApp'));
           }
           try {
             await daemon.revokeDevice(id);
@@ -391,7 +396,7 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
 
       pairingCode: () => {
         if (!askable(host.status())) {
-          return Promise.resolve(controlFailure('daemon_unavailable', 'O daemon não está rodando, então não dá para gerar um código agora.'));
+          return Promise.resolve(controlFailure('daemon_unavailable', t('main.control.daemonNotRunning')));
         }
         return safely(() => deps.pairingCode());
       },
@@ -431,6 +436,7 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
     },
 
     settings: {
+      setLanguage: (language) => Promise.resolve(deps.language.set(language)),
       getAutostart: () => Promise.resolve({ value: deps.autostart.get(), supported: deps.autostart.supported }),
       setAutostart: (value) => Promise.resolve({ value: deps.autostart.set(value), supported: deps.autostart.supported }),
       checkForUpdate: () => deps.checkForUpdate(),

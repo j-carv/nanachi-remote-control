@@ -1,5 +1,7 @@
 import type { EventEmitter } from 'node:events';
+import { DEFAULT_LANGUAGE } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
+import { reasonOf, reasonText, type Reason } from '../common/reason.js';
 import type { DaemonStatus } from '../common/types.js';
 import type { DaemonRuntime } from './daemon-runtime.js';
 import type { RotatingLog } from './log-file.js';
@@ -77,16 +79,21 @@ const PORT_RECHECK_MS = 300;
 const PORT_BUSY_RETRY_MS = 15_000;
 const LOG_TAIL_LINES = 20;
 
-/** Shown when a daemon is up but its `allowedTailscaleLogins` makes it refuse every call from this PC. */
-export const RESTRICTED_MESSAGE =
-  'O daemon responde, mas só aceita acessos pelo Tailscale (allowedTailscaleLogins preenchido no config.json da pasta de dados do Desktop, .nanachi-desktop), ' +
-  'então o painel local não consegue usá-lo. Deixe allowedTailscaleLogins vazio nesse config.json para usar o painel, ou abra o endereço do Tailscale.';
+/** What a daemon shows when it is up but its `allowedTailscaleLogins` makes it refuse every call from this PC. */
+const RESTRICTED: Reason = reasonOf('main.daemon.restricted');
+/** The same message in pt-BR, the language the tests pin down. The status itself carries it in the language in effect. */
+export const RESTRICTED_MESSAGE = reasonText(RESTRICTED, DEFAULT_LANGUAGE);
+/** The log (`desktop-daemon.log`) is for support and stays in Portuguese, whatever language Desktop speaks. */
+const logText = (reason: Reason): string => reasonText(reason, DEFAULT_LANGUAGE);
 /** After `kill`, how long to wait for the exit event before moving on. */
 const EXIT_WAIT_MS = 3_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** A change to the status: `message` is a `Reason` here and the text of it in `DaemonStatus`. */
+type StatusPatch = Partial<Omit<DaemonStatus, 'message'>> & { message?: Reason | null };
 
 /**
  * Owns the daemon process for Nanachi Desktop. It never loads the daemon in-process: it either attaches to a
@@ -96,7 +103,12 @@ function delay(ms: number): Promise<void> {
 export class DaemonHost {
   private readonly deps: DaemonHostDeps;
   private readonly listeners = new Set<(status: DaemonStatus) => void>();
-  private current: DaemonStatus;
+  private current: Omit<DaemonStatus, 'message'>;
+  /**
+   * Why the status says what it says (`message`), kept as a reason and not as text: `status()` writes it in the language in
+   * effect when it is read, so a language switch shows in the next status without anything being rebuilt.
+   */
+  private reason: Reason | null = null;
   private child: ChildLike | null = null;
   private childExited = true;
   private exitWaiters: Array<() => void> = [];
@@ -117,13 +129,12 @@ export class DaemonHost {
       version: null,
       machineName: null,
       restricted: false,
-      message: null,
       logTail: [],
     };
   }
 
   status(): DaemonStatus {
-    return { ...this.current, logTail: [...this.current.logTail] };
+    return { ...this.current, message: this.reason === null ? null : reasonText(this.reason), logTail: [...this.current.logTail] };
   }
 
   port(): number {
@@ -200,7 +211,7 @@ export class DaemonHost {
         version: null,
         machineName: null,
         restricted: true,
-        message: RESTRICTED_MESSAGE,
+        message: RESTRICTED,
       });
       this.watchAttached(generation, port);
       return;
@@ -208,22 +219,19 @@ export class DaemonHost {
 
     const missing = this.deps.missingFile(this.deps.runtime);
     if (missing !== null) {
-      this.fail(`Arquivo do runtime ausente: ${missing}`);
+      this.fail(reasonOf('main.daemon.runtimeMissing', { path: missing }));
       return;
     }
 
     const free = await this.portIsFree(port);
     if (generation !== this.generation) return;
     if (!free) {
-      this.fail(
-        `A porta ${port} está ocupada por outro programa, que não é um daemon do Nanachi. ` +
-          `Feche esse programa ou mude "port" no config.json de ${this.deps.home}; o Nanachi tenta de novo sozinho.`,
-      );
+      this.fail(reasonOf('main.daemon.portBusy', { port, home: this.deps.home }));
       // Not a crash loop: one cheap look every so often, in case the program let go of the port (or it was a daemon
       // that was just restarting).
       this.restartTimer = setTimeout(() => {
         this.restartTimer = null;
-        this.begin(true).catch((error: unknown) => this.fail(`falha ao verificar a porta: ${messageOf(error)}`));
+        this.begin(true).catch((error: unknown) => this.fail(reasonOf('main.daemon.portCheckFailed', { detail: messageOf(error) })));
       }, PORT_BUSY_RETRY_MS);
       return;
     }
@@ -231,7 +239,7 @@ export class DaemonHost {
     try {
       this.deps.ensureConfig(this.deps.home);
     } catch (error) {
-      this.fail(`Não foi possível preparar o config.json em ${this.deps.home}: ${messageOf(error)}`);
+      this.fail(reasonOf('main.config.prepareFailed', { home: this.deps.home, detail: messageOf(error) }));
       return;
     }
 
@@ -272,7 +280,7 @@ export class DaemonHost {
         misses += 1;
         if (misses >= limit) {
           this.deps.log.append(`[desktop] o daemon existente na porta ${port} parou de responder; assumindo\n`);
-          this.begin().catch((error: unknown) => this.fail(`falha ao reiniciar o daemon: ${messageOf(error)}`));
+          this.begin().catch((error: unknown) => this.fail(reasonOf('main.daemon.restartFailed', { detail: messageOf(error) })));
           return;
         }
       } else {
@@ -292,7 +300,7 @@ export class DaemonHost {
         this.update({ version, machineName, restricted: false, message: null });
       }
     } else if (!this.current.restricted) {
-      this.update({ version: null, machineName: null, restricted: true, message: RESTRICTED_MESSAGE });
+      this.update({ version: null, machineName: null, restricted: true, message: RESTRICTED });
     }
   }
 
@@ -307,7 +315,7 @@ export class DaemonHost {
         env: { ...(this.deps.env ?? process.env), NANACHI_HOME: home },
       });
     } catch (error) {
-      this.handleExit(generation, `não foi possível iniciar: ${messageOf(error)}`);
+      this.handleExit(generation, reasonOf('main.reasons.spawnFailed', { detail: messageOf(error) }));
       return;
     }
 
@@ -321,7 +329,7 @@ export class DaemonHost {
     child.stderr?.on('data', onData);
 
     let exitSeen = false;
-    const onExit = (reason: string): void => {
+    const onExit = (reason: Reason): void => {
       if (exitSeen) return;
       exitSeen = true;
       this.childExited = true;
@@ -332,10 +340,10 @@ export class DaemonHost {
       this.handleExit(generation, reason);
     };
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
-      onExit(signal !== null ? `sinal ${signal}` : `código ${code ?? '?'}`);
+      onExit(signal !== null ? reasonOf('main.reasons.signal', { signal }) : reasonOf('main.reasons.exitCode', { code: code ?? '?' }));
     });
     child.on('error', (error: Error) => {
-      onExit(`erro no processo: ${error.message}`);
+      onExit(reasonOf('main.reasons.processError', { detail: error.message }));
     });
 
     void this.waitUntilHealthy(generation, port, child);
@@ -356,7 +364,7 @@ export class DaemonHost {
         return;
       }
       if (probe.kind === 'restricted') {
-        this.update({ state: 'running', restricted: true, message: RESTRICTED_MESSAGE });
+        this.update({ state: 'running', restricted: true, message: RESTRICTED });
         return;
       }
       if (Date.now() >= deadline) {
@@ -366,7 +374,7 @@ export class DaemonHost {
         await this.waitForExit(EXIT_WAIT_MS);
         // The exit event restarts it. If the process refuses to die there is nothing safe left to do.
         if (!this.childExited && generation === this.generation) {
-          this.fail('O daemon não respondeu e não pôde ser encerrado.');
+          this.fail(reasonOf('main.daemon.notClosed'));
         }
         return;
       }
@@ -374,10 +382,10 @@ export class DaemonHost {
     }
   }
 
-  private handleExit(generation: number, reason: string): void {
+  private handleExit(generation: number, reason: Reason): void {
     if (generation !== this.generation) return;
     this.child = null;
-    this.deps.log.append(`[desktop] o daemon caiu (${reason})\n`);
+    this.deps.log.append(`[desktop] o daemon caiu (${logText(reason)})\n`);
 
     const windowMs = this.deps.crashWindowMs ?? 120_000;
     const maxCrashes = this.deps.maxCrashes ?? 5;
@@ -385,10 +393,7 @@ export class DaemonHost {
     this.crashTimes = [...this.crashTimes.filter((at) => now - at < windowMs), now];
 
     if (this.crashTimes.length > maxCrashes) {
-      this.fail(
-        `O daemon caiu ${this.crashTimes.length} vezes em ${Math.round(windowMs / 60_000)} minutos; o Nanachi parou de tentar. ` +
-          `Último motivo: ${reason}.`,
-      );
+      this.fail(reasonOf('main.daemon.crashLoop', { count: this.crashTimes.length, minutes: Math.round(windowMs / 60_000), reason }));
       return;
     }
 
@@ -398,15 +403,15 @@ export class DaemonHost {
       state: 'starting',
       mode: 'spawned',
       pid: null,
-      message: `O daemon caiu (${reason}); tentando de novo em ${Math.round(wait / 1000)} s.`,
+      message: reasonOf('main.daemon.crashed', { reason, seconds: Math.round(wait / 1000) }),
     });
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
-      this.begin().catch((error: unknown) => this.fail(`falha ao reiniciar o daemon: ${messageOf(error)}`));
+      this.begin().catch((error: unknown) => this.fail(reasonOf('main.daemon.restartFailed', { detail: messageOf(error) })));
     }, wait);
   }
 
-  private fail(message: string): void {
+  private fail(message: Reason): void {
     this.update({
       state: 'error',
       mode: 'none',
@@ -442,8 +447,10 @@ export class DaemonHost {
     }
   }
 
-  private update(patch: Partial<DaemonStatus>): void {
-    this.current = { ...this.current, ...patch };
+  private update(patch: StatusPatch): void {
+    const { message, ...rest } = patch;
+    this.current = { ...this.current, ...rest };
+    if (message !== undefined) this.reason = message;
     const snapshot = this.status();
     for (const listener of this.listeners) listener(snapshot);
   }

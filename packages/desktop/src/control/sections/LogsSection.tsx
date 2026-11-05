@@ -1,5 +1,6 @@
 import { ArrowDownToLine, Copy, FolderOpen } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { LogsInfo } from '../../common/control-api.js';
 import { copyText } from '../lib/clipboard.js';
 import { classifyLogLine, isNearBottom, sameLines } from '../lib/logs.js';
@@ -43,6 +44,7 @@ export interface LogViewerProps {
  * so and offers the way back). Content that does not change is not re-rendered.
  */
 export function LogViewer({ lines, emptyText, onFollowChange, resumeToken = 0 }: LogViewerProps) {
+  const { t } = useTranslation();
   const box = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const lastResume = useRef(resumeToken);
@@ -72,7 +74,7 @@ export function LogViewer({ lines, emptyText, onFollowChange, resumeToken = 0 }:
       role="log"
       // A log region announces every new line by default; this one refreshes every 2 s, so it would talk over the user.
       aria-live="off"
-      aria-label="Linhas do log"
+      aria-label={t('logs.viewer')}
       tabIndex={0}
       onScroll={(event) => setFollowing(isNearBottom(event.currentTarget))}
       className="selectable min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card px-3.5 py-3 font-mono text-[12px] leading-[19px]"
@@ -103,11 +105,12 @@ export interface LogsViewProps {
 }
 
 export function LogsView({ logs, tab, onTab, following, onFollowChange, resumeToken, onResume, onCopy, onOpenFolder }: LogsViewProps) {
+  const { t } = useTranslation();
   const lines = tab === 'daemon' ? logs.daemon : logs.tailscale;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex items-center gap-3">
-        <div role="tablist" aria-label="Qual log" className="inline-flex rounded-lg bg-muted p-0.5">
+        <div role="tablist" aria-label={t('logs.tabsLabel')} className="inline-flex rounded-lg bg-muted p-0.5">
           {TABS.map((item) => (
             <button
               key={item.id}
@@ -136,18 +139,18 @@ export function LogsView({ logs, tab, onTab, following, onFollowChange, resumeTo
             </button>
           ))}
         </div>
-        <span className="text-xs text-muted-foreground tabular-nums">{lines.length === 1 ? '1 linha' : `${lines.length} linhas`}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{t('logs.lines', { count: lines.length })}</span>
         <div className="ml-auto flex items-center gap-2">
           {following ? null : (
             <Button variant="outline" icon={<ArrowDownToLine aria-hidden="true" />} onClick={onResume}>
-              Rolagem pausada · ir para o fim
+              {t('logs.paused')}
             </Button>
           )}
           <Button icon={<Copy aria-hidden="true" />} disabled={lines.length === 0} onClick={onCopy}>
-            Copiar
+            {t('logs.copy')}
           </Button>
           <Button icon={<FolderOpen aria-hidden="true" />} onClick={onOpenFolder}>
-            Abrir pasta dos logs
+            {t('logs.openFolder')}
           </Button>
         </div>
       </div>
@@ -155,7 +158,7 @@ export function LogsView({ logs, tab, onTab, following, onFollowChange, resumeTo
         <LogViewer
           key={tab}
           lines={lines}
-          emptyText={tab === 'daemon' ? 'O daemon ainda não escreveu nada.' : 'Ainda não há linhas do Tailscale embutido no log do daemon. Elas aparecem aqui, com o prefixo [tsnet], quando ele rodar.'}
+          emptyText={tab === 'daemon' ? t('logs.emptyDaemon') : t('logs.emptyTailscale')}
           onFollowChange={onFollowChange}
           resumeToken={resumeToken}
         />
@@ -165,6 +168,7 @@ export function LogsView({ logs, tab, onTab, following, onFollowChange, resumeTo
 }
 
 export function LogsSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const toast = useToast();
   const reported = useReported();
@@ -177,8 +181,8 @@ export function LogsSection() {
   const copy = async (): Promise<void> => {
     if (!stable) return;
     const lines = tab === 'daemon' ? stable.daemon : stable.tailscale;
-    if (await copyText(lines.join('\n'))) toast({ tone: 'success', message: 'Log copiado.' });
-    else toast({ tone: 'error', message: 'Não foi possível copiar.' });
+    if (await copyText(lines.join('\n'))) toast({ tone: 'success', message: t('logs.copied') });
+    else toast({ tone: 'error', message: t('common.copyFailed') });
   };
 
   let body;
@@ -198,7 +202,7 @@ export function LogsSection() {
         resumeToken={resumeToken}
         onResume={() => setResumeToken((token) => token + 1)}
         onCopy={() => void copy()}
-        onOpenFolder={() => reported(() => api.logs.openFolder(), 'Não foi possível abrir a pasta dos logs.')}
+        onOpenFolder={() => reported(() => api.logs.openFolder(), t('logs.openFolderFailed'))}
       />
     );
   }

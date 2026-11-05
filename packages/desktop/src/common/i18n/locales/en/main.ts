@@ -1,0 +1,153 @@
+import type { Strings } from '../../types.js';
+import type { main as ptBR } from '../pt-BR/main.js';
+
+/** Texts the main process shows, English. Same keys as pt-BR. */
+export const main: Strings<typeof ptBR> = {
+  status: {
+    starting: 'Nanachi · starting',
+    running: 'Nanachi · running',
+    attached: 'Nanachi · connected to the existing daemon',
+    stopped: 'Nanachi · stopped',
+    error: 'Nanachi · error',
+  },
+  dialogs: {
+    title: 'Nanachi',
+    missingUi: 'Nanachi’s interface was not found. Reinstall the app, or run "npm run build:desktop -w @nanachi/desktop".',
+    pairingCodeFailed: 'Could not generate the pairing code.',
+    uninstallOnlyInstalled: 'The uninstaller only exists in the installed Nanachi.',
+    pickFoldersTitle: 'Choose allowed folders',
+    pickFoldersButton: 'Add',
+  },
+  notifications: {
+    updateTitle: 'New version of Nanachi',
+    updateBody: 'Version {{version}} is available. Click to open the release page.',
+  },
+  tray: {
+    open: 'Open Nanachi',
+    openSessions: 'Open sessions',
+    pairingCode: 'Generate pairing code',
+    startWithWindows: 'Start with Windows',
+    quit: 'Quit',
+  },
+  pairingWindow: {
+    windowTitle: 'Nanachi · Pairing code',
+    pageTitle: 'Pairing code',
+    codeLabel: 'Code {{code}}',
+    qrAlt: 'QR code for {{code}}',
+    expiresIn: 'Expires in {{time}}',
+    expired: 'Code expired. Generate another from the Nanachi icon.',
+    hint: 'On the other device, open Nanachi, add a machine and type the code. Single use.',
+  },
+  control: {
+    rejected: {
+      accountsUnsupported: 'This agent has no extra accounts.',
+      accountInUse: 'A session is using this account.',
+      tooManyAccounts: 'This agent has reached its account limit.',
+      notFound: 'The agent or the account was not found.',
+      refused: 'The daemon refused the request.',
+    },
+    daemon: {
+      unavailable: 'Could not reach the Nanachi daemon. It may be stopped or still starting.',
+      notPaired: 'Could not pair Nanachi Desktop with the daemon: {{detail}}',
+      unauthorized: 'The daemon refused Nanachi Desktop’s access; the device may have been revoked. Try again.',
+      forbidden:
+        'The daemon only accepts access through Tailscale (allowedTailscaleLogins in config.json), so Nanachi Desktop cannot query it. ' +
+        'Leave that list empty in the config.json of Desktop’s data folder.',
+      notFound: 'The daemon did not find what was requested.',
+      busy: 'The daemon asked for a pause: too many attempts in a row. Wait a moment and try again.',
+      server: 'The daemon answered with an error (HTTP {{status}}). See the Logs tab.',
+      badResponse: 'The daemon answered something Nanachi did not understand. It may be from another version.',
+    },
+    pairingFailed: 'Could not complete pairing: {{detail}}',
+    somethingWrong: 'Something went wrong: {{detail}}',
+    invalidId: 'Invalid identifier.',
+    invalidFoldersRequest: 'Invalid request: the folder list or the restart option makes no sense.',
+    oneFolderTooLong: 'One of the paths is too long.',
+    invalidBusyConfirmation: 'The confirmation for running sessions is invalid.',
+    daemonNotAvailable: 'The daemon is not available right now, so Nanachi cannot query it.',
+    daemonNotRunning: 'The daemon is not running, so a code cannot be generated right now.',
+    restartNotOwn: 'Nanachi is using a daemon it did not start, so it cannot restart it from here.',
+    foldersNotOwn: 'Nanachi is connected to a daemon it did not start; its folder list cannot be edited from here.',
+    revokeThisApp: 'This is the device Nanachi Desktop itself uses; revoking it would disconnect it from the daemon.',
+    restartAttached: 'The daemon was stopped, but another program was already using the port and Nanachi connected to it instead of starting its own.',
+    restartFailed: 'The daemon was stopped, but it could not start again. See the Logs tab.',
+    restartFailedDetail: 'The daemon was stopped, but it could not start again. {{detail}} See the Logs tab.',
+  },
+  roots: {
+    invalidList: 'The folder list is invalid.',
+    tooMany: 'Too many folders: the maximum is {{max}}.',
+    pathTooLong: 'The path "{{path}}" is too long.',
+    notAbsolute: '"{{path}}" is not an absolute Windows path (for example, C:\\Projects).',
+    notFolder: '"{{path}}" is not a folder.',
+    missing: 'The folder "{{path}}" does not exist.',
+    timeout:
+      'The folder "{{path}}" did not answer in time. If it is on a network or on a disconnected drive, try again when it is available.',
+  },
+  config: {
+    readFailed: 'Could not read config.json ({{file}}): {{detail}}',
+    invalidJson: 'config.json ({{file}}) is not valid JSON: {{detail}}',
+    notObject: 'config.json ({{file}}) must be a JSON object.',
+    writeFailed: 'Could not write config.json ({{file}}): {{detail}}',
+    prepareFailed: 'Could not prepare config.json in {{home}}: {{detail}}',
+  },
+  accounts: {
+    principal: 'Main account',
+  },
+  reasons: {
+    unknown: 'unknown error',
+    signal: 'signal {{signal}}',
+    exitCode: 'exit code {{code}}',
+    processError: 'process error: {{detail}}',
+    spawnFailed: 'could not start: {{detail}}',
+  },
+  daemon: {
+    restricted:
+      'The daemon answers, but it only accepts access through Tailscale (allowedTailscaleLogins is set in the config.json of Desktop’s data folder, .nanachi-desktop), ' +
+      'so the local panel cannot use it. Leave allowedTailscaleLogins empty in that config.json to use the panel, or open the Tailscale address.',
+    runtimeMissing: 'Runtime file missing: {{path}}',
+    portBusy:
+      'Port {{port}} is in use by another program, which is not a Nanachi daemon. ' +
+      'Close that program or change "port" in the config.json of {{home}}; Nanachi retries on its own.',
+    portCheckFailed: 'Failed to check the port: {{detail}}',
+    restartFailed: 'Failed to restart the daemon: {{detail}}',
+    notClosed: 'The daemon did not answer and could not be stopped.',
+    crashLoop: 'The daemon crashed {{count}} times in {{minutes}} min; Nanachi stopped trying. Last reason: {{reason}}.',
+    crashed: 'The daemon crashed ({{reason}}); trying again in {{seconds}} s.',
+  },
+  tailscale: {
+    locateFailed: 'Could not locate the built-in Tailscale: {{detail}}',
+    programMissing: 'The built-in Tailscale program ({{name}}) was not found at {{path}}.',
+    stopped: 'The built-in Tailscale stopped ({{reason}}).',
+    retry: '{{message}} Trying again in {{seconds}} s.',
+  },
+  updates: {
+    githubUnreachable: 'Could not reach GitHub: {{detail}}',
+    githubHttp: 'GitHub answered HTTP {{status}}.',
+    githubUnreadable: 'The GitHub response could not be read.',
+  },
+  uninstallLaunch: {
+    failed: 'Could not start the uninstaller: {{detail}}',
+    exitedWithCode: 'PowerShell exited with code {{code}}',
+    exitedWithError: 'PowerShell exited with an error',
+  },
+  pairing: {
+    cliNothing: 'the pairing command printed nothing',
+    cliNotJson: 'the pairing command printed something that is not JSON',
+    cliInvalid: 'invalid response from the pairing command',
+    codeNotSixDigits: 'the pairing code does not have 6 digits',
+    expiryInvalid: 'the pairing code’s expiry is invalid',
+    deviceNothing: 'the device command printed nothing',
+    deviceNotJson: 'the device command printed something that is not JSON',
+    deviceInvalid: 'invalid response from the device command',
+    deviceIncomplete: 'the device command did not return deviceId and token',
+    noAnswer: 'the daemon did not answer the pairing request: {{detail}}',
+    rateLimited: 'too many pairing attempts; wait a moment',
+    deviceRefused: 'the daemon refused the new device (HTTP {{status}})',
+    badResponse: 'invalid pairing response',
+    cliFailed: 'could not run the pairing command: {{detail}}',
+    cliTimeout: 'the pairing command took too long',
+    cliExit: 'the pairing command exited with code {{code}}',
+    onlyOwnDaemon: 'Nanachi Desktop only pairs with the daemon it started itself',
+    triedRecently: 'Nanachi Desktop’s pairing was attempted a moment ago; wait a moment',
+  },
+};

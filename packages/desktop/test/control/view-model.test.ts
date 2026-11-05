@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { DaemonStatus, TailscaleStatus } from '../../src/common/types.js';
-import { calmErrorHint, errorTitle, isCalmError, toControlError } from '../../src/control/lib/errors.js';
+import { calmErrorHint, errorMessage, errorTitle, isCalmError, toControlError } from '../../src/control/lib/errors.js';
 import { classifyLogLine, isNearBottom, sameLines } from '../../src/control/lib/logs.js';
 import { isSidebarToggle, sectionForShortcut } from '../../src/control/lib/shortcuts.js';
 import { daemonSummary, tailscaleSummary } from '../../src/control/lib/status.js';
+import { controlT } from './translator.js';
+
+const t = controlT('pt-BR');
 
 const daemon = (extra: Partial<DaemonStatus>): DaemonStatus => ({
   state: 'running',
@@ -26,19 +29,19 @@ describe('daemonSummary', () => {
     ['stopped', 'Parado', 'muted', false],
     ['error', 'Erro', 'destructive', false],
   ] as const)('%s', (state, word, tone, pulse) => {
-    const summary = daemonSummary(daemon({ state }));
+    const summary = daemonSummary(daemon({ state }), t);
     expect(summary.word).toBe(word);
     expect(summary.tone).toBe(tone);
     expect(summary.pulse).toBe(pulse);
   });
 
   it('describes who owns the process', () => {
-    expect(daemonSummary(daemon({ state: 'attached', mode: 'attached' })).detail).toContain('já estava rodando');
-    expect(daemonSummary(daemon({ state: 'running' })).detail).toContain('iniciado pelo Nanachi');
+    expect(daemonSummary(daemon({ state: 'attached', mode: 'attached' }), t).detail).toContain('já estava rodando');
+    expect(daemonSummary(daemon({ state: 'running' }), t).detail).toContain('iniciado pelo Nanachi');
   });
 
   it('a restricted daemon is flagged as attention even when running', () => {
-    expect(daemonSummary(daemon({ restricted: true })).tone).toBe('attention');
+    expect(daemonSummary(daemon({ restricted: true }), t).tone).toBe('attention');
   });
 });
 
@@ -50,7 +53,7 @@ describe('tailscaleSummary', () => {
     [{ state: 'running', dnsName: 'a.ts.net', tailnet: 't', ips: [] }, 'Ligado', 'success', false],
     [{ state: 'error', message: 'x' }, 'Erro', 'destructive', false],
   ] as Array<[TailscaleStatus, string, string, boolean]>)('%j', (status, word, tone, pulse) => {
-    const summary = tailscaleSummary(status);
+    const summary = tailscaleSummary(status, t);
     expect(summary.word).toBe(word);
     expect(summary.tone).toBe(tone);
     expect(summary.pulse).toBe(pulse);
@@ -60,14 +63,24 @@ describe('tailscaleSummary', () => {
 describe('errors', () => {
   it('maps every ControlError code to a short Portuguese title', () => {
     for (const code of ['daemon_unavailable', 'not_paired', 'unauthorized', 'invalid_input', 'io', 'not_own_daemon', 'unknown'] as const) {
-      expect(errorTitle(code).length).toBeGreaterThan(5);
+      expect(errorTitle(code, t).length).toBeGreaterThan(5);
     }
-    expect(errorTitle('daemon_unavailable')).toBe('O daemon não está respondendo');
+    expect(errorTitle('daemon_unavailable', t)).toBe('O daemon não está respondendo');
   });
 
   it('a rejected IPC call becomes an unknown ControlError without leaking the raw message', () => {
     const error = toControlError(new Error('Error invoking remote method: boom'));
-    expect(error).toEqual({ ok: false, code: 'unknown', message: 'Não foi possível falar com o Nanachi. Tente de novo.' });
+    // Born in the page, so it carries no message of main: the text is worded in the language on screen when it is shown.
+    expect(error).toEqual({ ok: false, code: 'unknown', message: '' });
+    expect(errorMessage(error, t)).toBe('Não foi possível falar com o Nanachi. Tente de novo.');
+    expect(errorMessage(error, controlT('en'))).toBe('Could not talk to Nanachi. Try again.');
+    expect(errorMessage(error, controlT('es'))).toBe('No se pudo comunicar con Nanachi. Intenta de nuevo.');
+  });
+
+  it('a message of main is shown as it is, in any language', () => {
+    const fromMain = { ok: false, code: 'daemon_unavailable', message: 'O daemon não respondeu.' } as const;
+    expect(errorMessage(fromMain, t)).toBe('O daemon não respondeu.');
+    expect(errorMessage(fromMain, controlT('en'))).toBe('O daemon não respondeu.');
   });
 });
 
@@ -82,8 +95,8 @@ describe('calm errors (attached to a daemon Desktop did not start)', () => {
   });
 
   it('they come with one reassuring line that the rest of the panel keeps working', () => {
-    expect(calmErrorHint()).toContain('não iniciou');
-    expect(calmErrorHint()).toContain('o resto do painel continua funcionando');
+    expect(calmErrorHint(t)).toContain('não iniciou');
+    expect(calmErrorHint(t)).toContain('o resto do painel continua funcionando');
   });
 });
 
@@ -126,14 +139,15 @@ describe('shortcuts', () => {
     ...extra,
   });
 
-  it('Ctrl+1..7 select the sections in sidebar order', () => {
+  it('Ctrl+1..8 select the sections in sidebar order, Ctrl+8 being the sessions', () => {
     expect(sectionForShortcut(key('1'))).toBe('overview');
     expect(sectionForShortcut(key('2'))).toBe('folders');
     expect(sectionForShortcut(key('7'))).toBe('settings');
+    expect(sectionForShortcut(key('8'))).toBe('sessions');
   });
 
   it('ignores other digits and modified combinations', () => {
-    expect(sectionForShortcut(key('8'))).toBeNull();
+    expect(sectionForShortcut(key('9'))).toBeNull();
     expect(sectionForShortcut(key('0'))).toBeNull();
     expect(sectionForShortcut(key('1', { ctrlKey: false }))).toBeNull();
     expect(sectionForShortcut(key('1', { altKey: true }))).toBeNull();

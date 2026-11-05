@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { EXE_NAME, PAYLOAD_META, PAYLOAD_ZIP } from './constants.js';
 
 /** `payload.json` next to `payload.zip`: written when the zip is built, read by the installer. */
@@ -20,15 +21,15 @@ export interface Payload {
 }
 
 export function parsePayloadMeta(raw: unknown): PayloadMeta {
-  if (typeof raw !== 'object' || raw === null) throw new Error('payload.json inválido');
+  if (typeof raw !== 'object' || raw === null) throw new Error(t('installer.payload.invalid'));
   const record = raw as Record<string, unknown>;
   const { schema, version, exe, files, uncompressedBytes } = record;
-  if (schema !== 1) throw new Error('payload.json: versão de formato desconhecida');
-  if (typeof version !== 'string' || version === '') throw new Error('payload.json: versão ausente');
-  if (typeof exe !== 'string' || exe === '' || exe.includes('/') || exe.includes('\\')) throw new Error('payload.json: exe inválido');
-  if (typeof files !== 'number' || !Number.isInteger(files) || files < 1) throw new Error('payload.json: files inválido');
+  if (schema !== 1) throw new Error(t('installer.payload.unknownSchema'));
+  if (typeof version !== 'string' || version === '') throw new Error(t('installer.payload.noVersion'));
+  if (typeof exe !== 'string' || exe === '' || exe.includes('/') || exe.includes('\\')) throw new Error(t('installer.payload.badExe'));
+  if (typeof files !== 'number' || !Number.isInteger(files) || files < 1) throw new Error(t('installer.payload.badFiles'));
   if (typeof uncompressedBytes !== 'number' || !Number.isFinite(uncompressedBytes) || uncompressedBytes < 1) {
-    throw new Error('payload.json: uncompressedBytes inválido');
+    throw new Error(t('installer.payload.badBytes'));
   }
   return { schema: 1, version, exe, files, uncompressedBytes };
 }
@@ -42,7 +43,7 @@ export function readPayload(dir: string): Payload {
   const zipPath = join(dir, PAYLOAD_ZIP);
   const metaPath = join(dir, PAYLOAD_META);
   if (!existsSync(zipPath) || !existsSync(metaPath)) {
-    throw new Error(`o instalador não encontrou os arquivos do Nanachi (${zipPath}). Baixe o instalador de novo.`);
+    throw new Error(t('installer.errors.payloadMissing', { path: zipPath }));
   }
   const meta = parsePayloadMeta(JSON.parse(readFileSync(metaPath, 'utf8')));
   return { zipPath, meta };

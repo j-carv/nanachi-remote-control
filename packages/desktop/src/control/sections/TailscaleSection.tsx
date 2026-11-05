@@ -1,5 +1,6 @@
 import { ExternalLink, Globe, Network, RotateCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ControlError } from '../../common/control-api.js';
 import type { TailscaleStatus } from '../../common/types.js';
 import { toControlError } from '../lib/errors.js';
@@ -28,15 +29,15 @@ export interface TailscaleViewProps {
   onRetry: () => void;
 }
 
-const STEPS = (address: string): string[] => [
-  'Instale o app Tailscale no iPhone e entre com a mesma conta.',
-  `Abra ${address} no Safari.`,
-  'Se o app pedir um código, gere um em Aparelhos.',
-  'Toque em Compartilhar e em "Adicionar à Tela de Início".',
-];
-
 export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: TailscaleViewProps) {
-  const summary = tailscaleSummary(status);
+  const { t } = useTranslation();
+  const summary = tailscaleSummary(status, t);
+  const steps = (address: string): string[] => [
+    t('tailscale.step1'),
+    t('tailscale.step2', { address }),
+    t('tailscale.step3', { devices: t('sections.devices.label') }),
+    t('tailscale.step4'),
+  ];
   const on = status.state !== 'off';
   return (
     <>
@@ -45,7 +46,7 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
           icon={Network}
           title={
             <span className="flex items-center gap-2.5">
-              Tailscale embutido
+              {t('tailscale.builtIn')}
               <span className={cx('inline-flex items-center gap-1.5 text-[13px] font-medium', TONE_TEXT[summary.tone])}>
                 <StatusDot tone={summary.tone} pulse={summary.pulse} />
                 {summary.word}
@@ -53,7 +54,7 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
             </span>
           }
           id="tailscale-toggle-label"
-          description="Este PC entra na sua tailnet como um dispositivo separado, com o nome nanachi-nome-do-pc. O Tailscale instalado no Windows não é alterado."
+          description={t('tailscale.description')}
           top
           trailing={<Switch checked={on} disabled={busy} labelledBy="tailscale-toggle-label" onCheckedChange={onToggle} />}
         />
@@ -62,24 +63,24 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
       {status.state === 'needs_login' ? (
         <Notice
           tone="attention"
-          title="Falta entrar na sua conta do Tailscale"
+          title={t('tailscale.loginTitle')}
           action={
             <Button variant="primary" icon={<ExternalLink aria-hidden="true" />} onClick={() => onLogin(status.authUrl)}>
-              Entrar no Tailscale
+              {t('common.tailscaleLogin')}
             </Button>
           }
         >
-          Abra o link, entre e aprove este PC. O endereço aparece aqui quando terminar.
+          {t('tailscale.loginBody')}
         </Notice>
       ) : null}
 
       {status.state === 'error' ? (
         <Notice
           tone="destructive"
-          title="O Tailscale não funcionou"
+          title={t('tailscale.failedTitle')}
           action={
             <Button icon={<RotateCw aria-hidden="true" />} loading={busy} onClick={onRetry}>
-              Tentar de novo
+              {t('common.retry')}
             </Button>
           }
         >
@@ -90,17 +91,17 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
       {status.state === 'running' ? (
         <>
           <section aria-labelledby="ts-connection">
-            <SectionHeading id="ts-connection">Conexão</SectionHeading>
+            <SectionHeading id="ts-connection">{t('tailscale.connection')}</SectionHeading>
             <Group>
               <Row
                 icon={Globe}
-                title="Endereço para o iPhone"
+                title={t('common.addressForPhone')}
                 description={<span className="selectable block truncate font-mono text-[12px] text-foreground">{`https://${status.dnsName}`}</span>}
-                trailing={<CopyButton text={`https://${status.dnsName}`} label="Copiar endereço" />}
+                trailing={<CopyButton text={`https://${status.dnsName}`} label={t('common.copyAddress')} />}
               />
               <Row title="Tailnet" description={<span className="selectable">{status.tailnet}</span>} className="min-h-12" />
               <Row
-                title="Endereços IP"
+                title={t('tailscale.ipAddresses')}
                 description={
                   status.ips.length > 0 ? (
                     <span className="mt-0.5 flex flex-wrap gap-1.5">
@@ -111,7 +112,7 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
                       ))}
                     </span>
                   ) : (
-                    'Nenhum endereço ainda.'
+                    t('tailscale.noIps')
                   )
                 }
               />
@@ -119,9 +120,9 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
           </section>
 
           <section aria-labelledby="ts-steps">
-            <SectionHeading id="ts-steps">No iPhone</SectionHeading>
+            <SectionHeading id="ts-steps">{t('tailscale.stepsHeading')}</SectionHeading>
             <ol className="list-decimal space-y-1.5 rounded-lg border border-border bg-card py-3.5 pr-5 pl-9 text-[13px] leading-5 marker:text-muted-foreground">
-              {STEPS(`https://${status.dnsName}`).map((step) => (
+              {steps(`https://${status.dnsName}`).map((step) => (
                 <li key={step}>{step}</li>
               ))}
             </ol>
@@ -129,12 +130,13 @@ export function TailscaleView({ status, busy, onToggle, onLogin, onRetry }: Tail
         </>
       ) : null}
 
-      <p className="px-0.5 text-[13px] leading-5 text-muted-foreground">A tailnet precisa ter MagicDNS e certificados HTTPS ativos. Ligar aqui não mexe no Tailscale do Windows, no serve nem no funnel.</p>
+      <p className="px-0.5 text-[13px] leading-5 text-muted-foreground">{t('tailscale.footnote')}</p>
     </>
   );
 }
 
 export function TailscaleSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const shell = useShell();
   const toast = useToast();
@@ -159,7 +161,7 @@ export function TailscaleSection() {
     try {
       setTailscale(await (on ? api.tailscale.start() : api.tailscale.stop()));
     } catch {
-      toast({ tone: 'error', message: on ? 'Não foi possível ligar o Tailscale.' : 'Não foi possível desligar o Tailscale.' });
+      toast({ tone: 'error', message: on ? t('common.tailscaleStartFailed') : t('tailscale.stopFailed') });
     } finally {
       setBusy(false);
     }
@@ -168,7 +170,7 @@ export function TailscaleSection() {
   return (
     <Page section="tailscale">
       {shell.tailscale ? (
-        <TailscaleView status={shell.tailscale} busy={busy} onToggle={(on) => void change(on)} onLogin={(url) => reported(() => api.tailscale.openLogin(url), 'Não foi possível abrir a página de login do Tailscale.')} onRetry={() => void change(true)} />
+        <TailscaleView status={shell.tailscale} busy={busy} onToggle={(on) => void change(on)} onLogin={(url) => reported(() => api.tailscale.openLogin(url), t('common.openLoginFailed'))} onRetry={() => void change(true)} />
       ) : failed ? (
         <ErrorState error={failed} onRetry={load} />
       ) : (

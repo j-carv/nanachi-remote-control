@@ -1,10 +1,12 @@
 import { Disc3, Folder, FolderOpen, FolderPlus, FolderX, HardDrive, Plus, RotateCw, Server, Usb, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DriveInfo, FoldersState } from '../../common/control-api.js';
-import { formatBytes, pluralize } from '../lib/format.js';
+import { errorMessage } from '../lib/errors.js';
+import { formatBytes, languageOf } from '../lib/format.js';
 import {
   changeSummary,
-  DRIVE_KIND_LABELS,
+  driveKindLabel,
   driveLetter,
   driveSwitchState,
   driveUsage,
@@ -52,6 +54,8 @@ export interface DriveTileProps {
 
 /** One drive: name, how full it is, and the switch that allows the whole drive. */
 export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) {
+  const { t, i18n } = useTranslation();
+  const language = languageOf(i18n);
   const letter = driveLetter(drive.root);
   const Icon = DRIVE_ICONS[drive.kind];
   const usage = driveUsage(drive);
@@ -59,11 +63,11 @@ export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) 
   const labelId = `drive-${letter.charAt(0)}-label`;
   const hintId = `drive-${letter.charAt(0)}-hint`;
   let hint: string | null = null;
-  if (folderCount > 0) hint = checked ? pluralize(folderCount, 'pasta já incluída', 'pastas já incluídas') : pluralize(folderCount, 'pasta liberada neste disco', 'pastas liberadas neste disco');
+  if (folderCount > 0) hint = checked ? t('folders.drive.included', { count: folderCount }) : t('folders.drive.allowed', { count: folderCount });
 
   return (
     <section
-      aria-label={`Disco ${letter}`}
+      aria-label={t('folders.drive.label', { letter })}
       data-allowed={checked}
       className={cx(
         'flex flex-col rounded-lg border bg-card transition-[border-color,box-shadow] duration-150',
@@ -79,7 +83,7 @@ export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) 
             <span className="text-[15px] leading-5 font-semibold tabular-nums">{letter}</span>
             {drive.label ? <span className="truncate text-sm text-muted-foreground">{drive.label}</span> : null}
           </div>
-          <div className="text-xs leading-5 text-muted-foreground">{DRIVE_KIND_LABELS[drive.kind]}</div>
+          <div className="text-xs leading-5 text-muted-foreground">{driveKindLabel(drive.kind, t)}</div>
         </div>
       </div>
 
@@ -88,24 +92,24 @@ export function DriveTile({ drive, paths, editable, onToggle }: DriveTileProps) 
           <>
             <div
               role="img"
-              aria-label={`${formatBytes(usage.used)} usados de ${formatBytes(usage.total)}`}
+              aria-label={t('folders.drive.usedOf', { used: formatBytes(usage.used, language), total: formatBytes(usage.total, language) })}
               className="h-1 overflow-hidden rounded-full bg-muted"
             >
               <div className={cx('h-full rounded-full', USAGE_FILL[usage.level])} style={{ width: `${Math.max(2, Math.round(usage.fraction * 100))}%` }} />
             </div>
             <div className="mt-1.5 text-xs text-muted-foreground tabular-nums">
-              <span className="text-foreground">{formatBytes(drive.freeBytes)}</span> livres de {formatBytes(drive.totalBytes)}
+              <span className="text-foreground">{formatBytes(drive.freeBytes, language)}</span>{` ${t('folders.drive.freeOf', { total: formatBytes(drive.totalBytes, language) })}`}
             </div>
           </>
         ) : (
-          <div className="text-xs text-muted-foreground">Tamanho indisponível</div>
+          <div className="text-xs text-muted-foreground">{t('folders.drive.sizeUnknown')}</div>
         )}
       </div>
 
       <div className="flex items-center gap-3 border-t border-border px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <div id={labelId} className="text-[13px] leading-5 font-medium">
-            Permitir o disco inteiro
+            {t('folders.drive.allowWhole')}
           </div>
           {hint ? (
             <div id={hintId} className="text-xs leading-4 text-muted-foreground">
@@ -129,6 +133,7 @@ export interface FolderRowProps {
 }
 
 export function FolderRow({ entry, editable, onReveal, onRemove }: FolderRowProps) {
+  const { t } = useTranslation();
   const { parent, name } = splitPath(entry.path);
   const Icon = entry.exists ? Folder : FolderX;
   return (
@@ -139,25 +144,25 @@ export function FolderRow({ entry, editable, onReveal, onRemove }: FolderRowProp
         <span className="shrink-0 font-medium text-foreground">{name}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
-        {entry.isNew ? <Badge tone="running">Nova</Badge> : null}
-        {!entry.exists ? <Badge tone="attention">Não encontrada</Badge> : null}
+        {entry.isNew ? <Badge tone="running">{t('folders.row.new')}</Badge> : null}
+        {!entry.exists ? <Badge tone="attention">{t('folders.row.missing')}</Badge> : null}
         {entry.coveredBy ? (
-          <Tooltip label={`Já faz parte de ${entry.coveredBy}. Continua permitida; pode remover se quiser.`}>
+          <Tooltip label={t('folders.row.insideTip', { path: entry.coveredBy })}>
             <span tabIndex={0} className="rounded-full focus-visible:outline-2">
-              <Badge>{`Dentro de ${splitPath(entry.coveredBy).name}`}</Badge>
+              <Badge>{t('folders.row.inside', { name: splitPath(entry.coveredBy).name })}</Badge>
             </span>
           </Tooltip>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
-        <Tooltip label="Mostrar no Explorer">
-          <Button variant="ghost" size="icon-sm" aria-label={`Mostrar ${entry.path} no Explorer`} disabled={!entry.exists} onClick={() => onReveal(entry.path)}>
+        <Tooltip label={t('folders.row.reveal')}>
+          <Button variant="ghost" size="icon-sm" aria-label={t('folders.row.revealLabel', { path: entry.path })} disabled={!entry.exists} onClick={() => onReveal(entry.path)}>
             <FolderOpen aria-hidden="true" />
           </Button>
         </Tooltip>
         {editable ? (
-          <Tooltip label="Remover da lista">
-            <Button variant="ghost" size="icon-sm" aria-label={`Remover ${entry.path}`} onClick={() => onRemove(entry.path)}>
+          <Tooltip label={t('folders.row.remove')}>
+            <Button variant="ghost" size="icon-sm" aria-label={t('folders.row.removeLabel', { path: entry.path })} onClick={() => onRemove(entry.path)}>
               <X aria-hidden="true" />
             </Button>
           </Tooltip>
@@ -170,30 +175,29 @@ export function FolderRow({ entry, editable, onReveal, onRemove }: FolderRowProp
 /* ------------------------------------------------------------------ save bar */
 
 export function SaveBar({ changes, saving, busySessions, onDiscard, onSave }: { changes: PendingChanges; saving: boolean; busySessions: number; onDiscard: () => void; onSave: () => void }) {
+  const { t } = useTranslation();
   return (
     <div
       role="region"
-      aria-label="Alterações não salvas"
+      aria-label={t('folders.saveBar.label')}
       className="sticky bottom-4 z-10 -mx-2 mt-2 animate-bar rounded-xl border border-border bg-popover px-4 py-3 shadow-[0_16px_40px_-16px_rgb(0_0_0/0.4)]"
     >
       <div className="flex items-center gap-3">
         <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-attention" />
         <div className="min-w-0 flex-1">
           <div className="truncate">
-            <span className="text-sm font-medium">Alterações não salvas</span>
-            <span className="ml-2 text-[13px] text-muted-foreground">{changeSummary(changes)}</span>
+            <span className="text-sm font-medium">{t('folders.saveBar.label')}</span>
+            <span className="ml-2 text-[13px] text-muted-foreground">{changeSummary(changes, t)}</span>
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {needsRestartChoice(busySessions)
-              ? 'Ao salvar, você escolhe se o daemon reinicia agora.'
-              : 'Ao salvar, o daemon reinicia e as sessões ficam paradas até você enviar uma mensagem nelas.'}
+            {needsRestartChoice(busySessions) ? t('folders.saveBar.choose') : t('folders.saveBar.auto')}
           </div>
         </div>
         <Button variant="ghost" disabled={saving} onClick={onDiscard}>
-          Descartar
+          {t('folders.saveBar.discard')}
         </Button>
         <Button variant="primary" loading={saving} onClick={onSave}>
-          Salvar
+          {t('folders.saveBar.save')}
         </Button>
       </div>
     </div>
@@ -219,41 +223,43 @@ export interface FoldersViewProps {
 }
 
 export function FoldersView({ state, entries, paths, changes, saving, restarting, onPick, onRemove, onToggleDrive, onReveal, onDiscard, onSave, onRestartNow }: FoldersViewProps) {
+  const { t } = useTranslation();
   const { editable } = state;
   return (
     <>
       <div className="flex flex-col gap-3">
         <Notice tone="info">
-          <span className="font-medium">O Nanachi só abre sessões dentro destas pastas.</span> Não é um sandbox: o agente ainda pode ler e escrever fora delas.
+          <span className="font-medium">{t('folders.scopeTitle')}</span>
+          {` ${t('folders.scopeBody')}`}
         </Notice>
         {state.rootsUnknown ? (
-          <Notice tone="attention" title="Lista indisponível">
-            O Nanachi está conectado a um daemon que ele não iniciou e não conseguiu perguntar a ele quais pastas usa. Essa lista fica na configuração do próprio daemon, e é só por lá que ela pode ser lida ou mudada.
+          <Notice tone="attention" title={t('folders.unknownTitle')}>
+            {t('folders.unknownBody')}
           </Notice>
         ) : !editable ? (
-          <Notice tone="info" title="Somente leitura">
-            O Nanachi está conectado a um daemon que ele não iniciou. Esta é a lista que esse daemon usa, e ela só pode ser mudada na configuração dele.
+          <Notice tone="info" title={t('folders.readOnlyTitle')}>
+            {t('folders.readOnlyBody')}
           </Notice>
         ) : null}
         {state.restartPending && !changes.dirty && !state.rootsUnknown ? (
           <Notice
             tone="attention"
-            title="Salvo, mas ainda não aplicado"
+            title={t('folders.pendingTitle')}
             action={
               editable ? (
                 <Button icon={<RotateCw aria-hidden="true" />} loading={restarting} onClick={onRestartNow}>
-                  Reiniciar agora
+                  {t('common.restartNow')}
                 </Button>
               ) : null
             }
           >
-            O daemon em execução ainda usa a lista anterior. A nova lista vale depois de reiniciar.
+            {t('folders.pendingBody')}
           </Notice>
         ) : null}
       </div>
 
       <section aria-labelledby="folders-drives">
-        <SectionHeading id="folders-drives">Discos</SectionHeading>
+        <SectionHeading id="folders-drives">{t('folders.drivesHeading')}</SectionHeading>
         {state.drives.length > 0 ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(264px,1fr))] gap-3">
             {state.drives.map((drive) => (
@@ -261,7 +267,7 @@ export function FoldersView({ state, entries, paths, changes, saving, restarting
             ))}
           </div>
         ) : (
-          <Notice>Nenhum disco foi encontrado neste PC.</Notice>
+          <Notice>{t('folders.noDrives')}</Notice>
         )}
       </section>
 
@@ -271,16 +277,16 @@ export function FoldersView({ state, entries, paths, changes, saving, restarting
           action={
             editable ? (
               <Button icon={<Plus aria-hidden="true" />} onClick={onPick}>
-                Adicionar pastas
+                {t('folders.add')}
               </Button>
             ) : null
           }
         >
-          {entries.length > 0 ? `Pastas permitidas · ${entries.length}` : 'Pastas permitidas'}
+          {entries.length > 0 ? t('folders.allowedHeadingCount', { total: entries.length }) : t('folders.allowedHeading')}
         </SectionHeading>
         {state.rootsUnknown ? (
           <p className="rounded-lg border border-dashed border-input px-6 py-8 text-center text-[13px] leading-5 text-muted-foreground">
-            Não foi possível ler a lista de pastas desse daemon.
+            {t('folders.unknownList')}
           </p>
         ) : entries.length > 0 ? (
           <Group>
@@ -295,13 +301,13 @@ export function FoldersView({ state, entries, paths, changes, saving, restarting
             <span className="mb-2 grid size-10 place-items-center rounded-full bg-attention/12 text-attention [&_svg]:size-5">
               <FolderPlus aria-hidden="true" />
             </span>
-            <h3 className="font-display text-[15px] font-semibold">Nenhuma pasta permitida</h3>
+            <h3 className="font-display text-[15px] font-semibold">{t('folders.emptyTitle')}</h3>
             <p className="max-w-[440px] text-[13px] leading-5 text-muted-foreground">
-              Enquanto a lista estiver vazia, nenhum workspace pode ser adicionado no app do iPhone. Adicione uma pasta ou libere um disco inteiro.
+              {t('folders.emptyBody')}
             </p>
             {editable ? (
               <Button className="mt-3" variant="primary" icon={<Plus aria-hidden="true" />} onClick={onPick}>
-                Adicionar pastas
+                {t('folders.add')}
               </Button>
             ) : null}
           </div>
@@ -332,6 +338,7 @@ function FoldersSkeleton() {
 type Pending = null | { mode: 'save' } | { mode: 'restart' };
 
 export function FoldersSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const toast = useToast();
   const reported = useReported();
@@ -363,12 +370,12 @@ export function FoldersSection() {
     try {
       picked = await api.folders.pick();
     } catch {
-      toast({ tone: 'error', message: 'Não foi possível abrir o seletor de pastas.' });
+      toast({ tone: 'error', message: t('folders.pickFailed') });
       return;
     }
     if (picked.length === 0) return;
     const { added, skipped } = store.add(picked);
-    if (added === 0 && skipped > 0) toast({ tone: 'info', message: skipped === 1 ? 'Essa pasta já estava na lista.' : 'Essas pastas já estavam na lista.' });
+    if (added === 0 && skipped > 0) toast({ tone: 'info', message: t('folders.alreadyListed', { count: skipped }) });
   };
 
   const persist = async (choice: SaveChoice): Promise<void> => {
@@ -381,11 +388,11 @@ export function FoldersSection() {
     }
     setPending(null);
     if (outcome.kind === 'failed') {
-      toast({ tone: 'error', title: 'Não foi possível salvar', message: outcome.error.message });
+      toast({ tone: 'error', title: t('folders.saveFailedTitle'), message: errorMessage(outcome.error, t) });
       return;
     }
     if (outcome.kind === 'saved') {
-      toast(savedMessage(outcome.applied));
+      toast(savedMessage(outcome.applied, t));
       void shell.reloadOverview(true);
     }
   };
@@ -402,10 +409,10 @@ export function FoldersSection() {
     setRestarting(false);
     setPending(null);
     if (result.ok) {
-      toast(restartedMessage(result.value));
+      toast(restartedMessage(result.value, t));
       void shell.reloadOverview(true);
     } else {
-      toast({ tone: 'error', title: 'Não foi possível reiniciar', message: result.message });
+      toast({ tone: 'error', title: t('restart.failedTitle'), message: errorMessage(result, t) });
     }
   };
 
@@ -426,7 +433,7 @@ export function FoldersSection() {
         onPick={() => void pick()}
         onRemove={store.remove}
         onToggleDrive={store.toggleDrive}
-        onReveal={(path) => reported(() => api.folders.reveal(path), 'Não foi possível mostrar a pasta no Explorer.')}
+        onReveal={(path) => reported(() => api.folders.reveal(path), t('folders.revealFailed'))}
         onDiscard={store.discard}
         onSave={save}
         onRestartNow={onRestartClick}

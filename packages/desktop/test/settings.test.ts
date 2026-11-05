@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSettingsStore, DEFAULT_SETTINGS, loadSettings, saveSettings } from '../src/main/settings.js';
+import { createSettingsStore, DEFAULT_SETTINGS, loadSettings, pendingPwaLanguage, saveSettings } from '../src/main/settings.js';
 import { removeDir } from './remove-dir.js';
 
 let dir: string;
@@ -101,5 +101,44 @@ describe('control center window bounds in the settings', () => {
     const snapshot = store.get();
     if (snapshot.controlWindow !== undefined) snapshot.controlWindow.width = 1;
     expect(store.get().controlWindow?.width).toBe(1300);
+  });
+});
+
+describe('language in the settings', () => {
+  it('is absent by default, so a first run can pick it from the system locale', () => {
+    const settings = loadSettings(join(dir, 'missing.json'));
+    expect('language' in settings).toBe(false);
+    expect('pwaLanguage' in settings).toBe(false);
+  });
+
+  it('round-trips with the other settings and survives an update of another key', () => {
+    const file = join(dir, 'settings.json');
+    const store = createSettingsStore(file);
+    store.update({ language: 'es' });
+    store.update({ tailscaleEnabled: true, pwaLanguage: 'es' });
+    expect(createSettingsStore(file).get()).toEqual({ tailscaleEnabled: true, language: 'es', pwaLanguage: 'es' });
+  });
+
+  it.each(['fr', 'pt', 'en-US', 3, null, {}, ''])('drops %j, without losing the other settings', (bad) => {
+    const file = join(dir, 'settings.json');
+    writeFileSync(file, JSON.stringify({ tailscaleEnabled: true, language: bad, pwaLanguage: bad }));
+    expect(loadSettings(file)).toEqual({ tailscaleEnabled: true });
+  });
+
+  it('is handed out as a copy', () => {
+    const store = createSettingsStore(join(dir, 'settings.json'));
+    store.update({ language: 'en' });
+    const snapshot = store.get();
+    snapshot.language = 'pt-BR';
+    expect(store.get().language).toBe('en');
+  });
+});
+
+describe('the language handed to the embedded PWA', () => {
+  it('is handed on the first load, once, and again only after Desktop changed its own language', () => {
+    expect(pendingPwaLanguage('es', undefined)).toBe('es');
+    expect(pendingPwaLanguage('es', 'es')).toBeNull();
+    expect(pendingPwaLanguage('en', 'es')).toBe('en');
+    expect(pendingPwaLanguage('en', 'en')).toBeNull();
   });
 });

@@ -5,6 +5,7 @@
  */
 import type { ControlApi, ControlError, FoldersState, SaveRootsResult } from '../../common/control-api.js';
 import type { DaemonStatus } from '../../common/types.js';
+import type { ControlT } from '../i18n.js';
 import { settle } from '../state/resource-core.js';
 import type { ToastInput } from '../ui/Toast.js';
 
@@ -53,21 +54,21 @@ export async function saveFolders(api: ControlApi, paths: string[], plan: SavePl
   return saveOutcome(result);
 }
 
-export function savedMessage(applied: Exclude<SaveRootsResult['applied'], 'needs_confirmation'>): ToastInput {
+export function savedMessage(applied: Exclude<SaveRootsResult['applied'], 'needs_confirmation'>, t: ControlT): ToastInput {
   switch (applied) {
     case 'restarted':
-      return { tone: 'success', message: 'Pastas salvas. O Nanachi reiniciou; as sessões voltam quando você enviar uma mensagem nelas.' };
+      return { tone: 'success', message: t('folders.saved.restarted') };
     case 'starting':
-      return { tone: 'info', message: 'Pastas salvas. O daemon ainda está iniciando; acompanhe o estado na Visão geral.' };
+      return { tone: 'info', message: t('folders.saved.starting') };
     case 'restart_failed':
-      return { tone: 'error', title: 'Pastas salvas, mas o daemon não voltou', message: 'A nova lista vale quando ele iniciar de novo. Veja o motivo na Visão geral e nos Logs.' };
+      return { tone: 'error', title: t('folders.saved.restartFailedTitle'), message: t('folders.saved.restartFailed') };
     case 'pending':
-      return { tone: 'success', message: 'Pastas salvas. A nova lista vale depois do próximo reinício.' };
+      return { tone: 'success', message: t('folders.saved.pending') };
   }
 }
 
 /** What a plain restart (no list involved) tells the user, from the status main answered. */
-export function restartedMessage(status: DaemonStatus): ToastInput {
-  if (status.state === 'starting') return { tone: 'info', message: 'O daemon ainda está iniciando; acompanhe o estado na Visão geral.' };
-  return { tone: 'success', message: 'O daemon reiniciou; as sessões voltam quando você enviar uma mensagem nelas.' };
+export function restartedMessage(status: DaemonStatus, t: ControlT): ToastInput {
+  if (status.state === 'starting') return { tone: 'info', message: t('restart.starting') };
+  return { tone: 'success', message: t('restart.done') };
 }

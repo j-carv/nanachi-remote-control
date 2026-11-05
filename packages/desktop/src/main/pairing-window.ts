@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { BrowserWindow, nativeTheme } from 'electron';
 import QRCode from 'qrcode';
+import { t } from '../common/i18n/index.js';
 import type { PairingCode } from '../common/types.js';
 import { backgroundColor } from './panel-policy.js';
 import { renderPairingHtml, toDataUrl } from './pages.js';
@@ -39,7 +40,7 @@ export function createPairingWindow(deps: PairingWindowDeps): PairingWindow {
       alwaysOnTop: true,
       autoHideMenuBar: true,
       show: false,
-      title: 'Nanachi · Código de pareamento',
+      title: t('main.pairingWindow.windowTitle'),
       icon: deps.iconPath,
       backgroundColor: backgroundColor(nativeTheme.shouldUseDarkColors),
       webPreferences: {

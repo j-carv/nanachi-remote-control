@@ -17,6 +17,8 @@ export const INVOKE_CHANNELS = {
 export const EVENT_CHANNELS = {
   status: 'desktop:status-changed',
   tailscaleStatus: 'desktop:tailscale-status-changed',
+  /** Desktop's language changed: the PWA switches at once, without a reload. */
+  language: 'desktop:language-changed',
 } as const;
 
 /** One synchronous call at preload time: app version and the machine to seed. Answered from memory only. */
@@ -40,8 +42,8 @@ export const CONTROL_INVOKE_CHANNELS = {
   windowState: 'control:window-state',
   overview: 'control:overview',
   restartDaemon: 'control:restart-daemon',
-  openSessions: 'control:open-sessions',
   openDataFolder: 'control:open-data-folder',
+  sessionsViewport: 'control:sessions-viewport',
   foldersGet: 'control:folders-get',
   foldersPick: 'control:folders-pick',
   foldersSave: 'control:folders-save',
@@ -57,6 +59,7 @@ export const CONTROL_INVOKE_CHANNELS = {
   tailscaleOpenLogin: 'control:tailscale-open-login',
   logsGet: 'control:logs-get',
   logsOpenFolder: 'control:logs-open-folder',
+  settingsSetLanguage: 'control:settings-set-language',
   settingsGetAutostart: 'control:settings-get-autostart',
   settingsSetAutostart: 'control:settings-set-autostart',
   settingsCheckForUpdate: 'control:settings-check-for-update',
@@ -67,11 +70,14 @@ export const CONTROL_INVOKE_CHANNELS = {
 /** Main to control center events. */
 export const CONTROL_EVENT_CHANNELS = {
   windowState: 'control:window-state-changed',
+  navigate: 'control:navigate',
+  language: 'control:language-changed',
+  sessionsView: 'control:sessions-view-changed',
   daemonStatus: 'control:daemon-status-changed',
   tailscaleStatus: 'control:tailscale-status-changed',
 } as const;
 
-/** One synchronous call at preload time (the app version). Answered from memory, and only to the control window. */
+/** One synchronous call at preload time (the app version and Desktop's language). Answered from memory, and only to the control window. */
 export const CONTROL_SYNC_CHANNELS = {
   init: 'control:preload-init',
 } as const;

@@ -3,11 +3,13 @@ import { appendFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app, dialog, type BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent, shell } from 'electron';
+import { DEFAULT_LANGUAGE, languageFromLocale, setLanguage, t, type Language } from '../src/common/i18n/index.js';
+import { languageForSettingsFile } from '../src/main/settings.js';
 import { messageOf } from '../src/common/message.js';
 import { resolveHome, standaloneHomes } from '../src/main/daemon-runtime.js';
 import { HIDDEN_ARG } from '../src/main/autostart.js';
 import { parseInstallFlags } from '../src/install/args.js';
-import { APP_USER_MODEL_ID, PAYLOAD_DIR } from '../src/install/constants.js';
+import { APP_USER_MODEL_ID, PAYLOAD_DIR, PRODUCT_NAME } from '../src/install/constants.js';
 import { extractPayload } from '../src/install/extract.js';
 import { checkInstallTarget } from '../src/install/guards.js';
 import { type InstallProgress, type InstallOptions, runInstall } from '../src/install/install.js';
@@ -42,9 +44,22 @@ function log(line: string): void {
   }
 }
 
+/**
+ * A first install runs before any setting exists: it speaks the language of the system. An upgrade speaks the language the
+ * installed Desktop is set to (`desktop-settings.json` in its profile folder, `%APPDATA%\Nanachi`). The test mode never reads
+ * the real profile, only the folder `NANACHI_DESKTOP_USER_DATA` names. The locale is known once the app is ready.
+ */
+let language: Language = DEFAULT_LANGUAGE;
+function pickLanguage(): void {
+  const override = process.env.NANACHI_DESKTOP_USER_DATA;
+  const profileDir = override !== undefined && override !== '' ? override : testMode ? null : join(app.getPath('appData'), PRODUCT_NAME);
+  language = profileDir === null ? languageFromLocale(app.getLocale()) : languageForSettingsFile(join(profileDir, 'desktop-settings.json'), app.getLocale());
+  setLanguage(language);
+}
+
 function fail(message: string): never {
   log(`erro: ${message}`);
-  dialog.showErrorBox('Instalador do Nanachi', message);
+  dialog.showErrorBox(t('installer.setup.title'), message);
   exitNow(2);
   throw new Error(message);
 }
@@ -76,7 +91,10 @@ try {
   flags = parseInstallFlags(process.argv.slice(1));
 } catch (error) {
   flags = parseInstallFlags([]);
-  void app.whenReady().then(() => fail(messageOf(error)));
+  void app.whenReady().then(() => {
+    pickLanguage();
+    fail(messageOf(error));
+  });
 }
 
 const testMode = flags.target !== null || flags.noShortcuts || flags.noRegistry || flags.noLaunch;
@@ -110,7 +128,7 @@ function askToClose(processes: RunningProcess[]): Promise<boolean> {
 }
 
 async function install(request: InstallRequest): Promise<InstallOutcome> {
-  if (installing) return { ok: false, message: 'A instalação já está em andamento.' };
+  if (installing) return { ok: false, message: t('installer.errors.installRunning') };
   installing = true;
   const options: InstallOptions = {
     target: request.target,
@@ -186,13 +204,14 @@ function registerIpc(): void {
       desktopShortcut: true,
       startWithWindows: true,
       testMode,
+      language,
     };
   });
   ipcMain.handle(channels.chooseFolder, async (event, current: unknown) => {
     assertOwnPage(event);
     if (window === null) return null;
     const result = await dialog.showOpenDialog(window, {
-      title: 'Pasta de instalação',
+      title: t('installer.setup.folderDialogTitle'),
       defaultPath: typeof current === 'string' && current !== '' ? current : defaultTarget,
       properties: ['openDirectory', 'createDirectory'],
     });
@@ -201,16 +220,16 @@ function registerIpc(): void {
   });
   ipcMain.handle(channels.validateTarget, (event, target: unknown) => {
     assertOwnPage(event);
-    if (typeof target !== 'string') return { ok: false, reason: 'Escolha uma pasta para instalar o Nanachi.' };
+    if (typeof target !== 'string') return { ok: false, reason: t('installer.targets.choose') };
     const check = checkInstallTarget(target, { profile, desktopHome, standaloneDirs });
     return check.ok ? { ok: true } : { ok: false, reason: check.reason };
   });
   ipcMain.handle(channels.start, (event, request: unknown): Promise<InstallOutcome> => {
     assertOwnPage(event);
-    if (typeof request !== 'object' || request === null) return Promise.resolve({ ok: false, message: 'Pedido inválido.' });
+    if (typeof request !== 'object' || request === null) return Promise.resolve({ ok: false, message: t('installer.errors.invalidRequest') });
     const { target, desktopShortcut, startWithWindows } = request as Record<string, unknown>;
     if (typeof target !== 'string' || typeof desktopShortcut !== 'boolean' || typeof startWithWindows !== 'boolean') {
-      return Promise.resolve({ ok: false, message: 'Pedido inválido.' });
+      return Promise.resolve({ ok: false, message: t('installer.errors.invalidRequest') });
     }
     return install({ target, desktopShortcut, startWithWindows });
   });
@@ -235,17 +254,18 @@ function registerIpc(): void {
 
 async function main(): Promise<void> {
   await app.whenReady();
+  pickLanguage();
   registerIpc();
   const here = __dirname;
   window = createShellWindow({
     width: 744,
     height: 464,
-    title: 'Instalador do Nanachi',
+    title: t('installer.setup.title'),
     preloadPath: join(here, 'preload.cjs'),
     htmlPath: join(here, 'ui', 'installer.html'),
     iconPath: join(here, 'ui', 'icon.png'),
     visible: !flags.yes,
-    onLoadError: (error) => fail(`Não foi possível abrir o instalador: ${error.message}`),
+    onLoadError: (error) => fail(t('installer.errors.installerOpenFailed', { detail: error.message })),
   });
   window.on('close', (event) => {
     if (installing) event.preventDefault();

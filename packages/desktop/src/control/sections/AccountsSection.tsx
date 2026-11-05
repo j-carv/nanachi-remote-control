@@ -1,6 +1,8 @@
 import { MessagesSquare, RefreshCw, UserRound } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { AccountInfo, AgentAccountsInfo } from '../../common/control-api.js';
+import { errorMessage } from '../lib/errors.js';
 import type { Tone } from '../lib/status.js';
 import { useApi } from '../state/api.js';
 import { settle, useResource } from '../state/resource.js';
@@ -16,11 +18,11 @@ import { useToast } from '../ui/Toast.js';
 import { Tooltip } from '../ui/Tooltip.js';
 import { Page } from './Page.js';
 
-const STATUS: Record<AccountInfo['status'], { text: string; tone: Tone }> = {
-  logged_in: { text: 'Conectada', tone: 'success' },
-  logged_out: { text: 'Sem login', tone: 'muted' },
-  unknown: { text: 'Não verificada', tone: 'muted' },
-};
+const STATUS = {
+  logged_in: { text: 'accounts.status.loggedIn', tone: 'success' },
+  logged_out: { text: 'accounts.status.loggedOut', tone: 'muted' },
+  unknown: { text: 'accounts.status.unknown', tone: 'muted' },
+} as const satisfies Record<AccountInfo['status'], { text: string; tone: Tone }>;
 
 export interface AccountsViewProps {
   agents: AgentAccountsInfo[];
@@ -31,7 +33,10 @@ export interface AccountsViewProps {
 }
 
 function AccountRow({ agent, account, busy, onSetActive }: { agent: AgentAccountsInfo; account: AccountInfo; busy: boolean; onSetActive: () => void }) {
+  const { t } = useTranslation();
   const status = STATUS[account.status];
+  const mainLabel = t('accounts.main');
+  const name = account.name.toLowerCase();
   return (
     <li data-slot="account-row" data-status={account.status} className="flex min-h-14 items-center gap-3 px-4 py-2">
       <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4">
@@ -40,12 +45,12 @@ function AccountRow({ agent, account, busy, onSetActive }: { agent: AgentAccount
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium">{account.name}</span>
-          {account.principal && account.name.toLowerCase() !== 'principal' ? <Badge>Principal</Badge> : null}
-          {account.active ? <Badge tone="success">Em uso</Badge> : null}
+          {account.principal && name !== 'principal' && name !== mainLabel.toLowerCase() ? <Badge>{mainLabel}</Badge> : null}
+          {account.active ? <Badge tone="success">{t('accounts.inUse')}</Badge> : null}
         </div>
         <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
           <StatusDot tone={status.tone} />
-          <span className={cx(account.status === 'logged_in' && 'text-foreground')}>{status.text}</span>
+          <span className={cx(account.status === 'logged_in' && 'text-foreground')}>{t(status.text)}</span>
           {account.identity ? (
             <>
               <span aria-hidden="true">·</span>
@@ -56,7 +61,7 @@ function AccountRow({ agent, account, busy, onSetActive }: { agent: AgentAccount
       </div>
       {!account.active && account.status === 'logged_in' && agent.multiAccount ? (
         <Button size="sm" loading={busy} onClick={onSetActive}>
-          Usar em novas sessões
+          {t('accounts.useForNew')}
         </Button>
       ) : null}
     </li>
@@ -64,10 +69,11 @@ function AccountRow({ agent, account, busy, onSetActive }: { agent: AgentAccount
 }
 
 export function AccountsView({ agents, settingActive, onSetActive, onOpenSessions }: AccountsViewProps) {
+  const { t } = useTranslation();
   if (agents.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card">
-        <EmptyState icon={UserRound} title="Nenhum agente configurado" description="Quando o daemon tiver agentes com login, as contas deles aparecem aqui." />
+        <EmptyState icon={UserRound} title={t('accounts.emptyTitle')} description={t('accounts.emptyDescription')} />
       </div>
     );
   }
@@ -79,7 +85,7 @@ export function AccountsView({ agents, settingActive, onSetActive, onOpenSession
           <section key={agent.agentId} aria-labelledby={headingId}>
             <SectionHeading
               id={headingId}
-              action={<span className="text-xs text-muted-foreground">{agent.multiAccount ? `${agent.accounts.length} ${agent.accounts.length === 1 ? 'conta' : 'contas'}` : 'Só a conta principal'}</span>}
+              action={<span className="text-xs text-muted-foreground">{agent.multiAccount ? t('accounts.count', { count: agent.accounts.length }) : t('accounts.onlyMain')}</span>}
             >
               {agent.agentName}
             </SectionHeading>
@@ -102,17 +108,18 @@ export function AccountsView({ agents, settingActive, onSetActive, onOpenSession
       <Notice
         action={
           <Button icon={<MessagesSquare aria-hidden="true" />} onClick={onOpenSessions}>
-            Abrir sessões
+            {t('common.openSessions')}
           </Button>
         }
       >
-        Para adicionar uma conta ou entrar em uma, use o app de sessões. Aqui você só escolhe qual conta as novas sessões usam.
+        {t('accounts.sessionsNotice')}
       </Notice>
     </>
   );
 }
 
 export function AccountsSection() {
+  const { t } = useTranslation();
   const api = useApi();
   const shell = useShell();
   const toast = useToast();
@@ -120,13 +127,13 @@ export function AccountsSection() {
   const [settingActive, setSettingActive] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // "Atualizar" asks the daemon to check the logins again; the plain list is cached for a few minutes.
+  // "Refresh" asks the daemon to check the logins again; the plain list is cached for a few minutes.
   const refresh = async (): Promise<void> => {
     setRefreshing(true);
     const result = await settle(() => api.accounts.list(true));
     setRefreshing(false);
     if (result.ok) accounts.setData(result.value);
-    else toast({ tone: 'error', title: 'Não foi possível atualizar', message: result.message });
+    else toast({ tone: 'error', title: t('accounts.refreshFailedTitle'), message: errorMessage(result, t) });
   };
 
   const setActive = async (agent: AgentAccountsInfo, account: AccountInfo): Promise<void> => {
@@ -135,9 +142,9 @@ export function AccountsSection() {
     setSettingActive(null);
     if (result.ok) {
       accounts.setData(result.value);
-      toast({ tone: 'success', message: `Novas sessões do ${agent.agentName} vão usar ${account.name}.` });
+      toast({ tone: 'success', message: t('accounts.switched', { agent: agent.agentName, account: account.name }) });
     } else {
-      toast({ tone: 'error', title: 'Não foi possível trocar a conta', message: result.message });
+      toast({ tone: 'error', title: t('accounts.switchFailedTitle'), message: errorMessage(result, t) });
     }
   };
 
@@ -156,9 +163,9 @@ export function AccountsSection() {
     <Page
       section="accounts"
       actions={
-        <Tooltip label="Verificar os logins de novo">
+        <Tooltip label={t('accounts.refreshTip')}>
           <Button icon={<RefreshCw className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />} disabled={accounts.state.status === 'loading' || refreshing} onClick={() => void refresh()}>
-            Atualizar
+            {t('accounts.refresh')}
           </Button>
         </Tooltip>
       }

@@ -1,5 +1,4 @@
-import { createElement, type ReactElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { AgentAccountsInfo, ControlSection, DeviceInfo, DriveInfo, FoldersState } from '../../src/common/control-api.js';
 import type { DaemonStatus, TailscaleStatus } from '../../src/common/types.js';
@@ -18,8 +17,8 @@ import { buildDraftEntries } from '../../src/control/lib/roots.js';
 import { Dialog } from '../../src/control/ui/Dialog.js';
 import { ErrorState } from '../../src/control/ui/States.js';
 import { Switch } from '../../src/control/ui/Switch.js';
+import { html } from './render-helpers.js';
 
-const html = (element: ReactElement): string => renderToStaticMarkup(element);
 const noop = (): void => undefined;
 
 const DAEMON: DaemonStatus = {
@@ -67,6 +66,18 @@ describe('title bar', () => {
     expect(markup).toContain('data-focused="false"');
   });
 
+  it('draws tooltips itself (a portal) outside Sessões: no native title attributes', () => {
+    expect(view()).not.toContain('title=');
+  });
+
+  it('on Sessões the window buttons have native titles: a tooltip below the bar would be painted under the PWA view', () => {
+    const markup = view({ nativeTips: true });
+    expect(markup).toContain('title="Minimizar"');
+    expect(markup).toContain('title="Maximizar"');
+    expect(markup).toContain('title="Fechar. O Nanachi continua rodando na bandeja."');
+    expect(view({ nativeTips: true, windowState: { maximized: true, focused: true } })).toContain('title="Restaurar"');
+  });
+
   it('without a daemon status there is no status button', () => {
     expect(view({ daemon: null, machineName: null })).not.toContain('Abrir visão geral');
   });
@@ -82,20 +93,22 @@ describe('sidebar', () => {
         version: '0.1.0',
         onSelect: noop,
         onToggle: noop,
-        onOpenSessions: noop,
+        sessionsOpen: false,
         ...extra,
       }),
     );
 
-  it('lists the seven sections in order, marks the current one and carries the shortcuts', () => {
+  it('lists the eight sections in order, marks the current one and carries the shortcuts', () => {
     const markup = view();
-    const labels = ['Visão geral', 'Pastas e discos', 'Aparelhos', 'Contas dos agentes', 'Tailscale', 'Logs', 'Ajustes'];
+    const labels = ['Visão geral', 'Pastas e discos', 'Aparelhos', 'Contas dos agentes', 'Tailscale', 'Logs', 'Ajustes', 'Sessões'];
     const positions = labels.map((label) => markup.indexOf(label));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
     expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
     expect(markup).toContain('aria-keyshortcuts="Control+7"');
-    expect(markup).toContain('Abrir sessões');
+    expect(markup).toContain('aria-keyshortcuts="Control+8"');
+    // Sessões is a section like the others: there is no second way in at the bottom.
+    expect(markup).not.toContain('Abrir sessões');
     expect(markup).toContain('Versão 0.1.0');
     expect(markup).toContain('width:232px');
   });
@@ -104,9 +117,36 @@ describe('sidebar', () => {
     const markup = view({ collapsed: true });
     expect(markup).toContain('width:64px');
     expect(markup).toContain('aria-label="Visão geral"');
-    expect(markup).toContain('aria-label="Abrir sessões"');
+    expect(markup).not.toContain('Abrir sessões');
     expect(markup).not.toContain('Versão 0.1.0');
     expect(markup).toContain('aria-expanded="false"');
+  });
+
+  it('draws tooltips itself (a portal) outside Sessões: no native title attributes', () => {
+    expect(view({ collapsed: true })).not.toContain('title=');
+    expect(view()).not.toContain('title=');
+  });
+
+  it('on Sessões it is the 64 px rail whatever was saved, with nothing to toggle, and the saved choice is untouched', () => {
+    for (const collapsed of [false, true]) {
+      const markup = view({ section: 'sessions', collapsed, sessionsOpen: true });
+      expect(markup).toContain('width:64px');
+      expect(markup).not.toContain('width:232px');
+      expect(markup).not.toContain('Versão 0.1.0');
+      expect(markup).not.toContain('aria-controls="sidebar"');
+      expect(markup).not.toContain('Recolher a barra lateral');
+      expect(markup).not.toContain('Expandir a barra lateral');
+      // Still named for the keyboard and for screen readers.
+      expect(markup).toContain('aria-label="Visão geral"');
+      expect(markup).toContain('aria-label="Sessões"');
+    }
+  });
+
+  it('on Sessões its tooltips are native titles (the PWA view is painted over a portal), with the shortcut', () => {
+    const markup = view({ section: 'sessions', sessionsOpen: true, dirty: new Set<ControlSection>(['folders']) });
+    expect(markup).toContain('title="Visão geral (Ctrl+1)"');
+    expect(markup).toContain('title="Sessões (Ctrl+8)"');
+    expect(markup).toContain('title="Pastas e discos (alterações não salvas) (Ctrl+2)"');
   });
 
   it('shows and announces unsaved edits on the folders item', () => {
@@ -482,6 +522,9 @@ describe('settings', () => {
   const view = (extra: Partial<Parameters<typeof SettingsView>[0]> = {}): string =>
     html(
       createElement(SettingsView, {
+        language: 'pt-BR',
+        onLanguage: noop,
+        languageBusy: false,
         version: '0.1.0',
         dataFolder: 'C:\\Users\\user\\.nanachi-desktop',
         autostart: { value: true, supported: true },
@@ -497,6 +540,56 @@ describe('settings', () => {
         ...extra,
       }),
     );
+
+  it('the language is the first row of the general group, with the three languages in their own words', () => {
+    const markup = view();
+    expect(markup).toContain('Idioma');
+    expect(markup.indexOf('Idioma')).toBeLessThan(markup.indexOf('Iniciar com o Windows'));
+    expect(markup).toContain('Vale para o Nanachi Desktop e para o app de sessões dentro dele.');
+    expect(markup).toContain('role="radiogroup"');
+    expect(markup).toContain('aria-labelledby="settings-language"');
+    expect(markup).toContain('id="settings-language"');
+    expect(markup.match(/role="radio"/g)).toHaveLength(3);
+    for (const label of ['Português (Brasil)', 'English', 'Español']) expect(markup).toContain(label);
+  });
+
+  it.each([
+    ['pt-BR', 'Idioma', 'Português (Brasil)'],
+    ['en', 'Language', 'English'],
+    ['es', 'Idioma', 'Español'],
+  ] as const)('the language row in %s: its title and description follow the language, the radio labels never do, and the checked one is the language', (language, title, checked) => {
+    const markup = html(
+      createElement(SettingsView, {
+        language,
+        onLanguage: noop,
+        languageBusy: false,
+        version: '0.1.0',
+        dataFolder: null,
+        autostart: null,
+        autostartBusy: false,
+        onAutostart: noop,
+        update: null,
+        checking: false,
+        onCheckUpdate: noop,
+        onDownload: noop,
+        onOpenDataFolder: noop,
+        uninstalling: false,
+        onUninstall: noop,
+      }),
+      language,
+    );
+    expect(markup).toContain(`id="settings-language" class="text-sm leading-5 font-medium">${title}</div>`);
+    for (const label of ['Português (Brasil)', 'English', 'Español']) expect(markup).toContain(label);
+    const radios = [...markup.matchAll(/<button[^>]*role="radio"[^>]*>([^<]*)<\/button>/g)];
+    expect(radios.map((match) => match[1])).toEqual(['Português (Brasil)', 'English', 'Español']);
+    const checkedRadios = radios.filter((match) => match[0].includes('aria-checked="true"')).map((match) => match[1]);
+    expect(checkedRadios).toEqual([checked]);
+  });
+
+  it('a change in flight disables the language choice', () => {
+    expect(view({ languageBusy: true })).toMatch(/<button[^>]*role="radio"[^>]*\sdisabled=""/);
+    expect(view()).not.toMatch(/<button[^>]*role="radio"[^>]*\sdisabled=""/);
+  });
 
   it('autostart, updates, data folder and uninstall', () => {
     const markup = view();
@@ -551,5 +644,63 @@ describe('primitives', () => {
     const markup = html(createElement(MissingBridge));
     expect(markup).toContain('Abra pelo Nanachi Desktop');
     expect(markup).not.toContain('OFFICE-PC');
+  });
+});
+
+describe('the same views in English and in Spanish', () => {
+  const drive = (extra: Partial<DriveInfo> = {}): DriveInfo => ({ root: 'D:\\', label: 'Data', kind: 'fixed', totalBytes: Math.round(12.34 * 1024 ** 3), freeBytes: Math.round(4.2 * 1024 ** 3), ...extra });
+
+  it('drive tile: the decimal mark, the units and the words follow the language', () => {
+    const props = { drive: drive(), paths: ['D:\\Work'], editable: true, onToggle: noop };
+    const en = html(createElement(DriveTile, props), 'en');
+    expect(en).toContain('4.2 GB');
+    expect(en).toContain('free of 12.3 GB');
+    expect(en).toContain('aria-label="8.14 GB used of 12.3 GB"');
+    expect(en).toContain('Allow the whole drive');
+    expect(en).toContain('1 folder allowed on this drive');
+    expect(en).toContain('aria-label="Drive D:"');
+    const es = html(createElement(DriveTile, props), 'es');
+    expect(es).toContain('4,2 GB');
+    expect(es).toContain('libres de 12,3 GB');
+    expect(es).toContain('aria-label="8,14 GB usados de 12,3 GB"');
+    expect(es).toContain('Permitir el disco completo');
+    expect(es).toContain('1 carpeta permitida en este disco');
+    expect(es).toContain('aria-label="Disco D:"');
+  });
+
+  it('the restart dialog counts the sessions in the right plural, in every language', () => {
+    const view = (busySessions: number, language: 'en' | 'es'): string => html(createElement(RestartDialog, { open: true, mode: 'save', busySessions, busy: false, onCancel: noop, onLater: noop, onNow: noop }), language);
+    expect(view(1, 'en')).toContain('There is 1 session in progress, which will be interrupted.');
+    expect(view(2, 'en')).toContain('There are 2 sessions in progress, which will be interrupted.');
+    expect(view(2, 'en')).toContain('Save and apply later');
+    expect(view(1, 'es')).toContain('Hay 1 sesión en curso, que se interrumpirá.');
+    expect(view(2, 'es')).toContain('Hay 2 sesiones en curso, que se interrumpirán.');
+    expect(view(2, 'es')).toContain('Guardar y reiniciar ahora');
+  });
+
+  it('device table: relative times and dates are written in the language', () => {
+    const now = 1_700_000_000_000;
+    const list: DeviceInfo[] = [{ id: 'a', name: 'Ana iPhone', createdAt: now - 20 * 86_400_000, lastSeenAt: now - 3 * 60_000, revoked: false, isThisApp: false }];
+    expect(html(createElement(DevicesTable, { devices: list, now, onRevoke: noop }), 'en')).toContain('3 min ago');
+    expect(html(createElement(DevicesTable, { devices: list, now, onRevoke: noop }), 'es')).toContain('hace 3 min');
+    expect(html(createElement(DevicesTable, { devices: list, now, onRevoke: noop }), 'es')).toContain('aria-label="Revocar Ana iPhone"');
+  });
+
+  it('a log with no lines still counts them ("0 lines"), and the empty text is in the language', () => {
+    const empty = { daemon: [], tailscale: [] };
+    const view = (language: 'en' | 'es'): string =>
+      html(createElement(LogsView, { logs: empty, tab: 'daemon', onTab: noop, following: true, onFollowChange: noop, resumeToken: 0, onResume: noop, onCopy: noop, onOpenFolder: noop }), language);
+    expect(view('en')).toContain('0 lines');
+    expect(view('en')).toContain('The daemon has not written anything yet.');
+    expect(view('es')).toContain('0 líneas');
+  });
+
+  it('a path with characters that mean something to a replacement ($&, $1) is shown as it is', () => {
+    const path = 'C:\\$Recycle.Bin\\$&x\\$1';
+    const [entry] = buildDraftEntries([{ path, exists: true, coveredBy: null }], [path]);
+    if (entry === undefined) throw new Error('no entry');
+    const markup = html(createElement(FolderRow, { entry, editable: true, onReveal: noop, onRemove: noop }), 'en');
+    expect(markup).toContain('aria-label="Remove C:\\$Recycle.Bin\\$&amp;x\\$1"');
+    expect(markup).toContain('aria-label="Show C:\\$Recycle.Bin\\$&amp;x\\$1 in File Explorer"');
   });
 });

@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { sep } from 'node:path';
+import { t } from '../common/i18n/index.js';
 import { powershellPath, systemDirectory } from '../common/system-paths.js';
 
 /** A process whose executable lives inside a folder (the install folder). */
@@ -64,7 +65,7 @@ export function findRunningInDir(dir: string, selfPid: number, exec: ExecFileLik
       (error, stdout, stderr) => {
         if (error !== null) {
           const detail = stderr.trim().split(/\r?\n/)[0];
-          reject(new Error(`não foi possível listar os processos (${detail === undefined || detail === '' ? error.message : detail})`));
+          reject(new Error(t('installer.errors.listProcesses', { detail: detail === undefined || detail === '' ? error.message : detail })));
           return;
         }
         resolvePromise(parseProcessList(stdout));

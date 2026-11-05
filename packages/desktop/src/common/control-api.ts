@@ -4,15 +4,24 @@
  * `CONTROL_INVOKE_CHANNELS` in `channels.ts`, and every event to one of `CONTROL_EVENT_CHANNELS`. No Electron imports.
  *
  * The device token never crosses this boundary: the main process calls the daemon API itself and returns plain data.
- * User-visible strings produced by the main process (messages, errors) are Portuguese (pt-BR).
+ * User-visible strings produced by the main process (messages, errors) are already in Desktop's current language
+ * (pt-BR, English or Spanish); the renderer shows them as they come.
  */
+import type { Language } from './i18n/languages.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from './types.js';
 
-/** Sections of the control center, in sidebar order. Ctrl+1..7 select them. */
-export const CONTROL_SECTIONS = ['overview', 'folders', 'devices', 'accounts', 'tailscale', 'logs', 'settings'] as const;
+/**
+ * Sections of the control center, in sidebar order. Ctrl+1..8 select them. `sessions` is the PWA (the same app as on the
+ * phone), drawn by main in a view over the content area while this section is on screen.
+ */
+export const CONTROL_SECTIONS = ['overview', 'folders', 'devices', 'accounts', 'tailscale', 'logs', 'settings', 'sessions'] as const;
 export type ControlSection = (typeof CONTROL_SECTIONS)[number];
 
-/** A failure the renderer can show as is: `message` is Portuguese and safe to display. */
+/**
+ * A failure the renderer can show as is: `message` is already in Desktop's language and safe to display. The one exception is
+ * an empty `message`: the page itself made that error (a call that rejected, so main never answered) and words it in its own
+ * language.
+ */
 export interface ControlError {
   ok: false;
   code: 'daemon_unavailable' | 'not_paired' | 'unauthorized' | 'invalid_input' | 'io' | 'not_own_daemon' | 'unknown';
@@ -119,8 +128,34 @@ export interface LogsInfo {
 
 export type WindowState = { maximized: boolean; focused: boolean };
 
+/**
+ * What the page tells main about the place where the sessions view (the PWA) may be drawn, every time any of it changes.
+ * Main owns the view: it sets the bounds from `x`, `y`, `width` and `height`, and shows it only while `active` is true and
+ * `covered` is false (and the daemon is ready); otherwise it hides it.
+ */
+export interface SessionsViewport {
+  /** The content area of the section in DIP, relative to the window's content (the page's own top-left corner). */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** The sessions section is the one on screen, and the daemon is ready (the page shows its own state otherwise). */
+  active: boolean;
+  /** A dialog or a toast of the control center needs the area: the view steps aside until it is gone. */
+  covered: boolean;
+}
+
+/** What main says about the sessions view: `crashed` is a page that kept dying, which main stopped replacing until the section is opened again. */
+export type SessionsViewState = 'ok' | 'crashed';
+
 export interface ControlApi {
   readonly version: string;
+  /** The language of Desktop when the page started; changes arrive through `onLanguage`. */
+  readonly language: Language;
+  /** Main asks the page to show a section (the tray's "Abrir sessões" while the window is already open). */
+  onNavigate(callback: (section: ControlSection) => void): () => void;
+  /** Desktop's language changed (from Ajustes here, or anywhere else): the page switches at once. */
+  onLanguage(callback: (language: Language) => void): () => void;
   window: {
     minimize(): Promise<void>;
     toggleMaximize(): Promise<WindowState>;
@@ -132,9 +167,13 @@ export interface ControlApi {
   overview(): Promise<ControlResult<OverviewInfo>>;
   onDaemonStatus(callback: (status: DaemonStatus) => void): () => void;
   restartDaemon(): Promise<ControlResult<DaemonStatus>>;
-  /** Opens the PWA window (sessions and chat, the phone layout). */
-  openSessions(): Promise<void>;
   openDataFolder(): Promise<void>;
+  sessions: {
+    /** Reports where the sessions view may be drawn (see `SessionsViewport`). Main validates the numbers and clamps them to the window. */
+    setViewport(viewport: SessionsViewport): Promise<void>;
+    /** Main tells the page when the view gave up and when it is fine again (see `SessionsViewState`). */
+    onState(callback: (state: SessionsViewState) => void): () => void;
+  };
   folders: {
     get(): Promise<ControlResult<FoldersState>>;
     /** Native multi-select folder picker. Returns the chosen absolute paths (empty when cancelled); saves nothing. */
@@ -170,6 +209,8 @@ export interface ControlApi {
     openFolder(): Promise<void>;
   };
   settings: {
+    /** Switches Desktop's language: the tray, the messages of main, this page and the embedded PWA follow. Resolves with the language in effect. */
+    setLanguage(language: Language): Promise<Language>;
     getAutostart(): Promise<{ value: boolean; supported: boolean }>;
     setAutostart(value: boolean): Promise<{ value: boolean; supported: boolean }>;
     checkForUpdate(): Promise<UpdateCheckResult>;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
-<title>Desinstalar o Nanachi</title>
+<title data-i18n="installer.uninstall.title">Desinstalar o Nanachi</title>
 <link rel="stylesheet" href="shell.css">
 </head>
 <body>
@@ -12,53 +12,53 @@
     <div class="backdrop" aria-hidden="true"><div class="blob one"></div><div class="blob two"></div><div class="blob three"></div></div>
 
     <header class="titlebar">
-      <span class="name">Desinstalar o Nanachi</span>
+      <span class="name" data-i18n="installer.uninstall.title">Desinstalar o Nanachi</span>
       <div class="window-buttons">
-        <button type="button" class="window-button" data-slot="minimize" aria-label="Minimizar"><svg viewBox="0 0 14 14"><path d="M2.5 7h9"/></svg></button>
-        <button type="button" class="window-button" data-slot="close" aria-label="Fechar"><svg viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+        <button type="button" class="window-button" data-slot="minimize" aria-label="Minimizar" data-i18n-aria-label="installer.window.minimize"><svg viewBox="0 0 14 14"><path d="M2.5 7h9"/></svg></button>
+        <button type="button" class="window-button" data-slot="close" aria-label="Fechar" data-i18n-aria-label="installer.window.close"><svg viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
       </div>
     </header>
 
     <main class="content">
       <section class="view" data-view="confirm">
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>Remover o Nanachi?</h2>
-        <p class="muted">O programa, os atalhos e o início com o Windows serão removidos. Se o Nanachi estiver aberto, ele será fechado.</p>
-        <p class="note">Suas sessões e dispositivos pareados continuam guardados em <span class="mono" data-slot="data-dir"></span> e voltam se você instalar de novo.</p>
-        <label class="switch full"><span>Apagar também os dados do Nanachi</span><input type="checkbox" data-slot="delete-data"></label>
+        <h2 data-i18n="installer.uninstall.confirmTitle">Remover o Nanachi?</h2>
+        <p class="muted" data-i18n="installer.uninstall.confirmDetail">O programa, os atalhos e o início com o Windows serão removidos. Se o Nanachi estiver aberto, ele será fechado.</p>
+        <p class="note" data-slot="data-note"></p>
+        <label class="switch full"><span data-i18n="installer.uninstall.deleteData">Apagar também os dados do Nanachi</span><input type="checkbox" data-slot="delete-data"></label>
         <div class="actions">
-          <button type="button" class="button" data-slot="cancel">Cancelar</button>
-          <button type="button" class="button destructive" data-slot="remove">Remover</button>
+          <button type="button" class="button" data-slot="cancel" data-i18n="installer.common.cancel">Cancelar</button>
+          <button type="button" class="button destructive" data-slot="remove" data-i18n="installer.uninstall.remove">Remover</button>
         </div>
       </section>
 
       <section class="view" data-view="progress" hidden>
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>Removendo o Nanachi</h2>
+        <h2 data-i18n="installer.uninstall.progressTitle">Removendo o Nanachi</h2>
         <div class="progress">
-          <div class="progress-meta"><span class="step" data-slot="step" aria-live="polite">Preparando…</span><span class="percent" data-slot="percent">0%</span></div>
-          <div class="track" role="progressbar" aria-label="Progresso da remoção" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-slot="track"><div class="fill"></div></div>
+          <div class="progress-meta"><span class="step" data-slot="step" aria-live="polite"></span><span class="percent" data-slot="percent">0%</span></div>
+          <div class="track" role="progressbar" aria-label="Progresso da remoção" data-i18n-aria-label="installer.uninstall.progressLabel" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-slot="track"><div class="fill"></div></div>
         </div>
       </section>
 
       <section class="view" data-view="done" hidden>
         <div class="checkmark"><svg viewBox="0 0 26 26"><path d="M5 13.5l5.2 5.2L21 7.8"/></svg></div>
-        <h2>Nanachi removido</h2>
-        <p class="muted" data-slot="done-detail">Seus dados foram mantidos.</p>
+        <h2 data-i18n="installer.uninstall.doneTitle">Nanachi removido</h2>
+        <p class="muted" data-slot="done-detail"></p>
         <ul class="warning-list" data-slot="warnings" hidden></ul>
-        <div class="actions"><button type="button" class="button primary" data-slot="done-close">Fechar</button></div>
+        <div class="actions"><button type="button" class="button primary" data-slot="done-close" data-i18n="installer.window.close">Fechar</button></div>
       </section>
 
       <section class="view" data-view="error" hidden>
         <img class="logo small" src="icon.png" alt="" width="56" height="56">
-        <h2>Não foi possível remover</h2>
+        <h2 data-i18n="installer.uninstall.errorTitle">Não foi possível remover</h2>
         <p class="error-text" data-slot="error-message" role="alert"></p>
-        <div class="actions"><button type="button" class="button primary" data-slot="error-close">Fechar</button></div>
+        <div class="actions"><button type="button" class="button primary" data-slot="error-close" data-i18n="installer.window.close">Fechar</button></div>
       </section>
     </main>
 
     <footer class="footer">
-      <span data-slot="version">Versão</span>
+      <span data-slot="version"></span>
       <span data-slot="scope"></span>
     </footer>
   </div>
