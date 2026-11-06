@@ -2,10 +2,11 @@
  * E2E for the chat's Loop mode (PLAN.md, "Extra (05/11) — modo Loop"). Starts its own daemon on port 7806 with a temp
  * home, pairs the phone-sized browser (iPhone 14 emulation, 390x844), and drives the built PWA with the fake agent.
  *
- * Checks: the header button opens the "Modo Loop" sheet; an interval loop of 30 s with "Rodar agora" shows "Loop #1"
+ * Checks: the "..." menu's "Modo Loop" row opens the sheet; an interval loop of 30 s with "Rodar agora" shows "Loop #1"
  * and the header chip counts down (the schedule is asserted through the countdown text, not by waiting a full
- * interval); "Rodar agora" gives "Loop #2"; pause and resume; `/loop 30s eco teste` typed in the composer creates the
- * loop directly; "Parar loop" with its confirmation removes the chip. Then a dynamic loop ("Automático") whose prompt
+ * interval); "Rodar agora" gives "Loop #2"; pause (no chip, "Pausado" in the menu row) and resume; `/loop 30s eco teste`
+ * typed in the composer creates the loop directly; "Parar loop" with its confirmation removes the chip and the menu row
+ * stays without a state. Then a dynamic loop ("Automático") whose prompt
  * is `LOOP-NEXT=45s`: the fake agent ends its reply with `[[nanachi-loop-next: 45s]]`, and the chat must hide that
  * marker and the loop instruction, showing the muted "Próxima rodada em 45 s" note. Screenshots at 390x844 in both
  * themes go to e2e/screenshots/loop/.
@@ -175,8 +176,8 @@ async function goToWorkspaces() {
     if (await hasCount(headerTitle('Workspaces'))) return;
     if (await hasCount(page.getByRole('button', { name: 'Voltar', exact: true }))) {
       await button('Voltar').click();
-    } else if (await hasCount(page.getByRole('button', { name: 'Workspaces', exact: true }))) {
-      await button('Workspaces').click();
+    } else if (await hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u }))) {
+      await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
     } else {
       await page.waitForTimeout(200);
     }
@@ -209,7 +210,7 @@ async function pairAndWorkspace() {
     hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })),
   );
 
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();
@@ -219,8 +220,26 @@ async function pairAndWorkspace() {
   await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().waitFor();
 }
 
+/** Opens the chat's "..." menu and picks the row whose text has `label`. On a phone the header keeps only Configurar and it. */
+async function pickMenuRow(label) {
+  await button('Mais ações da sessão').click();
+  await page.locator('[data-slot="action-sheet-item"]', { hasText: label }).click();
+}
+
+/** Text of a row of the open "..." menu (its detail line included), or null when the menu has no such row. */
+async function menuRowText(label) {
+  const row = page.locator('[data-slot="action-sheet-item"]', { hasText: label });
+  return (await row.count()) === 0 ? null : row.first().innerText();
+}
+
+/** Closes the open "..." menu with its "Cancelar" button. */
+async function closeMenu() {
+  await page.locator('[data-slot="action-sheet-cancel"]').click();
+  await page.locator('[data-slot="action-sheet-item"]').first().waitFor({ state: 'hidden', timeout: 10_000 });
+}
+
 async function openLoopFromHeader() {
-  await button('Modo Loop').click();
+  await pickMenuRow('Modo Loop');
   await loopSheet().waitFor();
 }
 
@@ -299,18 +318,18 @@ async function stepStartLoop() {
   await page.waitForTimeout(400);
   const narrow = await page.evaluate(() => {
     const chip = document.querySelector('[data-slot="loop-chip"]');
-    const modo = document.querySelector('button[aria-label="Modo Loop"]');
-    if (chip === null || modo === null) return null;
+    const more = document.querySelector('button[aria-label="Mais ações da sessão"]');
+    if (chip === null || more === null) return null;
     return {
       pageWidth: document.documentElement.scrollWidth,
       chipRight: chip.getBoundingClientRect().right,
-      modoRight: modo.getBoundingClientRect().right,
+      moreRight: more.getBoundingClientRect().right,
       chipText: chip.innerText,
     };
   });
-  assert.notEqual(narrow, null, 'chip and header button are present at 320 px');
+  assert.notEqual(narrow, null, 'chip and the "..." menu button are present at 320 px');
   assert.ok(narrow.pageWidth <= 320, `no horizontal page scroll at 320 px (got ${narrow.pageWidth})`);
-  assert.ok(narrow.chipRight <= 320 && narrow.modoRight <= 320, 'chip and header button stay inside 320 px');
+  assert.ok(narrow.chipRight <= 320 && narrow.moreRight <= 320, 'chip and the "..." menu button stay inside 320 px');
   assert.match(narrow.chipText, /^Loop · \d+ s$/, `short chip label at 320 px, got "${narrow.chipText}"`);
   await headerShotIn('light', 'cabecalho-320');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -346,8 +365,13 @@ async function stepActiveSheetAndRunNow() {
 async function stepPauseResume() {
   await openLoopFromHeader();
   await button('Pausar').click();
-  await until('chip shows paused', async () => (await chipPhase()) === 'paused');
-  assert.equal(await loopChip().innerText(), 'Loop pausado');
+  // A pause by the user has no chip: the state is the detail of the menu row. Only a pause after an error keeps the chip.
+  await until('chip goes away when the user pauses', async () => (await loopChip().count()) === 0);
+  await closeSheet();
+  await button('Mais ações da sessão').click();
+  assert.match(await menuRowText('Modo Loop'), /Pausado/, 'the menu row says Pausado');
+  await page.locator('[data-slot="action-sheet-item"]', { hasText: 'Modo Loop' }).click();
+  await loopSheet().waitFor();
   await button('Retomar').click();
   // Resume runs the next round at once (nextRunAt = now), so the chip ends back on the countdown.
   await until('chip counts down again after resume', async () => (await chipPhase()) === 'countdown', 20_000);
@@ -376,7 +400,11 @@ async function stepStop() {
   await loopNotice('Loop parado').waitFor({ timeout: 10_000 });
   await loopSheet().waitFor({ state: 'hidden', timeout: 10_000 });
   await until('chip gone after stop', async () => (await loopChip().count()) === 0, 10_000);
-  assert.ok(await hasCount(button('Modo Loop')), 'header button stays after stop');
+  // The menu keeps its Modo Loop row to start a new loop, without a state.
+  await button('Mais ações da sessão').click();
+  assert.ok(await hasCount(page.locator('[data-slot="action-sheet-item"]', { hasText: 'Modo Loop' })), 'menu keeps the Modo Loop row after stop');
+  assert.doesNotMatch(await menuRowText('Modo Loop'), /Ativo|Pausado/, 'no loop state in the row after stop');
+  await closeMenu();
 }
 
 async function stepDynamicNotes() {

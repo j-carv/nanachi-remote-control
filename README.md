@@ -51,7 +51,7 @@ Your own PC serves the dashboard inside your Tailscale network. **There is no ne
 - **Use the app in Portuguese, English or Spanish** ([language](#language)).
 - **Send photos and files** and receive files or PC screenshots in chat.
 - **View Git changes** and open sessions in separate worktrees without changing the main checkout.
-- **Switch between PCs**, mute projects, and revoke paired devices.
+- **Switch between PCs**, mute a workspace's notifications from the **…** menu of its sessions screen, and revoke paired devices.
 - **Receive notifications**, even when the app is not focused, if the operating system and browser allow it.
 
 ### Agents
@@ -280,7 +280,7 @@ Folders are shared with directory junctions (no administrator rights needed) and
 
 Some providers give your account saved rate-limit resets. A reset lifts a usage limit immediately. For **Oh My Pi** and **Codex** sessions, Nanachi lists them and can spend one from your phone. Claude Code and Antigravity have no reset source, so those sessions do not show the section.
 
-1. In a session, tap **Agent usage (Uso do agente)** in the chat header.
+1. In a session, tap **More session actions (Mais ações da sessão)** (the "…" button in the chat header), then **Agent usage (Uso do agente)**.
 2. Find **Saved resets (Resets salvos)** under the limit cards. Each row shows the account, its provider, how many resets are saved and how many are available now ("salvos · disponíveis agora"), and when they expire.
 3. Tap **Use reset (Usar reset)** on a row. The button is enabled only when at least one reset is available now.
 4. A confirmation asks **Use 1 reset? (Usar 1 reset?)**. Tap **Use reset** to confirm. **Cancel (Cancelar)**, the back gesture, or a tap outside sends nothing.

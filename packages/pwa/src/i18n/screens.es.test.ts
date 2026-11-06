@@ -16,8 +16,10 @@ import { ShowAll } from '../components/ShowAll.js';
 import type { Machine } from '../machines.js';
 import type { MachineOverview } from '../machineOverview.js';
 import { DevicesScreen } from '../screens/DevicesScreen.js';
+import { machineMenuRows } from '../machineMenuRows.js';
 import { MainScreen } from '../screens/MainScreen.js';
 import { PairScreen } from '../screens/PairScreen.js';
+import { ActivityLine } from '../screens/WorkspacesScreen.js';
 import { setLanguage } from './index.js';
 
 const noop = () => undefined;
@@ -152,14 +154,30 @@ describe('MainScreen in Spanish', () => {
     }
     expect(markup).toContain('Conectado al daemon de esta máquina.');
     expect(markup).toContain('Ninguna sesión en ejecución');
-    expect(markup).toContain('Quitar máquina');
+    expect(markup).toContain('Workspaces en OFFICE-PC');
+    expect(markup).toContain('aria-label="Más acciones de OFFICE-PC"');
+    expect(markup).not.toContain('Quitar máquina');
     expect(markup).not.toContain('Remover máquina');
+  });
+
+  it('offers "Quitar máquina" in the menu as the destructive row', () => {
+    const menu = html(createElement(ActionSheetPanel, { title: 'OFFICE-PC', items: machineMenuRows(noop), onClose: noop, onPick: noop }));
+    expect(menu).toContain('>Quitar máquina</span>');
+    expect(menu).toContain('data-tone="danger"');
   });
 
   it('offers to pair again when the machine is not authorized', () => {
     const markup = html(createElement(MainScreen, { ...props, statuses: { m1: 'unauthorized' as const } }));
     expect(markup).toContain('No autorizado');
     expect(markup).toContain('Vincular de nuevo');
+  });
+});
+
+describe('ActivityLine in Spanish', () => {
+  it('counts the sessions running and waiting for the user, running first', () => {
+    const markup = html(createElement(ActivityLine, { counts: { running: 2, awaiting: 1, idle: 0 } }));
+    expect(markup.indexOf('2 en ejecución')).toBeGreaterThan(-1);
+    expect(markup.indexOf('2 en ejecución')).toBeLessThan(markup.indexOf('1 esperándote'));
   });
 });
 

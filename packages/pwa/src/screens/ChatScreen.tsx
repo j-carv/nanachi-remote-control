@@ -15,13 +15,9 @@ import {
   ChevronLeft,
   ChevronUp,
   FolderTree,
-  Gauge,
-  GitCompare,
   Layers,
   LoaderCircle,
   Paperclip,
-  Repeat,
-  Repeat1,
   SendHorizontal,
   Settings2,
   SlidersHorizontal,
@@ -57,6 +53,9 @@ import { arrivedLive, historyOf, type HistoryIds } from '../chat/liveItems.js';
 import { LoopChip } from '../chat/LoopChip.js';
 import { LoopSheet } from '../chat/LoopSheet.js';
 import { loopCommandFor } from '../chat/loopCommand.js';
+import { planHeaderActions } from '../chat/headerActions.js';
+import { headerMenuRows } from '../chat/headerMenuRows.js';
+import { PlaceLine } from '../chat/PlaceLine.js';
 import { useMediaQuery } from '../chat/useMediaQuery.js';
 import { describeLoopError, describeSessionAccountError } from '../errorMessages.js';
 import { ITEM_FRAME_CLASS } from '../chat/itemFrame.js';
@@ -82,7 +81,7 @@ import { SlashMenu } from '../chat/SlashMenu.js';
 import { acceptsPrompt, isInputEnabled, isResumable } from '../chat/controls.js';
 import { useAttachmentDrafts, type DraftAttachment } from '../chat/useAttachmentDrafts.js';
 import { useChat } from '../chat/useChat.js';
-import { allowsSidePane, ENTER_SENDS_QUERY, enterSends } from '../wide/layout.js';
+import { ENTER_SENDS_QUERY, enterSends } from '../wide/layout.js';
 import { useBackAffordance, useLayout } from '../wide/layoutContext.js';
 import { displaySessionTitle, sessionStatusText, sessionTitle } from '../sessionText.js';
 import { useAsync } from '../useAsync.js';
@@ -181,22 +180,15 @@ export function ChatScreen({
   const [loopOpen, setLoopOpen] = useState(false);
   /** Short Loop mode notice ("Loop iniciado", or why a malformed `/loop` was refused). */
   const [loopNotice, setLoopNotice] = useState<string | null>(null);
-  /**
-   * Narrow screens (below 400 px): Uso do agente and Alterações leave the header for the "…" menu, so the title and
-   * the new Modo Loop button fit. Wider screens keep the header as it was.
-   */
-  const compactHeader = useMediaQuery('(max-width: 399px)');
-  // Wide screens: the chat sits in the right pane (not over the whole window); from 1280 px it can open files, changes
-  // and a terminal in a third pane. Enter sends only for a mouse and keyboard (a touch screen keeps Enter as a new line).
+  // Wide screens: the chat sits in the right pane (not over the whole window); from 1280 px it can open files and a
+  // terminal in a third pane. Enter sends only for a mouse and keyboard (a touch screen keeps Enter as a new line).
   const layout = useLayout();
   const embedded = layout !== 'phone';
-  const sidePane = allowsSidePane(layout);
   const backAffordance = useBackAffordance();
   const enterToSend = useMediaQuery(ENTER_SENDS_QUERY);
   const [shellOpen, setShellOpen] = useState(false);
   /** A tooltip for the icon buttons of the header: a pointer has no other way to read them. */
   const tip = (label: string): string | undefined => (embedded ? label : undefined);
-  const loopActive = controller.loop !== null && controller.loop.state !== 'stopped';
   /** Item the header chip asked to show. The effect below scrolls to it once it is rendered. */
   const [revealRequest, setRevealRequest] = useState<{ id: string } | null>(null);
   const [draft, setDraft] = useState('');
@@ -303,6 +295,14 @@ export function ChatScreen({
   );
   const backgroundList = useMemo(() => backgroundEntries(chat.items, backgroundView), [chat.items, backgroundView]);
   const chipCount = backgroundChipCount(backgroundList, chat.turnEnds);
+  /** What the header row, the "..." menu and the chips show. The rule is in chat/headerActions.ts. */
+  const headerPlan = planHeaderActions({
+    kind: current.kind,
+    layout,
+    loop: controller.loop,
+    backgroundTotal: backgroundList.length,
+    backgroundActive: chipCount,
+  });
   const nodeCache = useRef<ReadonlyMap<string, ChatNode>>(new Map());
   const topNodes = useMemo(() => {
     const nested = nestItems(chat.items.slice(start), nodeCache.current);
@@ -751,6 +751,15 @@ export function ChatScreen({
       ? `${workspace.name} · ${machineName}`
       : `${workspace.name} · ${current.worktree.branch} · ${machineName}`;
 
+  /** The "..." menu's rows, from the plan. The labels and details are in chat/headerMenuRows.ts. */
+  const menuRows = headerMenuRows(headerPlan.sheet, controller.loop, {
+    openUsage: () => setUsageOpen(true),
+    openLoop,
+    openBackground: () => setBackgroundOpen(true),
+    openChanges: () => nav.push({ kind: 'changes', workspace, session: current }),
+    remove: () => setRemoving(true),
+  });
+
   return (
     <ChatAttachContext.Provider value={composerOpen ? attachFromViewer : null}>
       <div
@@ -778,55 +787,26 @@ export function ChatScreen({
                 <h1 className="min-w-0 truncate text-base leading-6 font-semibold tracking-tight">{displaySessionTitle(current.title)}</h1>
               </div>
             </div>
-            {current.kind === 'acp' && !compactHeader && (
-              <Button variant="ghost" size="icon" aria-label={t('header.usage')} title={tip(t('header.usage'))} onClick={() => setUsageOpen(true)}>
-                <Gauge aria-hidden="true" />
-              </Button>
-            )}
-            {current.kind === 'acp' && (
+            {headerPlan.row.includes('files') && (
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={t('header.loop')}
-                title={tip(t('header.loop'))}
-                aria-haspopup="dialog"
-                aria-expanded={loopOpen}
-                onClick={openLoop}
+                aria-label={t('sessions.files', { ns: 'workspace' })}
+                title={t('sessions.files', { ns: 'workspace' })}
+                onClick={() => nav.push({ kind: 'files', workspace, path: '' })}
               >
-                {loopActive ? <Repeat1 aria-hidden="true" /> : <Repeat aria-hidden="true" />}
+                <FolderTree aria-hidden="true" />
               </Button>
             )}
-            {sidePane && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('sessions.files', { ns: 'workspace' })}
-                  title={t('sessions.files', { ns: 'workspace' })}
-                  onClick={() => nav.push({ kind: 'files', workspace, path: '' })}
-                >
-                  <FolderTree aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('sessions.terminal', { ns: 'workspace' })}
-                  title={t('sessions.terminal', { ns: 'workspace' })}
-                  onClick={() => setShellOpen(true)}
-                >
-                  <SquareTerminal aria-hidden="true" />
-                </Button>
-              </>
-            )}
-            {!compactHeader && (
+            {headerPlan.row.includes('terminal') && (
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={t('header.changes')}
-                title={tip(t('header.changes'))}
-                onClick={() => nav.push({ kind: 'changes', workspace, session: current })}
+                aria-label={t('sessions.terminal', { ns: 'workspace' })}
+                title={t('sessions.terminal', { ns: 'workspace' })}
+                onClick={() => setShellOpen(true)}
               >
-                <GitCompare aria-hidden="true" />
+                <SquareTerminal aria-hidden="true" />
               </Button>
             )}
             <Button
@@ -843,23 +823,15 @@ export function ChatScreen({
             <ActionSheetButton
               label={t('header.moreActions')}
               title={sessionTitle(current, agentLabel)}
-              items={[
-                ...(compactHeader && current.kind === 'acp'
-                  ? [{ label: t('header.usage'), onSelect: () => setUsageOpen(true) }]
-                  : []),
-                ...(compactHeader
-                  ? [{ label: t('header.changes'), onSelect: () => nav.push({ kind: 'changes', workspace, session: current }) }]
-                  : []),
-                { label: t('header.removeFromApp'), tone: 'danger', onSelect: () => setRemoving(true) },
-              ]}
+              items={menuRows}
             />
           </header>
-            {/* Place line and chips span the whole header, so they keep room beside the buttons. Indented to the title. */}
+            {/* The place line has its own row under the title, indented to the title. The chips sit at its end: the loop's while it runs or stopped on an error, the background work's while it runs. */}
             <div className={cn('-mt-1 flex min-w-0 items-center gap-2 pr-1', backAffordance === 'back' ? 'pl-[62px]' : 'pl-[22px]')}>
-              <p data-slot="session-place" className="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground">{place}</p>
-              {current.kind === 'acp' && <LoopChip loop={controller.loop} onOpen={openLoop} />}
+              <PlaceLine text={place} />
+              {headerPlan.chips.loop && <LoopChip loop={controller.loop} onOpen={openLoop} />}
               {/* 44px tap area around a 24px pill; the negative margins keep the header's height unchanged. */}
-              {chipCount > 0 && (
+              {headerPlan.chips.background && (
                 <button
                   type="button"
                   data-slot="background-chip"

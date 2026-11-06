@@ -106,7 +106,7 @@ async function runFlow() {
   await shot('01-home-online');
 
   // 2. Workspaces
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await shot('02-workspaces-vazio');
 
@@ -176,7 +176,7 @@ async function runFlow() {
   // 7. Recarregar: a página volta à home (estado de navegação é em memória) e o histórico reaparece sem duplicar.
   await page.reload({ waitUntil: 'networkidle' });
   await until('home online após reload', () => hasCount(page.locator('.status-card.status-online')));
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await workspaceRow.click();
   await page.locator('.item-main', { hasText: 'Create a file named' }).first().click();
   await until('histórico recarregado', () => hasCount(page.locator('[data-slot="bubble-user"]')));

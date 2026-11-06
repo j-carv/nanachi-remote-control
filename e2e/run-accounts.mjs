@@ -258,8 +258,8 @@ async function goToWorkspaces() {
     if (await hasCount(headerTitle('Workspaces'))) return;
     if (await hasCount(button('Voltar'))) {
       await button('Voltar').click();
-    } else if (await hasCount(button('Workspaces'))) {
-      await button('Workspaces').click();
+    } else if (await hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u }))) {
+      await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
     } else {
       await page.waitForTimeout(200);
     }
@@ -282,7 +282,7 @@ async function pairAndWorkspace() {
   await button('Parear').click();
   await until('status online na home', () => hasCount(page.getByRole('region', { name: 'Estado da máquina' }).getByText('Online', { exact: true })));
 
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();
@@ -610,7 +610,7 @@ async function stepRemoveBlocked(workId) {
 
 async function stepSwitchAccount(workId) {
   await goHome();
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().click();
   await page.locator('ul[aria-label="Sessões"] > li').first().locator('button', { hasText: 'Claude Code' }).first().click();

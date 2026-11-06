@@ -298,7 +298,7 @@ async function openProject() {
     if (await hasCount(button('Voltar'))) await button('Voltar').click();
     await page.waitForTimeout(150);
   }
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await page.locator('ul[aria-label="Workspaces"] > li', { hasText: WORKSPACE_NAME }).getByRole('button').first().click();
   await button('Retomar do PC').waitFor();
 }

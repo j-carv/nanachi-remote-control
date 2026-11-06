@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BellOff, Bell, CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
+import { CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
@@ -20,11 +20,12 @@ import { SwipeRow } from '../components/SwipeRow.js';
 import { WorkspaceInfoBar } from '../components/WorkspaceInfoBar.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import type { Navigator } from '../navigation.js';
 import { formatRelativeTime } from '../relativeTime.js';
 import { sessionTitle } from '../sessionText.js';
 import { visibleSessions } from '../sessionRemoval.js';
+import { saveMuted } from '../workspace/saveMuted.js';
+import { notificationsRow } from '../workspace/workspaceMenuRows.js';
 import { useAsync } from '../useAsync.js';
 
 interface SessionsScreenProps {
@@ -111,14 +112,9 @@ export function SessionsScreen({
 
   async function toggleMuted(next: boolean) {
     setMuted(next);
-    try {
-      const updated = await api.updateWorkspace(workspace.id, { muted: next });
-      setMuted(updated.muted);
-      setActionError(null);
-    } catch (caught) {
-      setMuted(!next);
-      setActionError(caught);
-    }
+    const saved = await saveMuted(api, workspace.id, next);
+    setMuted(saved.muted);
+    setActionError(saved.error);
   }
 
   return (
@@ -126,6 +122,7 @@ export function SessionsScreen({
       <ScreenHeader
         title={workspace.name}
         subtitle={`${machineName} · ${workspace.path}`}
+        subtitleTruncation="middle"
         onBack={() => nav.back()}
         meta={
           <BranchSwitcher api={api} workspace={workspace} onSwitched={() => info.reload()} />
@@ -150,6 +147,11 @@ export function SessionsScreen({
             >
               <FolderTree aria-hidden="true" />
             </Button>
+            <ActionSheetButton
+              label={t('sessions.workspaceMenu', { name: workspace.name })}
+              title={workspace.name}
+              items={[notificationsRow(muted, (next) => void toggleMuted(next))]}
+            />
           </>
         }
       />
@@ -166,21 +168,6 @@ export function SessionsScreen({
           {t('sessions.resume')}
         </Button>
       </div>
-
-      <ListGroup>
-        <li className={listRowClass}>
-          {muted ? (
-            <BellOff className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          ) : (
-            <Bell className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          )}
-          <label htmlFor="workspace-mute" className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-base">{t('sessions.muteTitle')}</span>
-            <span className="text-sm text-muted-foreground">{t('sessions.muteHint')}</span>
-          </label>
-          <Switch id="workspace-mute" checked={muted} onCheckedChange={(next) => void toggleMuted(next)} />
-        </li>
-      </ListGroup>
 
       <ErrorNotice error={error} onRepair={onRepair} />
 

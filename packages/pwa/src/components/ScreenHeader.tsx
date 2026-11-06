@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { ChevronLeft, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { PlaceLine } from '../chat/PlaceLine.js';
 import { Button } from '@/components/ui/button';
 import { useBackAffordance } from '../wide/layoutContext.js';
 
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string | undefined;
+  /** `middle` cuts a long subtitle in the middle, so its last part (a folder name) stays visible. Default: at the end. */
+  subtitleTruncation?: 'end' | 'middle' | undefined;
   /** Linha extra abaixo do subtítulo (ex.: chip do branch do worktree). */
   meta?: ReactNode;
   onBack?: (() => void) | undefined;
@@ -17,7 +20,7 @@ interface ScreenHeaderProps {
  * Cabeçalho das telas: voltar (chevron, 44px) à esquerda, título e subtítulo, ações (ícones) à direita.
  * Rola com a tela, não é fixo.
  */
-export function ScreenHeader({ title, subtitle, meta, onBack, actions }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, subtitleTruncation, meta, onBack, actions }: ScreenHeaderProps) {
   const { t } = useTranslation();
   // Phone: the chevron. Next to the list pane a screen reached from the list has no "back"; the screens of the third pane
   // close it from the first one (an X on the right) and go back from the next ones.
@@ -31,7 +34,12 @@ export function ScreenHeader({ title, subtitle, meta, onBack, actions }: ScreenH
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1">
         <h1 className="truncate text-xl leading-7 font-semibold tracking-tight">{title}</h1>
-        {subtitle !== undefined && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+        {subtitle !== undefined &&
+          (subtitleTruncation === 'middle' ? (
+            <PlaceLine text={subtitle} />
+          ) : (
+            <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+          ))}
         {meta}
       </div>
       {actions !== undefined && <div className="flex shrink-0 items-center gap-1">{actions}</div>}

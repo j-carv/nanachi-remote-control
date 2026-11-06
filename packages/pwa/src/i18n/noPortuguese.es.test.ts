@@ -190,6 +190,7 @@ const SAME_WORD_IN_BOTH = [
   'workspace:files.newFolderHint',
   'workspace:editor.label',
   'workspace:editor.plainText',
+  'workspace:sessions.notificationsMuted',
 ];
 
 const ALLOWED_IDENTICAL = [...PRODUCT_OR_TECHNICAL, ...SAME_WORD_IN_BOTH];

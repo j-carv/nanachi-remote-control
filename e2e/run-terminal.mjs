@@ -168,8 +168,8 @@ const terminalLine = () => page.locator('[data-slot="terminal-line"]');
 const sessionRows = () => page.locator('ul[aria-label="Sessões"] > li', { hasText: SHELL_TITLE });
 
 async function goToWorkspace() {
-  await until('home carregada', () => hasCount(button('Workspaces')));
-  await button('Workspaces').click();
+  await until('home carregada', () => hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u })));
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await page.locator('ul[aria-label="Workspaces"] > li', { hasText: WORKSPACE_NAME }).getByRole('button').first().click();
   await button('Nova sessão').waitFor();
 }

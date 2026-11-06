@@ -6,18 +6,20 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ApiClient } from '../api.js';
+import { ActionSheetPanel } from '../components/ActionSheet.js';
 import { DiffView } from '../components/DiffView.js';
 import { UnifiedPatchView } from '../components/UnifiedPatchView.js';
 import { WorkspaceInfoBar } from '../components/WorkspaceInfoBar.js';
 import { setLanguage } from '../i18n/index.js';
 import type { StorageLike } from '../machines.js';
+import { notificationsRow } from '../workspace/workspaceMenuRows.js';
 import { ChangesScreen } from './ChangesScreen.js';
 import { EditorScreen } from './EditorScreen.js';
 import { FilesScreen } from './FilesScreen.js';
 import { FolderPickerScreen } from './FolderPickerScreen.js';
 import { SessionsScreen } from './SessionsScreen.js';
 import { TerminalScreen } from './TerminalScreen.js';
-import { WorkspacesScreen } from './WorkspacesScreen.js';
+import { ActivityLine, WorkspacesScreen } from './WorkspacesScreen.js';
 
 const noop = () => undefined;
 const nav = { push: noop, back: noop, replace: noop };
@@ -48,7 +50,14 @@ const session: Session = {
 };
 
 describe('WorkspacesScreen', () => {
-  const element = createElement(WorkspacesScreen, { machineName: 'OFFICE-PC', api, nav, onRepair: noop });
+  const element = createElement(WorkspacesScreen, {
+    machineName: 'OFFICE-PC',
+    api,
+    nav,
+    connection: undefined,
+    status: undefined,
+    onRepair: noop,
+  });
 
   it('is in Portuguese by default', () => {
     const markup = html(element);
@@ -66,6 +75,40 @@ describe('WorkspacesScreen', () => {
   });
 });
 
+describe('ActivityLine (the counts under a workspace name)', () => {
+  const line = (running: number, awaiting: number): string =>
+    html(createElement(ActivityLine, { counts: { running, awaiting, idle: 0 } }));
+
+  it('shows nothing for a workspace with no session running or waiting', () => {
+    expect(line(0, 0)).toBe('');
+  });
+
+  it('shows only the running count when no session waits', () => {
+    const markup = line(2, 0);
+    expect(markup).toContain('2 rodando');
+    expect(markup).not.toContain('aguardando');
+  });
+
+  it('shows only the awaiting count when no session runs', () => {
+    const markup = line(0, 1);
+    expect(markup).toContain('1 aguardando você');
+    expect(markup).not.toContain('rodando');
+  });
+
+  it('shows both counts, running first', () => {
+    const markup = line(1, 3);
+    expect(markup).toContain('1 rodando');
+    expect(markup.indexOf('1 rodando')).toBeLessThan(markup.indexOf('3 aguardando você'));
+  });
+
+  it('writes the same counts in English', () => {
+    setLanguage('en');
+    expect(line(1, 3)).toContain('1 running');
+    expect(line(1, 3)).toContain('3 waiting for you');
+    expect(line(0, 1)).not.toContain('running');
+  });
+});
+
 describe('SessionsScreen', () => {
   const element = createElement(SessionsScreen, {
     machineName: 'OFFICE-PC',
@@ -79,9 +122,25 @@ describe('SessionsScreen', () => {
 
   it('names its buttons and rows in Portuguese', () => {
     const markup = html(element);
-    for (const text of ['Nova sessão', 'Retomar do PC', 'Silenciar notificações', 'aria-label="Arquivos"']) {
+    for (const text of ['Nova sessão', 'Retomar do PC', 'aria-label="Arquivos"', 'aria-label="Mais ações de nanachi"']) {
       expect(markup).toContain(text);
     }
+  });
+
+  it('keeps the notifications switch out of the list: it is a row of the "..." menu', () => {
+    const markup = html(element);
+    expect(markup).not.toContain('workspace-mute');
+    expect(markup).not.toContain('Silenciar notificações');
+  });
+
+  it('offers the notifications row in the "..." menu, with its state', () => {
+    const menu = html(createElement(ActionSheetPanel, { title: 'nanachi', items: [notificationsRow(false, noop)], onClose: noop, onPick: noop }));
+    expect(menu).toContain('>Notificações</span>');
+    expect(menu).toContain('>Ligadas</span>');
+  });
+
+  it('cuts the path in the middle, through the place line, so the folder name stays visible', () => {
+    expect(html(element)).toContain('data-slot="session-place"');
   });
 
   it('names its buttons and rows in English', () => {
@@ -90,16 +149,23 @@ describe('SessionsScreen', () => {
     for (const text of [
       'New session',
       'Resume from PC',
-      'Mute notifications',
       'aria-label="Files"',
       'aria-label="Terminal"',
+      'aria-label="More actions for nanachi"',
       'Loading…',
     ]) {
       expect(markup).toContain(text);
     }
-    expect(markup).toContain('notified about this workspace&#x27;s sessions');
     expect(markup).not.toContain('Nova sessão');
     expect(markup).not.toContain('Silenciar');
+    expect(markup).not.toContain('Mute notifications');
+  });
+
+  it('offers the notifications row in English, with its state', () => {
+    setLanguage('en');
+    const menu = html(createElement(ActionSheetPanel, { title: 'nanachi', items: [notificationsRow(true, noop)], onClose: noop, onPick: noop }));
+    expect(menu).toContain('>Notifications</span>');
+    expect(menu).toContain('>Muted</span>');
   });
 });
 

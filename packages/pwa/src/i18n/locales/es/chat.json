@@ -7,7 +7,9 @@
     "configure": "Configurar sesión",
     "moreActions": "Más acciones de la sesión",
     "removeFromApp": "Quitar de la app",
-    "backgroundWork": "Trabajo en segundo plano: {{count}}"
+    "backgroundWork": "Trabajo en segundo plano: {{count}}",
+    "backgroundRunning": "{{count}} en curso",
+    "backgroundTotal": "{{count}} en total"
   },
   "working": {
     "starting": "Iniciando el agente…",
@@ -149,6 +151,7 @@
     },
     "status": {
       "stopped": "Finalizado",
+      "active": "Activo",
       "paused": "En pausa",
       "pausedError": "En pausa tras un error",
       "running": "En ejecución ahora",

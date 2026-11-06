@@ -365,6 +365,7 @@ function AppRoutes() {
         route={current}
         nav={navigator}
         connection={pool.get(selected.id)}
+        status={statuses[selected.id]}
         storage={storage}
       />
     );

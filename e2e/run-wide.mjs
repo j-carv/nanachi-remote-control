@@ -289,7 +289,7 @@ async function checkPhone(page, content) {
   await shotBoth(page, 'phone-home');
 
   // Open a session the way the phone always has: Workspaces -> workspace -> session.
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' }).getByRole('button').first().click();
   await page.locator('ul[aria-label="Sessões"] > li button').first().click();
   await page.locator('[data-slot="chat-textarea"]').waitFor();
@@ -488,13 +488,19 @@ async function openChatOf(page, index) {
   await page.locator('[data-slot="chat-textarea"]').waitFor();
 }
 
+/** Picks a row of the chat's "..." menu. Uso do agente and Alterações are rows of that menu at every width. */
+async function pickMenuRow(page, label) {
+  await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
+  await page.locator('[data-slot="action-sheet-item"]', { hasText: label }).click();
+}
+
 async function checkSidePane(page) {
   await openChatOf(page, 0);
   const sideCount = () => count(page.locator('[data-slot="side-pane"]'));
   assert.equal(await sideCount(), 0, 'no third pane until something opens in it');
 
   // Changes (diff).
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await pickMenuRow(page, 'Alterações');
   await page.locator('[data-slot="side-pane"]').waitFor();
   await page.locator('[data-slot="change-row"]').first().waitFor({ timeout: 20_000 });
   const side = await box(page.locator('[data-slot="side-pane"]'));
@@ -558,7 +564,7 @@ async function checkSidePane(page) {
   await until(page, 'the terminal pane closes', async () => (await sideCount()) === 0);
 
   // The pane belongs to the conversation: a pane opened here is gone when another session is picked.
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await pickMenuRow(page, 'Alterações');
   await page.locator('[data-slot="side-pane"]').waitFor();
   await page.locator('[data-slot="list-workspace"]').nth(1).locator('[data-slot="list-session"]').first().click();
   await until(page, 'the other conversation opens', async () =>
@@ -581,7 +587,7 @@ async function checkSheets(page) {
   await until(page, 'Escape closes the configure dialog', async () => (await count(page.getByRole('dialog'))) === 0);
 
   // Usage: a side panel on the right edge.
-  await page.getByRole('button', { name: 'Uso do agente', exact: true }).click();
+  await pickMenuRow(page, 'Uso do agente');
   const panel = page.locator('[data-slot="drawer-content"][data-panel="side"]');
   await panel.waitFor();
   await page.waitForTimeout(400);
@@ -624,7 +630,7 @@ async function checkBreakpoints(storageState) {
 
   await page.setViewportSize({ width: 1279, height: 800 });
   await page.locator('[data-slot="wide-shell"][data-layout="two-pane"]').waitFor();
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await pickMenuRow(page, 'Alterações');
   await page.getByRole('heading', { name: 'Alterações' }).waitFor();
   assert.equal(await count(page.locator('[data-slot="side-pane"]')), 0, '1279 px: changes take the right pane, no third pane');
   assert.ok(await has(page.getByRole('button', { name: 'Voltar', exact: true })), '1279 px: changes keeps its back button');
@@ -633,7 +639,7 @@ async function checkBreakpoints(storageState) {
 
   // A pick in the list while a screen sits on top of the chat (depth 2) leaves no dead history entries behind: the picked
   // session is at depth 1, and one Back goes to the first screen (the empty one), not to the screen that was replaced.
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await pickMenuRow(page, 'Alterações');
   await page.getByRole('heading', { name: 'Alterações' }).waitFor();
   await until(page, 'the changes screen is at history depth 2', async () => (await page.evaluate(() => history.state?.depth)) === 2);
   await listSession(page, 1).click();
@@ -648,7 +654,7 @@ async function checkBreakpoints(storageState) {
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.locator('[data-slot="wide-shell"][data-layout="three-pane"]').waitFor();
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await pickMenuRow(page, 'Alterações');
   await page.locator('[data-slot="side-pane"]').waitFor();
   await shot(page, 'wide-12-1280px-changes');
 
