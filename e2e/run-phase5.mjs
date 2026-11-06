@@ -266,8 +266,8 @@ async function goToWorkspaces() {
     if (await hasCount(headerTitle('Workspaces'))) return;
     if (await hasCount(button('Voltar'))) {
       await button('Voltar').click();
-    } else if (await hasCount(button('Workspaces'))) {
-      await button('Workspaces').click();
+    } else if (await hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u }))) {
+      await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
     } else {
       await page.waitForTimeout(200);
     }
@@ -344,7 +344,7 @@ async function pairAppA() {
 
 async function addWorkspace(name, rootName) {
   await goHome();
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await button('Adicionar workspace').click();
   await pickFolder(name, rootName);
@@ -367,14 +367,9 @@ async function stepWorkspaceInfo() {
 async function stepChanges() {
   await newSession('Fake', 'proj');
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
-  // Cabeçalho compacto (390 px): "Alterações" sai do cabeçalho e fica em "Mais ações da sessão".
-  const changesButton = page.getByRole('button', { name: 'Alterações', exact: true });
-  if ((await changesButton.count()) === 0) {
-    await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
-    await page.getByRole('button', { name: 'Alterações', exact: true }).click();
-  } else {
-    await changesButton.first().click();
-  }
+  // Phone header: "Alterações" is a row of "Mais ações da sessão". The row has no detail line, so its exact name is stable.
+  await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
+  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
   await headerTitle('Alterações').waitFor();
   await until('duas alterações listadas', async () => (await page.locator('[data-slot="change-row"]').count()) === 2);
   await shot('01-alteracoes-lista');
@@ -625,6 +620,8 @@ async function stepMultiPc() {
 /** Remove o PC secundário da app e revoga o próprio device: a app tem que voltar ao pareamento. */
 async function stepRevokeSelf() {
   await switchMachine(NAME_B);
+  // "Remover máquina" is a row of the "..." menu on the home screen.
+  await button(`Mais ações de ${NAME_B}`).click();
   await button('Remover máquina').click();
   await until('PC secundário removido, PC principal selecionado', async () => (await page.locator('h1').innerText()) === NAME_A);
 

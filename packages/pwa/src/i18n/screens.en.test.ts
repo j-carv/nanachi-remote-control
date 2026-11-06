@@ -14,6 +14,7 @@ import { SessionStatusPill } from '../components/SessionStatusPill.js';
 import { ShowAll } from '../components/ShowAll.js';
 import type { Machine } from '../machines.js';
 import type { MachineOverview } from '../machineOverview.js';
+import { machineMenuRows } from '../machineMenuRows.js';
 import { DevicesScreen } from '../screens/DevicesScreen.js';
 import { MainScreen } from '../screens/MainScreen.js';
 import { PairScreen } from '../screens/PairScreen.js';
@@ -163,7 +164,15 @@ describe('MainScreen', () => {
     }
     expect(markup).toContain('Conectado ao daemon desta máquina.');
     expect(markup).toContain('Nenhuma sessão rodando');
-    expect(markup).toContain('Remover máquina');
+    expect(markup).toContain('Workspaces de OFFICE-PC');
+    expect(markup).toContain('aria-label="Mais ações de OFFICE-PC"');
+    expect(markup).not.toContain('Remover máquina');
+  });
+
+  it('offers "Remover máquina" in the menu as the destructive row, in Portuguese', () => {
+    const menu = html(createElement(ActionSheetPanel, { title: 'OFFICE-PC', items: machineMenuRows(noop), onClose: noop, onPick: noop }));
+    expect(menu).toContain('>Remover máquina</span>');
+    expect(menu).toContain('data-tone="danger"');
   });
 
   it('names its controls in English', () => {
@@ -181,9 +190,17 @@ describe('MainScreen', () => {
     }
     expect(markup).toContain('Connected to this machine&#x27;s daemon.');
     expect(markup).toContain('No sessions running');
-    expect(markup).toContain('Workspaces');
-    expect(markup).toContain('Remove machine');
+    expect(markup).toContain('Workspaces on OFFICE-PC');
+    expect(markup).toContain('aria-label="More actions for OFFICE-PC"');
+    expect(markup).not.toContain('Remove machine');
     expect(markup).not.toContain('Remover máquina');
+  });
+
+  it('offers "Remove machine" in the menu as the destructive row, in English', () => {
+    setLanguage('en');
+    const menu = html(createElement(ActionSheetPanel, { title: 'OFFICE-PC', items: machineMenuRows(noop), onClose: noop, onPick: noop }));
+    expect(menu).toContain('>Remove machine</span>');
+    expect(menu).toContain('data-tone="danger"');
   });
 
   it('offers to pair again when the machine is not authorized', () => {

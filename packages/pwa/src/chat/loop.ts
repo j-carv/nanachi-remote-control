@@ -103,6 +103,16 @@ export function loopStatusText(loop: Loop, now: number): string {
   return t('chat:loop.status.next', { time: formatCountdown(remaining) });
 }
 
+/**
+ * The Modo Loop row of the "..." menu: "Ativo", or why the loop is paused. Undefined without a running or paused loop.
+ * It has no countdown: the menu does not tick, and the Loop sheet shows the time.
+ */
+export function loopMenuDetail(loop: Loop | null): string | undefined {
+  if (loop === null || loop.state === 'stopped') return undefined;
+  if (loop.state === 'paused') return loop.lastError === null ? t('chat:loop.status.paused') : t('chat:loop.status.pausedError');
+  return t('chat:loop.status.active');
+}
+
 /** Round count for the sheet: `Rodadas: 2 de 5` / `Rounds: 2 of 5`. */
 export function loopRoundsText(loop: Loop): string {
   if (loop.iterations === 0) return t('chat:loop.rounds.none');

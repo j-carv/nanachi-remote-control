@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, Ellipsis } from 'lucide-react';
+import { Check, Ellipsis, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
@@ -8,8 +8,12 @@ import { useModalOverlay } from './useModalOverlay.js';
 
 export interface ActionSheetItem {
   label: string;
+  /** Icon before the label (a row of the menu). Decorative: the label names the action. */
+  icon?: LucideIcon | undefined;
   /** Second line under the label (the description of an option). */
   detail?: string | undefined;
+  /** The row opens a dialog (a sheet or a drawer): `aria-haspopup`, as the header's own buttons had. */
+  haspopup?: 'dialog' | undefined;
   /** `danger`: red text (destructive). `muted`: secondary row (e.g. send the text as is). */
   tone?: 'danger' | 'muted' | undefined;
   /** Monospace label (command names and their choices). */
@@ -18,7 +22,17 @@ export interface ActionSheetItem {
   checked?: boolean | undefined;
   /** Header shown above the first of a run of consecutive items with the same section (e.g. a model's provider). */
   section?: string | undefined;
+  /** The row keeps the user on the same screen (a toggle): the sheet hands the focus back to its trigger after the pick. */
+  keepsFocus?: boolean | undefined;
   onSelect(): void;
+}
+
+/**
+ * Whether picking this row leaves the focus to its own action (the chat field, a new screen) rather than returning it to
+ * the button that opened the sheet. Every row does, except one that keeps the focus (`keepsFocus`).
+ */
+export function pickMovesFocus(item: ActionSheetItem): boolean {
+  return item.keepsFocus !== true;
 }
 
 interface ActionSection {
@@ -43,7 +57,7 @@ interface ActionSheetPanelProps {
   items: readonly ActionSheetItem[];
   onClose(): void;
   /** Chamado quando uma ação é escolhida (não no Cancelar). Quem recebe decide quando a ação roda. */
-  onPick(action: () => void): void;
+  onPick(action: () => void, item: ActionSheetItem): void;
 }
 
 /**
@@ -77,14 +91,16 @@ export function ActionSheetPanel({ title, items, onClose, onPick }: ActionSheetP
                     data-tone={item.tone}
                     data-mono={item.mono === true ? 'true' : undefined}
                     aria-current={item.checked === true ? 'true' : undefined}
+                    aria-haspopup={item.haspopup}
                     className={cn(
                       'flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-base text-foreground transition-[background-color,scale] duration-200 ease-out-premium hover:bg-accent active:bg-accent active:scale-[0.99] wide:min-h-10 wide:py-2',
                       item.tone === 'danger' && 'text-destructive',
                       item.tone === 'muted' && 'text-muted-foreground',
                       item.mono === true && 'font-mono text-[15px]',
                     )}
-                    onClick={() => onPick(item.onSelect)}
+                    onClick={() => onPick(item.onSelect, item)}
                   >
+                    {item.icon !== undefined && <item.icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />}
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span data-slot="action-sheet-label" className="truncate">{item.label}</span>
                       {item.detail !== undefined && <span className="text-sm text-muted-foreground">{item.detail}</span>}
@@ -124,9 +140,9 @@ interface ActionSheetProps {
  */
 export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) {
   const closeThen = useModalOverlay(onClose);
-  // Ao escolher uma ação, quem manda no foco é a própria ação (ex.: o campo do chat). Sem isso, o Radix devolve o
-  // foco ao botão que abriu a folha depois que ela fecha. No Cancelar, o foco volta ao botão, como antes.
-  const pickedRef = useRef(false);
+  // A picked row hands the focus to its own action (e.g. the chat field). Otherwise Radix returns the focus to the
+  // button that opened the sheet once it closes. A row with `keepsFocus` and Cancel both return it, as before.
+  const actionOwnsFocusRef = useRef(false);
 
   return (
     <Drawer
@@ -139,7 +155,7 @@ export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) 
         size="sm"
         hideClose
         onCloseAutoFocus={(event) => {
-          if (pickedRef.current) event.preventDefault();
+          if (actionOwnsFocusRef.current) event.preventDefault();
         }}
       >
         <DrawerTitle className="sr-only">{label}</DrawerTitle>
@@ -148,9 +164,9 @@ export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) 
           title={title}
           items={items}
           onClose={onClose}
-          onPick={(action) => {
+          onPick={(action, item) => {
             // The action runs after this sheet's history entry is popped (see useModalOverlay).
-            pickedRef.current = true;
+            actionOwnsFocusRef.current = pickMovesFocus(item);
             closeThen(action);
           }}
         />

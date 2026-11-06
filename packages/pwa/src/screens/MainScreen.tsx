@@ -1,8 +1,9 @@
-import { ChevronsUpDown, FolderOpen, Link2, Plus, Settings, ShieldExclamationPoint, Trash } from 'lucide-react';
+import { ChevronsUpDown, FolderOpen, Link2, Plus, Settings, ShieldExclamationPoint } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ConnectionStatus } from '../connection.js';
 import type { SessionTarget } from '../push/notificationRoute.js';
 import type { Machine } from '../machines.js';
+import { machineMenuRows } from '../machineMenuRows.js';
 import { summarize, summaryLabels } from '../machineOverview.js';
 import { useMachineOverviews } from '../useMachineOverviews.js';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ActionSheetButton } from '../components/ActionSheet.js';
 import { MachineCard } from '../components/MachineCard.js';
 import { Screen } from '../components/Screen.js';
 import { StatusDot, TONE_TEXT, type StatusTone } from '../components/StatusDot.js';
@@ -126,6 +128,11 @@ export function MainScreen({
           <Button variant="ghost" size="icon" aria-label={t('main.addMachine')} onClick={onAdd}>
             <Plus aria-hidden="true" />
           </Button>
+          <ActionSheetButton
+            label={t('main.moreActions', { name: selected.name })}
+            title={selected.name}
+            items={machineMenuRows(() => onRemove(selected))}
+          />
         </div>
       </header>
 
@@ -191,13 +198,9 @@ export function MainScreen({
         ) : (
           <Button size="wide" onClick={onOpenWorkspaces}>
             <FolderOpen aria-hidden="true" />
-            {t('main.workspaces')}
+            <span className="min-w-0 truncate">{t('main.workspacesOf', { name: selected.name })}</span>
           </Button>
         )}
-        <Button variant="destructive-ghost" size="wide" onClick={() => onRemove(selected)}>
-          <Trash aria-hidden="true" />
-          {t('main.removeMachine')}
-        </Button>
       </div>
     </Screen>
   );

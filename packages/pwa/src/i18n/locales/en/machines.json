@@ -25,6 +25,8 @@
     "machines": "Machines",
     "noneRunning": "No sessions running",
     "workspaces": "Workspaces",
+    "workspacesOf": "Workspaces on {{name}}",
+    "moreActions": "More actions for {{name}}",
     "removeMachine": "Remove machine"
   },
   "summary": {

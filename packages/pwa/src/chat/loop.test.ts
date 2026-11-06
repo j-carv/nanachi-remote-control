@@ -6,6 +6,7 @@ import {
   durationLabel,
   formatCountdown,
   loopChipView,
+  loopMenuDetail,
   loopRoundsText,
   loopStatusText,
   pickLoop,
@@ -105,6 +106,25 @@ describe('loopChipView', () => {
     expect(
       loopChipView(loopWith({ state: 'paused', nextRunAt: null, lastError: 'agente caiu' }), NOW),
     ).toEqual({ phase: 'error', label: 'Loop · erro', short: 'Loop · erro' });
+  });
+});
+
+describe('loopMenuDetail (the Modo Loop row of the menu)', () => {
+  it('says Ativo for a running loop, and why a paused one is paused', () => {
+    expect(loopMenuDetail(loopWith({ nextRunAt: NOW + 180_000 }))).toBe('Ativo');
+    expect(loopMenuDetail(loopWith({ state: 'paused' }))).toBe('Pausado');
+    expect(loopMenuDetail(loopWith({ state: 'paused', lastError: 'x' }))).toBe('Pausado após um erro');
+  });
+
+  it('has no detail without a loop, or with a stopped one', () => {
+    expect(loopMenuDetail(null)).toBeUndefined();
+    expect(loopMenuDetail(loopWith({ state: 'stopped' }))).toBeUndefined();
+  });
+
+  it('writes the same states in English', () => {
+    setLanguage('en');
+    expect(loopMenuDetail(loopWith({ nextRunAt: null }))).toBe('Active');
+    expect(loopMenuDetail(loopWith({ state: 'paused', lastError: 'x' }))).toBe('Paused after an error');
   });
 });
 

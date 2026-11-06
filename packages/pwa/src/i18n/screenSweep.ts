@@ -209,7 +209,19 @@ export function describeScreenSweep(sweep: ScreenSweep): void {
     });
 
     it('workspace list, sessions, folder picker, files, editor, changes and terminal', () => {
-      expectClean('WorkspacesScreen', html(createElement(WorkspacesScreen, { machineName: 'OFFICE-PC', api, nav, onRepair: noop })));
+      expectClean(
+        'WorkspacesScreen',
+        html(
+          createElement(WorkspacesScreen, {
+            machineName: 'OFFICE-PC',
+            api,
+            connection: undefined,
+            status: undefined,
+            nav,
+            onRepair: noop,
+          }),
+        ),
+      );
       expectClean(
         'SessionsScreen',
         html(

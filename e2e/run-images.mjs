@@ -198,8 +198,8 @@ async function goToWorkspaces() {
     if (await hasCount(headerTitle('Workspaces'))) return;
     if (await hasCount(page.getByRole('button', { name: 'Voltar', exact: true }))) {
       await button('Voltar').click();
-    } else if (await hasCount(page.getByRole('button', { name: 'Workspaces', exact: true }))) {
-      await button('Workspaces').click();
+    } else if (await hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u }))) {
+      await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
     } else {
       await page.waitForTimeout(200);
     }
@@ -235,7 +235,7 @@ async function pairAndWorkspace() {
   });
   assert.ok(daemonToken.length > 0, 'token do dispositivo salvo no PWA');
 
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();

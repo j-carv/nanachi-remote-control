@@ -240,8 +240,8 @@ async function goToWorkspaces() {
     if (await hasCount(headerTitle('Workspaces'))) return;
     if (await hasCount(page.getByRole('button', { name: 'Voltar', exact: true }))) {
       await button('Voltar').click();
-    } else if (await hasCount(page.getByRole('button', { name: 'Workspaces', exact: true }))) {
-      await button('Workspaces').click();
+    } else if (await hasCount(page.getByRole('button', { name: /^Workspaces (de|on|en) /u }))) {
+      await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
     } else {
       await page.waitForTimeout(200);
     }
@@ -292,7 +292,7 @@ async function pairAndWorkspace() {
   });
   assert.ok(daemonToken.length > 0, 'token do dispositivo salvo no PWA');
 
-  await button('Workspaces').click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await headerTitle('Workspaces').waitFor();
   await button('Adicionar workspace').click();
   await headerTitle('Escolher pasta').waitFor();
@@ -473,12 +473,30 @@ async function stepTerminal() {
   log(`terminal após reload: nanachi-ok x${countAfter} (igual), faixa de encerramento OK`);
 }
 
+/**
+ * The notifications row of the workspace's "..." menu, opened. Its text names the state ("Ligadas" or "Silenciadas"),
+ * and a pick on it mutes or unmutes the workspace and closes the menu.
+ */
+async function openNotificationsRow() {
+  await page.getByRole('button', { name: 'Mais ações de proj', exact: true }).click();
+  const row = page.locator('[data-slot="action-sheet-item"]', { hasText: 'Notificações' });
+  await row.waitFor();
+  return row;
+}
+
+/** Whether the workspace is muted, read from the menu row. The menu is closed again. */
+async function workspaceMuted() {
+  const row = await openNotificationsRow();
+  const muted = (await row.innerText()).includes('Silenciadas');
+  await page.keyboard.press('Escape');
+  return muted;
+}
+
 /** Passo 4: silenciar workspace persiste após reload; Ajustes renderiza o estado das notificações. */
 async function stepMuteAndSettings() {
   await openProjSessions();
-  const toggle = page.locator('#workspace-mute');
-  assert.equal(await toggle.isChecked(), false, 'workspace começa sem silenciar');
-  await toggle.click();
+  assert.equal(await workspaceMuted(), false, 'workspace começa sem silenciar');
+  await (await openNotificationsRow()).click();
   await until('silenciar confirmado pela API', async () => {
     const { workspaces } = await apiGet('/api/workspaces');
     return workspaces.find((workspace) => workspace.path.endsWith('proj'))?.muted === true;
@@ -490,19 +508,17 @@ async function stepMuteAndSettings() {
     (await hasCount(page.getByRole('region', { name: 'Estado da máquina' }))) || (await hasCount(page.locator('h1'))),
   );
   await openProjSessions();
-  await until('toggle mantém silenciado após reload', () =>
-    page.locator('#workspace-mute').isChecked(),
-  );
+  await until('menu mantém silenciado após reload', () => workspaceMuted());
   log('silenciar: persiste após reload (UI e API)');
 
-  await page.locator('#workspace-mute').click();
+  await (await openNotificationsRow()).click();
   await until('desmutar confirmado pela API', async () => {
     const { workspaces } = await apiGet('/api/workspaces');
     return workspaces.find((workspace) => workspace.path.endsWith('proj'))?.muted === false;
   });
   await page.reload({ waitUntil: 'networkidle' });
   await openProjSessions();
-  assert.equal(await page.locator('#workspace-mute').isChecked(), false, 'desmutar persiste');
+  assert.equal(await workspaceMuted(), false, 'desmutar persiste');
   await shot('13-workspace-sem-silencio');
 
   await goHome();

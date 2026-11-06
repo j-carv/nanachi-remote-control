@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ActionSheetPanel, type ActionSheetItem } from './ActionSheet.js';
+import { Gauge } from 'lucide-react';
+import { ActionSheetPanel, pickMovesFocus, type ActionSheetItem } from './ActionSheet.js';
 
 const noop = () => undefined;
 
@@ -27,6 +28,26 @@ describe('ActionSheetPanel', () => {
     expect(html.match(/aria-current/g)).toHaveLength(1);
     expect(html).toContain('>Mais barato</span>');
     expect(html.match(/data-check="true"/g)).toHaveLength(1);
+  });
+
+  it('mostra o ícone antes do rótulo, escondido de leitores de tela (o rótulo já diz a ação)', () => {
+    const html = render([{ label: 'Uso do agente', icon: Gauge, detail: 'Pausado', onSelect: noop }]);
+
+    const icon = html.indexOf('<svg');
+    expect(icon).toBeGreaterThan(-1);
+    expect(icon).toBeLessThan(html.indexOf('Uso do agente'));
+    expect(html.slice(icon, html.indexOf('>', icon))).toContain('aria-hidden="true"');
+    expect(html).toContain('>Pausado</span>');
+  });
+
+  it('marca com aria-haspopup a ação que abre um diálogo, e só ela', () => {
+    const html = render([
+      { label: 'Modo Loop', haspopup: 'dialog', onSelect: noop },
+      { label: 'Alterações', onSelect: noop },
+    ]);
+
+    expect(html.match(/aria-haspopup="dialog"/g)).toHaveLength(1);
+    expect(html.indexOf('aria-haspopup="dialog"')).toBeLessThan(html.indexOf('Modo Loop'));
   });
 
   it('tom e fonte mono saem em atributos de dados (o estilo fica no Tailwind)', () => {
@@ -88,5 +109,16 @@ describe('ActionSheetPanel', () => {
     ]);
 
     expect(html.match(/Sem argumento/g)).toHaveLength(2);
+  });
+});
+
+describe('pickMovesFocus', () => {
+  it('lets the picked action take the focus by default, so the sheet does not hand it back to its trigger', () => {
+    expect(pickMovesFocus({ label: 'Enviar', onSelect: noop })).toBe(true);
+    expect(pickMovesFocus({ label: 'Enviar', keepsFocus: false, onSelect: noop })).toBe(true);
+  });
+
+  it('gives the focus back to the trigger for a row that keeps it (the user stays on the same screen)', () => {
+    expect(pickMovesFocus({ label: 'Notificações', keepsFocus: true, onSelect: noop })).toBe(false);
   });
 });

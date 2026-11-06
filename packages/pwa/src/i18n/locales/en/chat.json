@@ -7,7 +7,9 @@
     "configure": "Session settings",
     "moreActions": "More session actions",
     "removeFromApp": "Remove from app",
-    "backgroundWork": "Background work: {{count}}"
+    "backgroundWork": "Background work: {{count}}",
+    "backgroundRunning": "{{count}} running",
+    "backgroundTotal": "{{count}} in total"
   },
   "working": {
     "starting": "Starting the agent…",
@@ -145,6 +147,7 @@
     },
     "status": {
       "stopped": "Ended",
+      "active": "Active",
       "paused": "Paused",
       "pausedError": "Paused after an error",
       "running": "Running now",

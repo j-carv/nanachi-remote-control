@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createApiClient } from './api.js';
-import type { Connection } from './connection.js';
+import type { Connection, ConnectionStatus } from './connection.js';
 import type { Machine, StorageLike } from './machines.js';
 import { Screen } from './components/Screen.js';
 import type { Navigator, Route } from './navigation.js';
@@ -31,6 +31,8 @@ interface MachineRoutesProps {
   route: Route;
   nav: Navigator;
   connection: Connection | undefined;
+  /** The machine's connection state, for the workspace list's counts (they reload when the machine comes back). */
+  status: ConnectionStatus | undefined;
   storage: StorageLike;
 }
 
@@ -48,7 +50,7 @@ function Lazy({ children }: { children: ReactNode }) {
 }
 
 /** Telas que falam com uma máquina (workspaces, pastas, sessões, chat). Home, pareamento, ajustes e dispositivos ficam no App. */
-export function MachineRoutes({ machine, route, nav, connection, storage }: MachineRoutesProps) {
+export function MachineRoutes({ machine, route, nav, connection, status, storage }: MachineRoutesProps) {
   const api = useMemo(
     () => createApiClient({ baseUrl: machine.baseUrl, token: machine.token }),
     [machine.baseUrl, machine.token],
@@ -58,7 +60,14 @@ export function MachineRoutes({ machine, route, nav, connection, storage }: Mach
   switch (route.kind) {
     case 'workspaces':
       return (
-        <WorkspacesScreen machineName={machine.name} api={api} nav={nav} onRepair={onRepair} />
+        <WorkspacesScreen
+          machineName={machine.name}
+          api={api}
+          connection={connection}
+          status={status}
+          nav={nav}
+          onRepair={onRepair}
+        />
       );
 
     case 'folders':

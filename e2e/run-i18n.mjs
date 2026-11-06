@@ -165,7 +165,10 @@ async function stepHomeInPortuguese() {
   await page.getByRole('button', { name: 'Ajustes' }).waitFor();
   await page.getByRole('button', { name: 'Adicionar máquina' }).waitFor();
   await page.getByText('Nenhuma sessão rodando', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Remover máquina' }).waitFor();
+  // "Remover máquina" is a row of the "..." menu, so the menu opens first and closes again.
+  await page.getByRole('button', { name: /^Mais ações de / }).click();
+  await page.getByRole('button', { name: 'Remover máquina', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
   log('home in Portuguese');
 }
 
@@ -228,8 +231,10 @@ async function stepHomeInEnglish() {
   await page.getByRole('button', { name: 'Force app update' }).waitFor();
   await page.getByText('No sessions running', { exact: true }).waitFor();
   await page.getByText("Connected to this machine's daemon.", { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Remove machine' }).waitFor();
-  await page.getByRole('button', { name: 'Workspaces' }).waitFor();
+  await page.getByRole('button', { name: /^More actions for / }).click();
+  await page.getByRole('button', { name: 'Remove machine', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).waitFor();
   await page.getByRole('region', { name: 'Machines summary' }).waitFor();
   await shotBothThemes('02-main-en');
   log('home in English');
@@ -331,8 +336,10 @@ async function stepSpanish() {
   await page.getByRole('button', { name: 'Configuración' }).waitFor();
   await page.getByRole('button', { name: 'Agregar máquina' }).waitFor();
   await page.getByRole('button', { name: 'Forzar actualización de la app' }).waitFor();
-  await page.getByRole('button', { name: 'Quitar máquina' }).waitFor();
-  await page.getByRole('button', { name: 'Workspaces' }).waitFor();
+  await page.getByRole('button', { name: /^Más acciones de / }).click();
+  await page.getByRole('button', { name: 'Quitar máquina', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).waitFor();
   await page.getByText('Ninguna sesión en ejecución', { exact: true }).waitFor();
   await page.getByText('Conectado al daemon de esta máquina.', { exact: true }).waitFor();
   await page.getByRole('region', { name: 'Resumen de las máquinas' }).waitFor();
@@ -619,20 +626,24 @@ async function stepWorkspaceAreaInEnglish() {
   writeFileSync(join(projDir, 'debug.log'), '0123456789');
 
   // Workspaces list.
-  await page.getByRole('button', { name: 'Workspaces', exact: true }).click();
+  await page.getByRole('button', { name: /^Workspaces (de|on|en) /u }).click();
   await page.getByRole('heading', { name: 'Workspaces', level: 1 }).waitFor();
   await page.getByRole('button', { name: 'Add workspace', exact: true }).waitFor();
   const workspaceRow = page.locator('ul[aria-label="Workspaces"] > li', { hasText: 'proj' });
   await workspaceRow.getByRole('button', { name: 'Remove proj', exact: true }).waitFor();
   await workspaceRow.getByRole('button').first().click();
 
-  // Sessions screen: buttons, mute row, empty state, branch chip, info bar.
+  // Sessions screen: buttons, the notifications row in the "..." menu, empty state, branch chip, info bar.
   await page.getByRole('heading', { name: 'proj', level: 1 }).waitFor();
   for (const name of ['New session', 'Resume from PC', 'Terminal', 'Files']) {
     await page.getByRole('button', { name, exact: true }).waitFor();
   }
-  await page.getByText('Mute notifications', { exact: true }).waitFor();
-  await page.getByText("Your phone won't be notified about this workspace's sessions.", { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'More actions for proj', exact: true }).click();
+  await page
+    .locator('[data-slot="action-sheet-item"]', { hasText: 'Notifications' })
+    .getByText('On', { exact: true })
+    .waitFor();
+  await page.keyboard.press('Escape');
   await page.getByText('No sessions in this workspace yet.', { exact: true }).waitFor();
   await page.getByRole('list', { name: 'Workspace status' }).getByText('no changes', { exact: true }).waitFor();
   assert.equal(await page.getByText('Nova sessão', { exact: true }).count(), 0, 'no Portuguese on the sessions screen');
@@ -796,7 +807,8 @@ async function stepWorkspaceAreaInEnglish() {
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   const sessions = page.getByRole('list', { name: 'Sessions' });
   await sessions.getByText('Stopped', { exact: true }).waitFor();
-  await page.getByRole('button', { name: /^More actions for / }).click();
+  // Scoped to the list: the workspace's own "..." in the header is also named "More actions for <workspace>".
+  await sessions.getByRole('button', { name: /^More actions for / }).click();
   const sessionMenu = page.getByRole('dialog', { name: /^More actions for / });
   await sessionMenu.getByRole('button', { name: 'Remove from app', exact: true }).waitFor();
   await sessionMenu.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -949,7 +961,8 @@ async function stepChatInEnglish() {
 
     // ----- Header and composer -----
     await p.getByRole('heading', { name: 'New session', level: 1 }).waitFor();
-    for (const name of ['Back', 'Loop mode', 'Session settings', 'More session actions']) {
+    // Loop mode is a row of the "..." menu (checked below), not a header button.
+    for (const name of ['Back', 'Session settings', 'More session actions']) {
       await p.getByRole('button', { name, exact: true }).waitFor();
     }
     const composer = p.locator('[data-slot="chat-textarea"]');
@@ -959,7 +972,7 @@ async function stepChatInEnglish() {
     await p.getByRole('button', { name: 'Send', exact: true }).waitFor();
     await p.getByRole('button', { name: 'More session actions', exact: true }).click();
     const moreActions = p.getByRole('dialog', { name: /./ });
-    for (const name of ['Agent usage', 'Changes', 'Remove from app']) {
+    for (const name of ['Agent usage', 'Loop mode', 'Changes', 'Remove from app']) {
       await moreActions.getByRole('button', { name, exact: true }).waitFor();
     }
     await p.keyboard.press('Escape');
@@ -1001,6 +1014,7 @@ async function stepChatInEnglish() {
     await settings.waitFor({ state: 'detached' });
 
     // ----- Loop sheet (opened and closed: nothing is started) -----
+    await p.getByRole('button', { name: 'More session actions', exact: true }).click();
     await p.getByRole('button', { name: 'Loop mode', exact: true }).click();
     const loop = p.getByRole('dialog', { name: 'Loop mode' });
     await loop.waitFor();
