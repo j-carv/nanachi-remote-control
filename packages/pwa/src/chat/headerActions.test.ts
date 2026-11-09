@@ -72,18 +72,22 @@ describe('planHeaderActions: the header row', () => {
 });
 
 describe('planHeaderActions: the menu', () => {
-  it('lists usage, loop and changes for a chat, then the remove action last', () => {
+  it('lists usage, loop and commit history for a chat, then the remove action last', () => {
     expect(planHeaderActions(CHAT).sheet).toEqual<SheetRow[]>([
       { entry: 'usage' },
       { entry: 'loop' },
-      { entry: 'changes' },
+      { entry: 'history' },
       { entry: 'remove' },
     ]);
   });
 
-  it('lists background work between loop and changes, once there are items', () => {
+  it('no longer lists the session changes: the commit history replaces that row', () => {
+    expect(entries(planHeaderActions(CHAT).sheet)).not.toContain('changes');
+  });
+
+  it('lists background work between loop and history, once there are items', () => {
     const rows = planHeaderActions({ ...CHAT, backgroundTotal: 3, backgroundActive: 1 }).sheet;
-    expect(entries(rows)).toEqual(['usage', 'loop', 'background', 'changes', 'remove']);
+    expect(entries(rows)).toEqual(['usage', 'loop', 'background', 'history', 'remove']);
     expect(rows[2]).toEqual({ entry: 'background', active: 1, total: 3 });
   });
 
@@ -91,12 +95,12 @@ describe('planHeaderActions: the menu', () => {
     expect(entries(planHeaderActions(CHAT).sheet)).not.toContain('background');
   });
 
-  it('has no usage and no loop for a terminal session, only changes and remove', () => {
-    expect(entries(planHeaderActions({ ...CHAT, kind: 'pty', loop: loopIn('active') }).sheet)).toEqual(['changes', 'remove']);
+  it('has no usage and no loop for a terminal session, only history and remove', () => {
+    expect(entries(planHeaderActions({ ...CHAT, kind: 'pty', loop: loopIn('active') }).sheet)).toEqual(['history', 'remove']);
   });
 
-  it('gives the changes row no count: its detail is not part of the plan', () => {
-    expect(planHeaderActions(CHAT).sheet).toContainEqual({ entry: 'changes' });
+  it('gives the history row no count: its detail is not part of the plan', () => {
+    expect(planHeaderActions(CHAT).sheet).toContainEqual({ entry: 'history' });
   });
 });
 

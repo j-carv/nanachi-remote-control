@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { setLanguage } from './i18n/index.js';
 import type { Session, SessionStatus } from '@nanachi/shared';
 import { removalConfirmText, removalInterruptNotice, visibleSessions } from './sessionRemoval.js';
+import { countSessions } from './machineOverview.js';
 
 function session(id: string, updatedAt: number, overrides: Partial<Session> = {}): Session {
   return {
@@ -62,8 +63,63 @@ describe('visibleSessions', () => {
     expect(visibleSessions(loaded, live, new Set(['a'])).map((item) => item.id)).toEqual(['b']);
   });
 
+  it('hides loaded and live automation runs while retaining ordinary rows and counts', () => {
+    const loaded = [
+      session('running', 3, { status: 'running' }),
+      session('idle', 2),
+      session('scheduled-loaded', 10, { automationRunId: 'run-loaded', status: 'running' }),
+    ];
+    const live = {
+      waiting: session('waiting', 1, { status: 'awaiting_permission' }),
+      scheduled: session('scheduled-live', 11, { automationRunId: 'run-live', status: 'awaiting_permission' }),
+    };
+
+    const shown = visibleSessions(loaded, live, new Set());
+
+    expect(shown.map((item) => item.id)).toEqual(['waiting', 'running', 'idle']);
+    expect(countSessions(shown)).toEqual({ running: 1, awaiting: 1, idle: 1 });
+  });
+
+  it('removes a loaded ordinary row and its count when a live message identifies it as an automation run', () => {
+    const loaded = [
+      session('becomes-scheduled', 10, { status: 'awaiting_permission' }),
+      session('ordinary', 2, { status: 'running' }),
+    ];
+    const before = visibleSessions(loaded, {}, new Set());
+    expect(before.map((item) => item.id)).toEqual(['becomes-scheduled', 'ordinary']);
+    expect(countSessions(before)).toEqual({ running: 1, awaiting: 1, idle: 0 });
+
+    const shown = visibleSessions(loaded, {
+      'becomes-scheduled': session('becomes-scheduled', 11, { automationRunId: 'run', status: 'awaiting_permission' }),
+      ordinary: session('ordinary', 12, { status: 'idle' }),
+    }, new Set());
+
+    expect(shown.map((item) => [item.id, item.status])).toEqual([['ordinary', 'idle']]);
+    expect(countSessions(shown)).toEqual({ running: 0, awaiting: 0, idle: 1 });
+  });
+
+  it('does not reinsert a loaded automation run through an ordinary live snapshot', () => {
+    const loaded = [session('scheduled', 10, { automationRunId: 'run', status: 'running' })];
+    const live = { scheduled: session('scheduled', 9, { status: 'idle' }) };
+
+    expect(visibleSessions(loaded, live, new Set())).toEqual([]);
+    expect(loaded[0]?.automationRunId).toBe('run');
+    expect(live.scheduled.automationRunId).toBeUndefined();
+  });
+
   it('lista vazia e nada removido devolve lista vazia', () => {
     expect(visibleSessions([], {}, new Set())).toEqual([]);
+  });
+
+  it('puts approvals before errors and sorts each group by recency', () => {
+    const loaded = [
+      session('idle', 10),
+      session('old-error', 1, { status: 'error' }),
+      session('waiting', 2, { status: 'awaiting_permission' }),
+      session('new-error', 5, { status: 'error' }),
+    ];
+    expect(visibleSessions(loaded, {}, new Set()).map((item) => item.id))
+      .toEqual(['waiting', 'new-error', 'old-error', 'idle']);
   });
 });
 

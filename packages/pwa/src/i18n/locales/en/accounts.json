@@ -11,7 +11,7 @@
     "logged_in": "Signed in",
     "logged_out": "Signed out",
     "unknown": "Not checked",
-    "loginHelp": "Sign in from the PC's terminal (e.g. claude, codex login, agy)."
+    "loginHelp": "Sign in from the PC's terminal (e.g. claude, codex login, agy acp --login)."
   },
   "badge": {
     "inUse": "In use"

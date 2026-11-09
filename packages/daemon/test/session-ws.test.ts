@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,8 +45,7 @@ function agents(): Record<string, AgentConfig> {
 }
 
 async function start(): Promise<TestDaemon> {
-  // Aviso do phone-send desligado: o eco do fake inclui o texto do prompt, e estes testes comparam esse eco.
-  return env.start({ config: { allowedRoots: [base], agents: agents(), phoneSendHint: false } });
+  return env.start({ config: { allowedRoots: [base], agents: agents() } });
 }
 
 async function createWorkspaceId(daemon: TestDaemon): Promise<string> {
@@ -327,6 +326,92 @@ describe('WS: permissão e cancelamento', () => {
     expect(turnEnd).toMatchObject({ event: { stopReason: 'cancelled' } });
     await client.waitFor(statusEvent(session.id, 'idle'));
     await client.close();
+  });
+});
+
+describe('WS: YOLO', () => {
+  const yoloState = (sessionId: string, enabled: boolean) => (message: ServerMessage): boolean =>
+    message.type === 'yolo' && message.sessionId === sessionId && message.enabled === enabled;
+
+  it('starts off, shares activation across devices, and sends only recognized requests through automatic approval', async () => {
+    const { client, session, daemon, base: url } = await openSession();
+    const second = await WsTestClient.connect(url, await pairToken(daemon));
+    try {
+      await writeFile(join(workspace, 'example.ts'), 'export const value = 1;\n');
+      const prompt = (text: string): void => client.send({ type: 'prompt', sessionId: session.id, text });
+
+      prompt('permission-edit');
+      await client.waitFor(isEvent('permission_request'));
+      await client.waitFor(statusEvent(session.id, 'awaiting_permission'));
+      client.send({ type: 'cancel', sessionId: session.id });
+      await client.waitFor(statusEvent(session.id, 'idle'));
+      expect(client.eventsOf(session.id).some((event) => event.kind === 'permission_auto_approved')).toBe(false);
+
+      second.send({ type: 'set_yolo', sessionId: session.id, enabled: true });
+      await client.waitFor(yoloState(session.id, true));
+      const since = client.eventsOf(session.id).length;
+      prompt('permission-edit');
+      await expect(client.waitFor(isEvent('permission_auto_approved'))).resolves.toMatchObject({
+        event: { toolCallId: 'call-edit', optionId: 'allow' },
+      });
+      await client.waitFor(statusEvent(session.id, 'idle'));
+      expect(client.eventsOf(session.id).slice(since)).not.toContainEqual(expect.objectContaining({ kind: 'permission_request' }));
+
+      prompt('permission');
+      await client.waitFor(isEvent('permission_request'));
+      await client.waitFor(statusEvent(session.id, 'awaiting_permission'));
+      client.send({ type: 'cancel', sessionId: session.id });
+      await client.waitFor(statusEvent(session.id, 'idle'));
+
+      const stop = await daemon.app.inject({
+        method: 'DELETE',
+        url: `/api/sessions/${session.id}`,
+        headers: await authHeader(daemon),
+      });
+      expect(stop.statusCode).toBe(204);
+      await client.waitFor(yoloState(session.id, false));
+    } finally {
+      await Promise.all([client.close(), second.close()]);
+    }
+  });
+});
+
+describe('Chat message queue', () => {
+  it('queues during a permission request and delivers the remaining messages in order', async () => {
+    const { client, session, daemon } = await openSession();
+    try {
+      const headers = await authHeader(daemon);
+      const url = `/api/sessions/${session.id}/queue`;
+      const post = (text: string) => daemon.app.inject({ method: 'POST', url, headers, payload: { text } });
+      const snapshot = (size: number) => client.waitFor((message) =>
+        message.type === 'prompt_queue' && message.sessionId === session.id && message.queue.length === size);
+
+      client.send({ type: 'prompt', sessionId: session.id, text: 'permission' });
+      const request = await client.waitFor(isEvent('permission_request'));
+      if (request.type !== 'event' || request.event.kind !== 'permission_request') throw new Error('missing permission');
+      await client.waitFor(statusEvent(session.id, 'awaiting_permission'));
+      expect((await daemon.app.inject({ method: 'POST', url, payload: { text: 'unauthorized' } })).statusCode).toBe(401);
+      for (const text of ['first in queue', 'remove this', 'last in queue']) {
+        expect((await post(text)).statusCode).toBe(204);
+      }
+      const waiting = await snapshot(3);
+      if (waiting.type !== 'prompt_queue') throw new Error('missing queue');
+      expect(waiting.queue.map((item) => item.preview)).toEqual(['first in queue', 'remove this', 'last in queue']);
+      expect(client.eventsOf(session.id).filter((event) => event.kind === 'user_message')).toHaveLength(1);
+
+      const removed = waiting.queue[1];
+      if (removed === undefined) throw new Error('missing queued message');
+      expect((await daemon.app.inject({ method: 'DELETE', url: `${url}/${removed.id}`, headers })).statusCode).toBe(204);
+      await snapshot(2);
+      client.send({ type: 'permission_response', sessionId: session.id, requestId: request.event.requestId, optionId: 'reject' });
+      await snapshot(0);
+      await client.waitFor(isEvent('turn_end'));
+
+      expect(client.eventsOf(session.id).flatMap((event) => event.kind === 'user_message' ? [event.text] : []))
+        .toEqual(['permission', 'first in queue', 'last in queue']);
+    } finally {
+      await client.close();
+    }
   });
 });
 

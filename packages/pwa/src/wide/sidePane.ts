@@ -24,13 +24,15 @@ export function sideOwnerKey(route: Route): string | null {
 }
 
 /**
- * Whether a route pushed from a conversation opens beside it. Changes, the file explorer and the editor always do; a
- * terminal session does when the conversation is an agent chat (a terminal that is already the main screen replaces
- * itself, as on the phone).
+ * Whether a route pushed from a conversation opens beside it. Changes, the commit history, the file explorer and the
+ * editor always do; a terminal session does when the conversation is an agent chat (a terminal that is already the main
+ * screen replaces itself, as on the phone).
  */
 export function opensInSidePane(next: Route, current: Route): boolean {
   switch (next.kind) {
     case 'changes':
+    case 'commits':
+    case 'commit':
     case 'files':
     case 'editor':
       return true;
@@ -43,6 +45,7 @@ export function opensInSidePane(next: Route, current: Route): boolean {
     case 'folders':
     case 'devices':
     case 'sessions':
+    case 'schedules':
       return false;
   }
 }

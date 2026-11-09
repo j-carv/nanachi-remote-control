@@ -5,12 +5,16 @@ import fastifyCors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import {
+  CommitRefSchema,
   CreateSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   LoopRequestSchema,
   PairRequestSchema,
   ResetRedeemRequestSchema,
+  SessionSearchQuerySchema,
   SetSessionAccountRequestSchema,
+  SubmitPromptRequestSchema,
+  SetNanachiMcpAgentRequestSchema,
   TailscalePairRequestSchema,
   parseClientMessage,
   PushSubscriptionRequestSchema,
@@ -20,6 +24,8 @@ import {
   type CommandsResponse,
   type ConfigOptionsResponse,
   type AgentsResponse,
+  type SessionCommitResponse,
+  type SessionCommitsResponse,
   type ClientMessage,
   type DevicesResponse,
   type EventsResponse,
@@ -37,6 +43,7 @@ import {
   type ShellsResponse,
   type SessionDiffResponse,
   type SessionEvent,
+  type SessionSearchResponse,
   type SessionsResponse,
   type UsageResponse,
   type TailscalePairStatusResponse,
@@ -55,13 +62,39 @@ import { agentBinDirs, withPathPrepended } from './agent-path.js';
 import type { LoadedConfig } from './config.js';
 import { ApiError } from './api-error.js';
 import { registerFileRoutes } from './file-routes.js';
+import { registerQuestionRoutes } from './question-routes.js';
+import { registerFileRequestRoutes } from './file-request-routes.js';
+import { registerPreviewRoutes } from './preview-routes.js';
+import { Previews } from './previews.js';
 import { FileQuotaError, filesRootOf, removeSessionFiles } from './files.js';
 import { createHostCheck } from './host-check.js';
 import { isAllowedPushEndpoint } from './push-endpoint.js';
 import { LiveConnections } from './live-connections.js';
+import { NanachiMcpSettings } from './mcp-settings.js';
+import { LearningSettingsStore } from './learning-settings.js';
+import { LearningMemory } from './learning-memory.js';
+import { LearningAgents } from './learning-agents.js';
+import { HttpLearningProvider } from './learning-providers.js';
+import { LearningService } from './learning-service.js';
+import { registerLearningRoutes } from './learning-routes.js';
+import { registerLearningMemoryRoutes } from './learning-memory-routes.js';
 import { serializeRequest } from './log.js';
 import { sessionDiff } from './session-diff.js';
-import { authenticateToken, pairDevice, pairDeviceViaTailscale } from './pairing.js';
+import {
+  COMMITS_DEFAULT_LIMIT,
+  COMMITS_MAX_LIMIT,
+  COMMITS_MAX_SKIP,
+  sessionCommit,
+  sessionCommits,
+} from './session-commits.js';
+import {
+  authenticateToken,
+  inactivityLimitMs,
+  isDeviceExpired,
+  pairDevice,
+  pairDeviceViaTailscale,
+  type AuthResult,
+} from './pairing.js';
 import type { NotifyHandler } from './notify.js';
 import { createPwaRoot } from './pwa-root.js';
 import { replayEvents } from './replay.js';
@@ -79,7 +112,9 @@ import {
   insertWorkspace,
   listActiveDevices,
   listEvents,
+  listAllSessionsByWorkspace,
   listSessionsByWorkspace,
+  searchSessionMessages,
   listWorkspaces,
   revokeDevice,
   setWorkspaceMuted,
@@ -93,6 +128,14 @@ import { SessionError, SessionManager, type SessionErrorCode } from './session-m
 import { defaultShellOf, localShells } from './shells.js';
 import { isAllowedWsOrigin } from './ws-origin.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
+import { registerWhisperRoutes } from './whisper-routes.js';
+import { WhisperService } from './whisper.js';
+import { TranscriptionSettingsService } from './transcription-settings.js';
+import { TranscriptionService } from './transcription.js';
+import { registerTranscriptionRoutes } from './transcription-routes.js';
+import { createScheduleExecutor } from './schedule-runner.js';
+import { ScheduleService } from './schedule-service.js';
+import { registerScheduleRoutes } from './schedule-routes.js';
 import { workspaceInfo } from './workspace-info.js';
 
 declare module 'fastify' {
@@ -128,7 +171,7 @@ export interface ServerDeps {
   staticPointer?: string | undefined;
   /** Chave pública VAPID (`GET /api/push/key`). Vem do `vapid.json` carregado na subida. */
   vapidPublicKey: string;
-  /** Aviso para turn_end, permission_request, error e file. Opcional: sem ele, nada acontece. */
+  /** Aviso para turn_end, permission_request, user_question, error e file. Opcional: sem ele, nada acontece. */
   onNotify?: NotifyHandler | undefined;
   /**
    * WS abertos por device. Quem vai mandar push precisa do mesmo registro para saber quem está online.
@@ -149,6 +192,10 @@ export interface ServerDeps {
   usageCacheMs?: number | undefined;
   /** Ociosidade até o processo de uso morrer. Padrão: 2 min. Testes usam valor curto. */
   usageIdleMs?: number | undefined;
+  /** Deadline for MCP ask_user questions. Defaults to five minutes; tests can shorten it. */
+  askUserTimeoutMs?: number | undefined;
+  /** Deadline for MCP request_file. Defaults to five minutes; tests can shorten it. */
+  requestFileTimeoutMs?: number | undefined;
   /** Contas dos agentes (`GET /api/agents/accounts`). Padrão: verificadores reais sobre o PATH dos agentes. */
   agentAccounts?: AgentAccountsService | undefined;
   /** Ajustes das contas extras (pasta do usuário, verificadores, relógio). Padrão: os reais. Testes trocam. */
@@ -157,6 +204,8 @@ export interface ServerDeps {
   resumeAfterReload?: readonly string[] | undefined;
   /** Aviso de pareamento novo por Tailscale (Web Push para os outros devices). Padrão: nada. */
   onDevicePaired?: DevicePairedHandler | undefined;
+  /** Optional Whisper service for isolated route tests. */
+  whisper?: WhisperService | undefined;
 }
 
 /** Status HTTP de cada erro de caminho. */
@@ -172,6 +221,7 @@ const SESSION_ERROR_STATUS: Record<SessionErrorCode, number> = {
   unknown_agent: 400,
   invalid_request: 400,
   session_busy: 409,
+  prompt_queue_full: 409,
   too_many_sessions: 429,
   already_running: 409,
   already_linked: 409,
@@ -311,6 +361,10 @@ type Subscriptions = Map<string, () => void>;
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const { config, db, machine, version, home, staticDir, onWorkspaceDeleted, onNotify, onDevicePaired, vapidPublicKey } = deps;
+  const whisper = deps.whisper ?? new WhisperService(home);
+  await whisper.initialize();
+  const transcriptionSettings = new TranscriptionSettingsService(home);
+  const transcription = new TranscriptionService(transcriptionSettings, whisper);
   const connections = deps.connections ?? new LiveConnections();
   const filesRoot = resolve(filesRootOf(home));
   const wsRevalidateMs = deps.wsRevalidateMs ?? WS_REVALIDATE_MS;
@@ -331,7 +385,24 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     daemonEnv: deps.accountRuntime?.daemonEnv,
     log: (message) => app.log.warn(message),
   });
-  const sessions = new SessionManager({
+  const nanachiMcp = new NanachiMcpSettings(home, config.agents);
+  const learningSettings = new LearningSettingsStore(home);
+  const memory = new LearningMemory(db);
+  const learningAgents = new LearningAgents({ agents: config.agents, accounts: accountLauncher, home });
+  const learningHttp = new HttpLearningProvider(learningSettings);
+  const previews = new Previews({
+    daemonPort: () => {
+      const address = app.server.address();
+      return address !== null && typeof address === 'object' ? address.port : config.port;
+    },
+    isSessionLive: (sessionId) => sessions.isLive(sessionId),
+    record: (sessionId, preview) => { sessions.recordPreview(sessionId, preview); },
+    recordClosed: (sessionId, previewId, reason) => { sessions.recordPreviewClosed(sessionId, previewId, reason); },
+    allowedTailscaleLogins: config.allowedTailscaleLogins,
+    corsOrigins: config.corsOrigins,
+    warn: (message) => app.log.warn(message),
+  });
+  const sessions: SessionManager = new SessionManager({
     db,
     config,
     log: app.log,
@@ -344,9 +415,29 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     usageTimeoutMs: deps.usageTimeoutMs,
     usageCacheMs: deps.usageCacheMs,
     usageIdleMs: deps.usageIdleMs,
+    askUserTimeoutMs: deps.askUserTimeoutMs,
+    requestFileTimeoutMs: deps.requestFileTimeoutMs,
     usageProbeRoot: join(home, 'usage-probe'),
     appVersion: version,
     accounts: accountLauncher,
+    nanachiMcpEnabled: (agentId) => nanachiMcp.isEnabled(agentId),
+    onSessionDetached: (sessionId) => previews.revokeSession(sessionId),
+    onSessionRevoked: (sessionId) => learning.revokeSession(sessionId),
+    onTurnCompleted: (sessionId, sourceTurnSeq) => learning.completed(sessionId, sourceTurnSeq),
+  });
+  const schedules = new ScheduleService({
+    db,
+    executor: createScheduleExecutor({ db, sessions, config, filesRoot, log: app.log }),
+    warn: (message) => app.log.warn(message),
+  });
+  app.addHook('onListen', async () => { schedules.start(); });
+  const learning: LearningService = new LearningService({
+    db, agents: config.agents, accounts: accountLauncher, settings: learningSettings,
+    memory, reviewers: learningAgents, http: learningHttp,
+    source: (sessionId) => sessions.learningSource(sessionId),
+    isLive: (sessionId) => sessions.isLive(sessionId),
+    recordNotice: (sessionId, notice) => sessions.recordLearning(sessionId, notice),
+    warn: (message) => app.log.warn(message),
   });
   const probeEnv = withPathPrepended({ ...process.env }, agentBinDirs());
   const agentAccounts =
@@ -362,13 +453,22 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     nanachiHome: home,
     principal: agentAccounts,
     launcher: accountLauncher,
-    isAccountInUse: (agentId, accountId) => sessions.isAccountInUse(agentId, accountId),
+    isAccountInUse: (agentId, accountId) => sessions.isAccountInUse(agentId, accountId) || learning.isAccountInUse(agentId, accountId),
     releaseAccount: (agentId, accountId) => sessions.releaseAccount(agentId, accountId),
     probeEnv,
     log: (message) => app.log.warn(message),
     ...deps.accountRuntime,
   });
   // Ao fechar o daemon, os agentes morrem junto (antes do banco ser fechado pelo main).
+  app.addHook('preClose', async () => {
+    const transcriptionClosed = transcription.shutdown();
+    await schedules.close();
+    await learning.close();
+    sessions.closePendingRequests();
+    await previews.close();
+    await transcriptionClosed;
+    await whisper.shutdown();
+  });
   app.addHook('onClose', async () => {
     await sessions.shutdown();
     // A running login owns a PTY: without this it would outlive the daemon and keep the account folder busy.
@@ -455,17 +555,22 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     return undefined;
   });
 
-  /** Bearer de dispositivo ativo; sem ele, 401. Roda em onRequest, antes de ler o corpo. */
+  /** Prazo de inatividade dos devices (`deviceInactivityDays`) em ms; null = sem prazo. */
+  const deviceInactivityMs = inactivityLimitMs(config.deviceInactivityDays);
+  /** Checa um token agora. Recusa com o motivo: `unauthorized` (revogado ou desconhecido) ou `device_expired`. */
+  const authorize = (token: string | undefined): AuthResult => authenticateToken(db, token, Date.now(), deviceInactivityMs);
+
+  /** Bearer de dispositivo ativo; sem ele, 401 com o motivo. Roda em onRequest, antes de ler o corpo. */
   const requireDevice = async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
-    const device = authenticateToken(db, bearerToken(request.headers.authorization), Date.now());
-    if (device === undefined) return reply.code(401).send({ error: 'unauthorized' });
+    const auth = authorize(bearerToken(request.headers.authorization));
+    if (!auth.ok) return reply.code(401).send({ error: auth.error });
     return undefined;
   };
 
-  // PWA em outra origem (PC secundário): só GET/POST/PATCH/DELETE, sem credenciais (nada de cookie).
+  // Cross-origin authenticated API calls use explicit verbs and never cookies.
   await app.register(fastifyCors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-File-Name'],
     credentials: false,
   });
@@ -557,10 +662,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   });
 
   app.get('/api/me', async (request, reply) => {
-    const device = authenticateToken(db, bearerToken(request.headers.authorization), Date.now());
-    if (device === undefined) {
-      return reply.code(401).send({ error: 'unauthorized' });
+    const auth = authorize(bearerToken(request.headers.authorization));
+    if (!auth.ok) {
+      return reply.code(401).send({ error: auth.error });
     }
+    const device = auth.device;
     const body: MeResponse = {
       deviceId: device.id,
       deviceName: device.name,
@@ -574,11 +680,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.decorateRequest('device', null);
   await app.register(async (api) => {
     api.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-      const device = authenticateToken(db, bearerToken(request.headers.authorization), Date.now());
-      if (device === undefined) {
-        return reply.code(401).send({ error: 'unauthorized' });
+      const auth = authorize(bearerToken(request.headers.authorization));
+      if (!auth.ok) {
+        return reply.code(401).send({ error: auth.error });
       }
-      request.device = device;
+      request.device = auth.device;
       return undefined;
     });
 
@@ -611,6 +717,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         agents: Object.entries(config.agents).map(([id, agent]) => ({ id, label: agent.label, kind: agent.kind })),
       };
       return body;
+    });
+
+    api.get('/api/mcp/agents', async () => nanachiMcp.list());
+    api.put<{ Params: { id: string } }>('/api/mcp/agents/:id', async (request, reply) => {
+      const parsed = SetNanachiMcpAgentRequestSchema.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
+      return nanachiMcp.set(request.params.id, parsed.data.enabled);
     });
 
     // Contas: GET /api/agents/accounts e as rotas de criar, renomear, remover e trocar a conta ativa (accounts/routes.ts).
@@ -669,13 +782,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
     api.delete<{ Params: { id: string } }>('/api/workspaces/:id', async (request, reply) => {
       const { id } = request.params;
+      learning.revokeWorkspace(id);
+      await schedules.removeWorkspace(id);
       const result = deleteWorkspace(db, id, Date.now());
       if (result === undefined) {
         return reply.code(404).send({ error: 'not_found' });
       }
       // Todas as sessões do workspace, também as já paradas: o loop de uma sessão parada pelo reinício ainda está
       // ativo e não pode retomar uma sessão de workspace apagado. Sessão sem processo só troca o status.
-      const sessionIds = listSessionsByWorkspace(db, id).map((session) => session.id);
+      const sessionIds = listAllSessionsByWorkspace(db, id).map((session) => session.id);
       await sessions.stopSessions(sessionIds);
       // Depois de parar os agentes (que podem estar com arquivos abertos). A linha da sessão continua no banco.
       await removeSessionFiles(filesRoot, sessionIds, (error) =>
@@ -687,6 +802,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
     // Workspace branches (git) and files: see workspace-routes.ts. Same authentication as the other /api routes.
     await registerWorkspaceRoutes(api, { db, requireDevice });
+    await registerScheduleRoutes(api, schedules, requireDevice);
 
     api.get<{ Params: { id: string } }>('/api/workspaces/:id/sessions', async (request, reply) => {
       if (findWorkspaceById(db, request.params.id) === undefined) {
@@ -715,6 +831,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         return body;
       },
     );
+    api.get<{ Params: { id: string } }>('/api/sessions/:id', async (request, reply) => {
+      const session = findSessionById(db, request.params.id);
+      if (session === undefined) return reply.code(404).send({ error: 'not_found' });
+      return session;
+    });
+
 
     api.post('/api/sessions', async (request, reply) => {
       const parsed = CreateSessionRequestSchema.safeParse(request.body);
@@ -750,6 +872,18 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       return reply.code(200).send(body);
     });
 
+    api.post<{ Params: { id: string } }>('/api/sessions/:id/queue', async (request, reply) => {
+      const input = SubmitPromptRequestSchema.safeParse(request.body);
+      if (!input.success) return reply.code(400).send({ error: 'invalid_request' });
+      await sessions.submitPrompt(request.params.id, input.data.text.trim(), input.data.attachments ?? []);
+      return reply.code(204).send();
+    });
+
+    api.delete<{ Params: { id: string; promptId: string } }>('/api/sessions/:id/queue/:promptId', async (request, reply) => {
+      sessions.removeQueuedPrompt(request.params.id, request.params.promptId);
+      return reply.code(204).send();
+    });
+
     // Troca a conta do agente da sessão (PLAN.md, várias contas por agente). Com o agente vivo e ocioso, ele é parado e
     // retomado na conta nova. Os erros (not_found, session_busy, invalid_request, accounts_unsupported) vêm do SessionManager.
     api.put<{ Params: { id: string } }>('/api/sessions/:id/account', async (request, reply) => {
@@ -765,6 +899,39 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     api.get<{ Params: { id: string } }>('/api/sessions/:id/diff', async (request) => {
       const cwd = sessions.workingDirectory(request.params.id);
       const body: SessionDiffResponse = await sessionDiff(cwd);
+      return body;
+    });
+
+    // Histórico do branch atual (HEAD) no cwd da sessão, uma página por vez. Não-git ou sem commit → página vazia.
+    api.get<{ Params: { id: string }; Querystring: { skip?: unknown; limit?: unknown } }>(
+      '/api/sessions/:id/commits',
+      async (request, reply) => {
+        const skip = parseIntParam(request.query.skip, { fallback: 0, min: 0, max: COMMITS_MAX_SKIP });
+        const limit = parseIntParam(request.query.limit, {
+          fallback: COMMITS_DEFAULT_LIMIT,
+          min: 1,
+          max: COMMITS_MAX_LIMIT,
+        });
+        if (skip === undefined || limit === undefined) {
+          return reply.code(400).send({ error: 'invalid_request' });
+        }
+        const cwd = sessions.workingDirectory(request.params.id);
+        const body: SessionCommitsResponse = await sessionCommits(cwd, { skip, limit });
+        return body;
+      },
+    );
+
+    // Um commit com os arquivos (contra o primeiro pai). Hash fora do formato → 400; commit que não existe → 404.
+    api.get<{ Params: { id: string; hash: string } }>('/api/sessions/:id/commits/:hash', async (request, reply) => {
+      const ref = CommitRefSchema.safeParse(request.params.hash);
+      if (!ref.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const cwd = sessions.workingDirectory(request.params.id);
+      const body: SessionCommitResponse | undefined = await sessionCommit(cwd, ref.data);
+      if (body === undefined) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
       return body;
     });
 
@@ -867,9 +1034,27 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       },
     );
 
-    // Devices pareados que não foram revogados. `current` é o device que fez esta chamada.
+    // Message search across every session, or within one workspace with `workspaceId`. Invalid parameters answer 400.
+    // Only the indexed text (see `searchSessionMessages`) can match; the rest of each event is not searched.
+    api.get('/api/sessions/search', async (request, reply) => {
+      const parsed = SessionSearchQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+      const body: SessionSearchResponse = {
+        results: searchSessionMessages(db, {
+          query: parsed.data.q,
+          limit: parsed.data.limit,
+          workspaceId: parsed.data.workspaceId ?? null,
+        }),
+      };
+      return body;
+    });
+
+    // Devices pareados que não foram revogados. `current` é o device que fez esta chamada; `expired` os parados além do prazo.
     api.get('/api/devices', async (request) => {
       const current = request.device?.id;
+      const now = Date.now();
       const body: DevicesResponse = {
         devices: listActiveDevices(db).map((device) => ({
           id: device.id,
@@ -877,6 +1062,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
           createdAt: device.createdAt,
           lastSeenAt: device.lastSeenAt,
           current: device.id === current,
+          expired: isDeviceExpired(device, now, deviceInactivityMs),
         })),
       };
       return body;
@@ -916,6 +1102,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         endpoint: parsed.data.endpoint,
         deviceId: device.id,
         keys: parsed.data.keys,
+        language: parsed.data.language,
         createdAt: Date.now(),
       });
       return reply.code(204).send();
@@ -973,6 +1160,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       configOptions: (configOptions) => {
         if (active && !replaying) send(socket, { type: 'config_options', sessionId, configOptions });
       },
+      promptQueue: (queue) => {
+        if (active && !replaying) send(socket, { type: 'prompt_queue', sessionId, queue });
+      },
       loop: (loop) => {
         if (active && !replaying) send(socket, { type: 'loop', sessionId, loop });
       },
@@ -981,6 +1171,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       active = false;
       cancelLive();
     });
+    connections.subscribe(socket, sessionId);
 
     await replayEvents(db, sessionId, afterSeq, deliver, { isActive: () => active });
     replaying = false;
@@ -992,6 +1183,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (active && configOptions.length > 0) send(socket, { type: 'config_options', sessionId, configOptions });
     // Sempre, null incluso: o PWA não pode guardar o loop de outra sessão.
     if (active) send(socket, { type: 'loop', sessionId, loop: sessions.loopOf(sessionId) });
+    if (active) send(socket, { type: 'yolo', sessionId, enabled: sessions.yoloOf(sessionId) });
+    if (active) send(socket, { type: 'prompt_queue', sessionId, queue: sessions.promptQueueOf(sessionId) });
   }
 
   async function handleClientMessage(socket: WebSocket, subscriptions: Subscriptions, message: ClientMessage): Promise<void> {
@@ -1005,6 +1198,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       case 'unsubscribe':
         subscriptions.get(message.sessionId)?.();
         subscriptions.delete(message.sessionId);
+        connections.unsubscribe(socket, message.sessionId);
         return;
       case 'prompt':
         await sessions.prompt(message.sessionId, message.text, message.attachments ?? []);
@@ -1017,6 +1211,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         return;
       case 'set_config':
         await sessions.setConfig(message.sessionId, message.configId, message.value);
+        return;
+      case 'set_yolo':
+        sessions.setYolo(message.sessionId, message.enabled);
         return;
       case 'terminal_input':
         sessions.terminalInput(message.sessionId, message.data);
@@ -1040,15 +1237,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   app.get('/ws', { websocket: true }, (socket, request) => {
     const token = new URL(request.url, 'http://localhost').searchParams.get('token') ?? undefined;
-    const device = authenticateToken(db, token, Date.now());
-    if (device === undefined) {
+    const auth = authorize(token);
+    if (!auth.ok) {
       socket.close(WS_UNAUTHORIZED, 'unauthorized');
       return;
     }
+    const device = auth.device;
 
     // Revogação (ex.: `npm run revoke` em outro processo) vale para o WS aberto: checa a cada mensagem e a cada intervalo.
     const revalidate = (): boolean => {
-      if (authenticateToken(db, token, Date.now()) !== undefined) return true;
+      if (authorize(token).ok) return true;
       socket.close(WS_UNAUTHORIZED, 'unauthorized');
       return false;
     };
@@ -1089,6 +1287,20 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     sessions,
     filesRoot,
     requireDevice,
+  });
+  await registerQuestionRoutes(app, { db, sessions, requireDevice });
+  await registerFileRequestRoutes(app, { db, sessions, requireDevice });
+  await registerPreviewRoutes(app, { db, sessions, previews, requireDevice, deviceValid: (token) => authorize(token).ok });
+  await registerWhisperRoutes(app, whisper, requireDevice);
+  await registerTranscriptionRoutes(app, transcription, transcriptionSettings, requireDevice);
+  await registerLearningRoutes(app, {
+    agents: config.agents, settings: learningSettings, service: learning, reviewers: learningAgents, requireDevice,
+  });
+  await registerLearningMemoryRoutes(app, {
+    db, sessions, memory, requireDevice,
+    settings: () => learningSettings.get(),
+    mcpEnabled: (agentId) => nanachiMcp.isEnabled(agentId),
+    recordNotice: (sessionId, notice) => sessions.recordLearning(sessionId, notice),
   });
 
   // Raiz do PWA por requisição: a release apontada pelo ponteiro, ou staticDir sem ponteiro. Por isso o

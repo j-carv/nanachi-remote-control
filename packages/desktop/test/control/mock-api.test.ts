@@ -230,8 +230,43 @@ describe('mock ControlApi language', () => {
       messages.deviceGone,
       messages.deviceSelf,
       messages.accountsRefused,
+      messages.transcriptionInvalid,
     ].join('\n');
     expect(all).not.toMatch(/[ãõçâêôÃÕÇÂÊÔ]/);
     if (language === 'en') expect(all.normalize('NFD')).not.toMatch(/\p{M}/u);
+  });
+});
+
+describe('mock transcription settings', () => {
+  it('keeps the exact local default and a separately accessible Whisper installer', async () => {
+    const api = make();
+    expect(value(await api.settings.transcriptionSettings())).toEqual({ provider: 'whisper', model: 'ggml-base-q5_1.bin', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: false });
+    expect(value(await api.settings.transcriptionStatus()).state).toBe('not_ready');
+    await api.settings.whisper('install');
+    expect(value(await api.settings.transcriptionStatus()).state).toBe('ready');
+    await api.settings.whisper('remove');
+    expect(value(await api.settings.whisper('status')).state).toBe('disabled');
+  });
+
+  it('saves remote configuration, exposes compatible models and never tracks or returns a key', async () => {
+    const api = make();
+    const settings = { provider: 'openai' as const, model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000 };
+    const first = value(await api.settings.setTranscriptionSettings({ ...settings, apiKey: 'secret-write-only' }));
+    expect(first.apiKeyConfigured).toBe(true);
+    expect(JSON.stringify(first)).not.toContain('secret-write-only');
+    expect(value(await api.settings.transcriptionModels()).models).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'gpt-transcribe' }), expect.objectContaining({ id: 'gpt-4o-transcribe', deprecated: true }),
+    ]));
+    expect(value(await api.settings.setTranscriptionSettings(settings)).apiKeyConfigured).toBe(true);
+    const own = { ...settings, provider: 'custom' as const, model: 'own-asr', baseUrl: 'http://127.0.0.1:8000/v1' };
+    expect(value(await api.settings.setTranscriptionSettings(own)).apiKeyConfigured).toBe(false);
+    expect(value(await api.settings.transcriptionModels()).manual).toBe(true);
+    expect(value(await api.settings.transcriptionStatus())).toEqual({ provider: 'custom', model: 'own-asr', state: 'ready' });
+    expect(api.mock.calls.join('\\n')).not.toContain('secret-write-only');
+  });
+
+  it.each(['down', 'attached'] as const)('does not pretend transcription settings work in %s', async (scenario) => {
+    expect(await make(scenario).settings.transcriptionSettings()).toMatchObject({ ok: false });
+    expect(await make(scenario).settings.transcriptionModels()).toMatchObject({ ok: false });
   });
 });

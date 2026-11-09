@@ -196,7 +196,7 @@ describe('PairScreen in Spanish', () => {
 
 describe('DevicesScreen in Spanish', () => {
   it('shows its title and loading state', () => {
-    const markup = html(createElement(DevicesScreen, { machine, nav: { push: noop, back: noop, replace: noop }, onRevokedSelf: noop }));
+    const markup = html(createElement(DevicesScreen, { machine, nav: { push: noop, back: noop, replace: noop } }));
     expect(markup).toContain('Dispositivos de esta máquina');
     expect(markup).toContain('Cargando…');
     expect(markup).toContain('aria-label="Volver"');

@@ -177,7 +177,7 @@ func TestReporterWritesOneJSONObjectPerLine(t *testing.T) {
 	rep := NewReporter(&buf)
 	rep.Status(Event{Type: typeNeedsLogin, AuthURL: "https://login.tailscale.com/a/x"})
 	rep.Status(runningEvent())
-	rep.Error("boom")
+	rep.Error(":443", "boom")
 
 	got := lines(&buf)
 	if len(got) != 3 {
@@ -239,29 +239,29 @@ func TestReporterServingErrorLifecycle(t *testing.T) {
 	httpsErr := mustLine(t, errorEvent("https is not enabled"))
 
 	rep.Status(runningEvent())
-	if !rep.Error("https is not enabled") {
+	if !rep.Error(":443", "https is not enabled") {
 		t.Fatal("first error must be written")
 	}
-	if rep.Error("https is not enabled") {
+	if rep.Error(":443", "https is not enabled") {
 		t.Error("the same error again must be dropped")
 	}
 	// The status loop keeps polling "running" while serving fails: no flip-flop.
 	if rep.Status(runningEvent()) {
 		t.Error("an unchanged node status must not be written just because an error is outstanding")
 	}
-	if !rep.Error("a different error") {
+	if !rep.Error(":443", "a different error") {
 		t.Error("a different message must be written")
 	}
 
-	if !rep.Recovered() {
+	if !rep.Recovered(":443") {
 		t.Fatal("recovery after an error must write the last status again")
 	}
-	if rep.Recovered() {
+	if rep.Recovered(":443") {
 		t.Error("recovery with no outstanding error must write nothing")
 	}
 
 	// After recovery the same error is news again.
-	if !rep.Error("https is not enabled") {
+	if !rep.Error(":443", "https is not enabled") {
 		t.Error("an error after recovery must be written even if it repeats an old message")
 	}
 
@@ -281,13 +281,13 @@ func TestReporterNewStatusSupersedesServingError(t *testing.T) {
 	var buf bytes.Buffer
 	rep := NewReporter(&buf)
 	rep.Status(runningEvent())
-	rep.Error("https is not enabled")
+	rep.Error(":443", "https is not enabled")
 	rep.Status(Event{Type: typeStopped})
 
-	if rep.Recovered() {
+	if rep.Recovered(":443") {
 		t.Error("a status change already cleared the error; recovery must be a no-op")
 	}
-	if !rep.Error("https is not enabled") {
+	if !rep.Error(":443", "https is not enabled") {
 		t.Error("the same error after a state change is news again")
 	}
 }
@@ -295,8 +295,8 @@ func TestReporterNewStatusSupersedesServingError(t *testing.T) {
 func TestReporterRecoveredWithoutAStatusWritesNothing(t *testing.T) {
 	var buf bytes.Buffer
 	rep := NewReporter(&buf)
-	rep.Error("early failure")
-	if rep.Recovered() {
+	rep.Error(":443", "early failure")
+	if rep.Recovered(":443") {
 		t.Error("there is no status to repeat")
 	}
 	if got := len(lines(&buf)); got != 1 {
@@ -307,4 +307,38 @@ func TestReporterRecoveredWithoutAStatusWritesNothing(t *testing.T) {
 func mustLine(t *testing.T, ev Event) string {
 	t.Helper()
 	return encodeLine(ev)
+}
+
+func TestReporterKeepsListenerFailuresIndependent(t *testing.T) {
+	var buf bytes.Buffer
+	rep := NewReporter(&buf)
+	rep.Status(runningEvent())
+	rep.Error(":8443", "preview unavailable")
+	if rep.Recovered(":443") {
+		t.Fatal("a healthy main listener must not clear the preview error")
+	}
+	rep.Error(":443", "main unavailable")
+	if rep.Error(":8443", "preview unavailable") {
+		t.Fatal("another listener's error must not defeat deduplication")
+	}
+	rep.Recovered(":443")
+	got := lines(&buf)
+	if want := strings.TrimSpace(encodeLine(errorEvent("preview unavailable"))); got[len(got)-1] != want {
+		t.Fatalf("main recovery wrote %q, want the remaining preview failure %q", got[len(got)-1], want)
+	}
+	changed := runningEvent()
+	changed.IPs = []string{"100.64.0.2"}
+	rep.Status(changed)
+	got = lines(&buf)
+	if !strings.Contains(got[len(got)-1], "preview unavailable") {
+		t.Fatal("changed node status must not hide an outstanding listener failure")
+	}
+	if rep.Status(changed) || rep.Error(":8443", "preview unavailable") || rep.Recovered(":443") {
+		t.Fatal("unchanged polling, retries and unrelated recovery must not flap status")
+	}
+	rep.Recovered(":8443")
+	got = lines(&buf)
+	if got[len(got)-1] != strings.TrimSpace(encodeLine(changed)) {
+		t.Fatal("the last listener recovery must restore the latest node status")
+	}
 }

@@ -119,6 +119,13 @@ describe('pairing page', () => {
     expect(html).toContain('data-expires-at="1125000"');
   });
 
+  it('shows the manual code and explains how to get a QR before the phone has an address', () => {
+    const page = renderPairingHtml({ code: '004217', expiresAt: 1_125_000, nonce: NONCE, now: 1_000_000 });
+    expect(page).toContain('004 217');
+    expect(page).toContain('Conecte o Tailscale');
+    expect(page).not.toContain('<div class="qr">');
+  });
+
   it('has a strict CSP: no network, scripts only with the nonce, images only as data', () => {
     expect(html).toContain("default-src 'none'");
     expect(html).toContain("img-src data:");

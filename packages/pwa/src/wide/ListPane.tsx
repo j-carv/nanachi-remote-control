@@ -9,7 +9,11 @@ import type { ConnectionStatus } from '../connection.js';
 import type { Machine, StorageLike } from '../machines.js';
 import type { Route } from '../navigation.js';
 import { STATUS_LOOK } from '../screens/MainScreen.js';
+import { sessionTitle } from '../sessionText.js';
+import { resolveMessageMatches } from '../sessionSearch.js';
 import { useAsync } from '../useAsync.js';
+import { useSessionMessageSearch } from '../useSessionMessageSearch.js';
+import type { MessageMatchRow } from '../components/SessionMessageMatches.js';
 import { ForceUpdateAction } from '../updates/ForceUpdateAction.js';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,6 +146,21 @@ export function ListPane({
     [agents.data],
   );
   const [creatingIn, setCreatingIn] = useState<Workspace | null>(null);
+  const [query, setQuery] = useState('');
+  // The machine's messages (the list narrows by name on its own); the matches are joined to the rows the tree holds.
+  const search = useSessionMessageSearch(api, query, null);
+  const messageRows: MessageMatchRow[] = [];
+  if (search.status === 'ready') {
+    const owners = new Map<string, { workspace: Workspace; session: Session }>();
+    for (const node of tree.nodes ?? []) {
+      for (const session of node.sessions) owners.set(session.id, { workspace: node.workspace, session });
+    }
+    for (const match of resolveMessageMatches(search.results, (id) => owners.get(id))) {
+      const { workspace, session } = match.item;
+      const agent = agentLabels.get(session.agent) ?? session.agent;
+      messageRows.push({ workspace, session, label: sessionTitle(session, agent), snippet: match.snippet, matchedAt: match.matchedAt });
+    }
+  }
 
   // A workspace added or removed in the right pane: the screen that did it is left, so the list asks the machine again.
   const previousKind = useRef(route.kind);
@@ -181,12 +200,17 @@ export function ListPane({
         }
         nodes={tree.nodes}
         error={tree.error}
+        query={query}
+        onQueryChange={setQuery}
+        messageState={search}
+        messageRows={messageRows}
         selection={selectionOf(route)}
         agentLabels={agentLabels}
         now={Date.now()}
         onOpenWorkspace={(workspace) => onOpen({ kind: 'sessions', workspace })}
         onOpenSession={openSession}
         onNewSession={setCreatingIn}
+        onOpenSchedules={(workspace) => onOpen({ kind: 'schedules', workspace })}
         onAddWorkspace={() => onOpen({ kind: 'folders' })}
         onRepair={() => onRepair(selected)}
       />

@@ -4,6 +4,7 @@
  * tone, no emoji, nothing loaded from the network.
  */
 
+import { readFileSync } from 'node:fs';
 import { getLanguage, translate, type Language, type MessageKey, type Params } from '../common/i18n/index.js';
 
 export function escapeHtml(text: string): string {
@@ -101,14 +102,17 @@ export interface PairingPageInput {
   code: string;
   /** Epoch ms. */
   expiresAt: number;
-  /** `data:image/png;base64,...` of the QR for the code. */
-  qrDataUrl: string;
+  /** The QR image of the pairing link, when this PC has an address reachable from the phone. */
+  qrDataUrl?: string | undefined;
+  /** `data:image/png;base64,...` of the app mark (see `pngDataUrl`); the page has no mark without it. */
+  logoDataUrl?: string | undefined;
   /** Random per page: lets the countdown script run under a strict CSP. */
   nonce: string;
   now: number;
 }
 
 const PAIRING_CSS = `
+.logo { display: block; width: 36px; height: 36px; margin: 0 auto; border-radius: 8px; user-select: none; }
 .code {
   font-size: 40px; font-weight: 600; letter-spacing: 0.08em; text-align: center;
   font-variant-numeric: tabular-nums; margin: 4px 0;
@@ -156,21 +160,37 @@ export function formatRemaining(expiresAt: number, now: number, language: Langua
   return translate(language, 'main.pairingWindow.expiresIn', { time: `${minutes}:${seconds}` });
 }
 
-/** The pairing window: code, countdown and QR. The QR image is the only thing that is not text. */
+/** `data:image/png;base64,...` of a PNG file, or undefined when it cannot be read (the page then has no mark). */
+export function pngDataUrl(path: string): string | undefined {
+  try {
+    return `data:image/png;base64,${readFileSync(path).toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The pairing window: code, countdown and QR, with the app mark above the title. The images are the only things that are not text. */
 export function renderPairingHtml(input: PairingPageInput): string {
   if (!/^[0-9]{6}$/.test(input.code)) throw new Error('código de pareamento inválido');
-  if (!input.qrDataUrl.startsWith('data:image/png;base64,')) throw new Error('QR inválido');
+  if (input.qrDataUrl !== undefined && !input.qrDataUrl.startsWith('data:image/png;base64,')) throw new Error('QR inválido');
+  if (input.logoDataUrl !== undefined && !input.logoDataUrl.startsWith('data:image/png;base64,')) throw new Error('logo inválido');
   const language = input.language ?? getLanguage();
   const text = (key: MessageKey, params?: Params): string => escapeHtml(translate(language, key, params));
   // `{{time}}` stays in the text the script reads: the script puts the clock there.
   const expiresIn = escapeHtml(translate(language, 'main.pairingWindow.expiresIn', { time: '{{time}}' }));
+  // Decorative: the title beside it says what the window is, so the alt text is empty.
+  const logo = input.logoDataUrl === undefined ? '' : `<img class="logo" src="${escapeHtml(input.logoDataUrl)}" alt="">\n  `;
+  const qr = input.qrDataUrl === undefined
+    ? ''
+    : `<div class="qr"><img src="${escapeHtml(input.qrDataUrl)}" alt="${text('main.pairingWindow.qrAlt', { code: input.code })}"></div>`;
   const body = `<main id="pairing" data-expires-at="${Math.trunc(input.expiresAt)}" data-expires-in="${expiresIn}" data-expired="${text('main.pairingWindow.expired')}">
-  <h1>${text('main.pairingWindow.windowTitle')}</h1>
+  ${logo}<h1>${text('main.pairingWindow.windowTitle')}</h1>
   <div class="card">
     <div class="code mono" aria-label="${text('main.pairingWindow.codeLabel', { code: input.code })}">${escapeHtml(groupCode(input.code))}</div>
     <p class="muted center" id="remaining">${escapeHtml(formatRemaining(input.expiresAt, input.now, language))}</p>
   </div>
-  <div class="qr"><img src="${escapeHtml(input.qrDataUrl)}" alt="${text('main.pairingWindow.qrAlt', { code: input.code })}"></div>
+  ${qr}
+  <p class="muted center">${text(input.qrDataUrl === undefined ? 'main.pairingWindow.qrSetupHint' : 'main.pairingWindow.qrHint')}</p>
   <p class="muted center">${text('main.pairingWindow.hint')}</p>
 </main>`;
   return page({

@@ -23,5 +23,14 @@
     "codeLength": "El código tiene 6 dígitos.",
     "tailscaleUnavailable": "Iniciar sesión con Tailscale no está habilitado para esta cuenta en este PC. Usa un código de vinculación.",
     "unexpected": "Error inesperado al vincular."
+  },
+  "link": {
+    "connecting": "Conectando con el PC…",
+    "installTitle": "Añade Nanachi a la pantalla de inicio",
+    "installIntro": "En iPhone y iPad, la app de la pantalla de inicio tiene su propio almacenamiento, separado de Safari. Vincular en Safari no pasa a la app.",
+    "installStep1": "Toca el botón Compartir en Safari.",
+    "installStep2": "Elige Añadir a la pantalla de inicio y confirma.",
+    "installStep3": "Abre Nanachi desde su icono en la pantalla de inicio. Debería entrar solo.",
+    "installContinue": "Vincular igualmente en Safari"
   }
 }

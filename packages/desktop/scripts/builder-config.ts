@@ -124,11 +124,13 @@ export function installerBuilderConfig(input: InstallerConfigInput): Configurati
     copyright: 'Nanachi',
     extraMetadata: { author: { name: PRODUCT_NAME } },
     directories: { output: join(input.buildDir, 'installer-build') },
-    // A handful of bundled files: no asar. The payload zip is already compressed, so the portable archive is stored
-    // as is instead of being compressed a second time.
+    // No asar: the installer's own Electron runtime (~310 MiB) ships unpacked, and the portable archive compresses it
+    // (7z, LZMA2). The payload zip inside is already deflated, so it passes through the same compressor and gains little.
+    // For this 7z portable archive `normal` and `maximum` write the same bytes (both pass 7-Zip -mx=9); `maximum` only
+    // changes zip archives. So this is `normal`, the default.
     asar: false,
     electronFuses: INSTALLER_FUSES,
-    compression: 'store',
+    compression: 'normal',
     extraResources: [{ from: input.payloadDir, to: 'payload' }],
     win: { target: [{ target: 'portable', arch: ['x64'] }], icon: input.icon },
     portable: { artifactName: installerArtifactName(input.version), requestExecutionLevel: 'user' },

@@ -6,15 +6,21 @@ import {
   LANGUAGE_SECTION_TITLE,
   setLanguage,
   SUPPORTED_LANGUAGES,
+  type Language,
 } from '../i18n/index.js';
 import { ListGroup, listRowClass, SectionHeading } from './ListGroup.js';
+
+interface LanguageSectionProps {
+  /** Called after the language changes. Settings uses it to send the new language to the daemons with this phone's push. */
+  onChange?: (language: Language) => void;
+}
 
 /**
  * Settings row that picks the app language. The section title and the option names are the same in every language
  * ("Idioma / Language", "Português (Brasil)", "English", "Español"), so the row can be found after a switch to a
  * language the user does not read. The native select opens the iOS wheel, like the session pickers.
  */
-export function LanguageSection() {
+export function LanguageSection({ onChange }: LanguageSectionProps = {}) {
   // Subscribes to the language, so the select shows the new value (the screen is remounted on a change anyway).
   const { t } = useTranslation('settings');
 
@@ -33,7 +39,9 @@ export function LanguageSection() {
                 value={currentLanguage()}
                 onChange={(event) => {
                   const next = event.target.value;
-                  if (isLanguage(next)) setLanguage(next);
+                  if (!isLanguage(next)) return;
+                  setLanguage(next);
+                  onChange?.(next);
                 }}
                 className="h-11 w-full min-w-0 appearance-none truncate bg-transparent py-0 pr-6 pl-2 text-right text-base text-foreground outline-none"
               >

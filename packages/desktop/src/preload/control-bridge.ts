@@ -96,6 +96,11 @@ export function createControlBridge(ipc: BridgeIpc, version: string, language: L
       openFolder: () => invoke<void>(c.logsOpenFolder),
     },
     settings: {
+      whisper: (action) => invoke(c.settingsWhisper, action),
+      transcriptionSettings: () => invoke(c.settingsTranscriptionGet),
+      setTranscriptionSettings: (settings) => invoke(c.settingsTranscriptionUpdate, settings),
+      transcriptionStatus: () => invoke(c.settingsTranscriptionStatus),
+      transcriptionModels: () => invoke(c.settingsTranscriptionModels),
       setLanguage: (value) => invoke<Language>(c.settingsSetLanguage, value),
       getAutostart: () => invoke<{ value: boolean; supported: boolean }>(c.settingsGetAutostart),
       setAutostart: (value) => invoke<{ value: boolean; supported: boolean }>(c.settingsSetAutostart, value),

@@ -14,18 +14,32 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  Copy,
   FolderTree,
   Layers,
   LoaderCircle,
+  MessageCircleQuestion,
+  Mic,
   Paperclip,
-  SendHorizontal,
+  Pencil,
+  Quote,
+  Send,
   Settings2,
   SlidersHorizontal,
-  SquareSlash,
+  Square,
   SquareTerminal,
+  X,
 } from 'lucide-react';
-import type { AvailableCommand, LoopRequest, Session, SessionStatus, Workspace } from '@nanachi/shared';
-import { splitOptions } from '../agentConfig.js';
+import type {
+  AvailableCommand,
+  ConfigValue,
+  LoopRequest,
+  Session,
+  SessionConfigOption,
+  SessionStatus,
+  Workspace,
+} from '@nanachi/shared';
+import { isDangerousSwitch, modeOptionOf, splitOptions } from '../agentConfig.js';
 import { accountChangeLocked, accountSelectorFor, sessionAccount, sessionAccountInfo } from '../agentAccounts.js';
 import { loadAccountsForSession } from '../agentAccountsCache.js';
 import { ApiError, type ApiClient } from '../api.js';
@@ -36,6 +50,7 @@ import { ImageCropDialog } from '../components/ImageCropDialog.js';
 import { useCssHeight } from '../components/useCssHeight.js';
 import { NewSessionSheet } from '../components/NewSessionSheet.js';
 import { ActionSheet, ActionSheetButton, type ActionSheetItem } from '../components/ActionSheet.js';
+import { copyText } from '../components/CopyButton.js';
 import { RemoveSessionSheet } from '../components/RemoveSessionSheet.js';
 import { ShellSheet } from '../components/ShellSheet.js';
 import { UsageDrawer } from '../components/UsageDrawer.js';
@@ -47,10 +62,14 @@ import { AttachmentDrafts } from '../chat/AttachmentDrafts.js';
 import { ChatAttachContext } from '../chat/attachContext.js';
 import { ATTACHMENT_LIMIT, uploadFiles } from '../chat/attachments.js';
 import { ChatItemView } from '../chat/ChatItemView.js';
+import { ToolActivity } from '../chat/ToolActivity.js';
+import { groupToolRuns } from '../chat/activityGrouping.js';
 import { BackgroundDrawer } from '../chat/BackgroundDrawer.js';
+import { PlanDock } from '../chat/PlanDock.js';
 import { RunningDots } from '../chat/RunningIndicator.js';
 import { arrivedLive, historyOf, type HistoryIds } from '../chat/liveItems.js';
 import { LoopChip } from '../chat/LoopChip.js';
+import { WorkModeChip, WorkModeConfirmSheet } from '../chat/WorkModeChip.js';
 import { LoopSheet } from '../chat/LoopSheet.js';
 import { loopCommandFor } from '../chat/loopCommand.js';
 import { planHeaderActions } from '../chat/headerActions.js';
@@ -78,7 +97,7 @@ import {
   type CommandSheet,
 } from '../chat/commands.js';
 import { SlashMenu } from '../chat/SlashMenu.js';
-import { acceptsPrompt, isInputEnabled, isResumable } from '../chat/controls.js';
+import { acceptsConfigChange, acceptsPrompt, isInputEnabled, isResumable, queuesPrompt } from '../chat/controls.js';
 import { useAttachmentDrafts, type DraftAttachment } from '../chat/useAttachmentDrafts.js';
 import { useChat } from '../chat/useChat.js';
 import { ENTER_SENDS_QUERY, enterSends } from '../wide/layout.js';
@@ -86,6 +105,9 @@ import { useBackAffordance, useLayout } from '../wide/layoutContext.js';
 import { displaySessionTitle, sessionStatusText, sessionTitle } from '../sessionText.js';
 import { useAsync } from '../useAsync.js';
 import { PermissionCard } from '../chat/PermissionCard.js';
+import { UserQuestionCard } from '../chat/UserQuestionCard.js';
+import { FileRequestCard } from '../chat/FileRequestCard.js';
+import type { FileRequestItem, UserQuestionItem } from '../chat/reducer.js';
 import {
   WINDOW_INITIAL,
   WINDOW_STEP,
@@ -94,14 +116,28 @@ import {
   isNearBottom,
   unseenSince,
 } from '../chat/scrollFollow.js';
+import { conversationItemCount, isLearningOnlyChange } from '../chat/learning.js';
 import type { StorageLike } from '../machines.js';
 import type { Navigator } from '../navigation.js';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import { useReloadGuard } from '@/updates/reloadGuard';
+import { currentLanguage } from '../i18n/index.js';
+import { supportsWhisperRecording } from '../whisper/recording.js';
+import { appendWhisperTranscript, useWhisperDictation } from '../whisper/useWhisperDictation.js';
+import { useTranscriptionStatus } from '../whisper/useTranscriptionStatus.js';
+import {
+  chatVisitKey, firstUnreadIndex, forgetChatVisit, insertMessageInDraft, readableSequence, readChatDraft, readChatPosition,
+  visibleReadSequence, writeChatDraft, writeChatPosition,
+} from '../chat/chatVisit.js';
+import type { ActionMessage } from '../chat/MessageActionsTrigger.js';
+import { stripPromptNotes } from '../chat/promptNotes.js';
+import { splitLoopMarkers } from '../chat/loopMarkers.js';
+import { stripAnsi } from '../chat/ansi.js';
 
 interface ChatScreenProps {
+  machineId: string;
   machineName: string;
   workspace: Workspace;
   session: Session;
@@ -134,6 +170,7 @@ const savedPositions = new Map<string, SavedPosition>();
 const LOAD_EARLIER_PX = 120;
 
 export function ChatScreen({
+  machineId,
   machineName,
   workspace,
   session,
@@ -148,9 +185,14 @@ export function ChatScreen({
   const controller = useChat({ api, connection, storage, session });
   const agents = useAsync(() => api.fetchAgents(), [api]);
   const { chat } = controller;
+  const conversationCount = conversationItemCount(chat.items);
   const current = controller.session;
   const viewport = useVisualViewport();
-  const { primary, extra } = splitOptions(controller.configOptions);
+  const { primary, extra } = splitOptions(controller.configOptions, current.agent);
+  /** The work mode chip's option: an ACP session whose agent announces a mode select. */
+  const modeOption = current.kind === 'acp' ? modeOptionOf(controller.configOptions) : undefined;
+  /** A change waiting for the user's OK: a switch into a dangerous work mode (see `changeConfig`). */
+  const [pendingDanger, setPendingDanger] = useState<{ configId: string; value: string } | null>(null);
   const agentLabel = agents.data?.find((agent) => agent.id === current.agent)?.label ?? current.agent;
 
   const [configOpen, setConfigOpen] = useState(false);
@@ -191,12 +233,14 @@ export function ChatScreen({
   const tip = (label: string): string | undefined => (embedded ? label : undefined);
   /** Item the header chip asked to show. The effect below scrolls to it once it is rendered. */
   const [revealRequest, setRevealRequest] = useState<{ id: string } | null>(null);
-  const [draft, setDraft] = useState('');
+  const visitKey = chatVisitKey(machineId, session.id);
+  const [draft, setDraft] = useState(() => readChatDraft(storage, visitKey));
+  /** The history cursor keeps the original draft while an earlier prompt is on screen. */
+  const [historyCursor, setHistoryCursor] = useState<PromptCursor>(IDLE_PROMPT_CURSOR);
+  const [actionsMessage, setActionsMessage] = useState<ActionMessage | null>(null);
+  const [messageNotice, setMessageNotice] = useState<string | null>(null);
   /** Posição do cursor no composer: o menu de comandos abre quando o texto até aqui é `/busca`. */
   const [caret, setCaret] = useState(0);
-  /** Menu aberto pelo botão `/` (com campo de busca próprio), em vez de pelo texto. */
-  const [commandsOpen, setCommandsOpen] = useState(false);
-  const [commandQuery, setCommandQuery] = useState('');
   /** Folha aberta por um comando: seletor nativo (opção da sessão) ou subcomandos do hint. */
   const [commandSheet, setCommandSheet] = useState<CommandSheet | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -206,6 +250,13 @@ export function ChatScreen({
   const attachments = useAttachmentDrafts();
   const fileInput = useRef<HTMLInputElement>(null);
   const [sending, setSending] = useState(false);
+  const canRecord = current.kind === 'acp' && supportsWhisperRecording();
+  const { status: transcriptionStatus } = useTranscriptionStatus(api, canRecord);
+  const dictation = useWhisperDictation(api, current.id, currentLanguage(), (text) => {
+    setHistoryCursor(IDLE_PROMPT_CURSOR);
+    setDraft((previous) => appendWhisperTranscript(previous, text));
+  });
+  const dictating = dictation.stage !== 'idle';
   const [progress, setProgress] = useState<number | null>(null);
   const [sendError, setSendError] = useState<unknown>(null);
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
@@ -222,14 +273,22 @@ export function ChatScreen({
   const baseline = useRef(0);
   /** A smooth "jump to end" is running: its scroll events do not count as the user leaving the end. */
   const jumping = useRef(false);
+  const quietLearningResize = useRef(false);
+  const scrollSnapshot = useRef<{ items: typeof chat.items; floor: number | null; start: number; pending: number; loaded: boolean } | null>(null);
+  const learningAnchor = useRef<{ element: Element; top: number } | null>(null);
   /** User-requested scrolls are smooth; with the system's reduced motion setting they are instant. */
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   /** Number of sends. The send button is keyed by it, so each send pops the button once. */
   const [sends, setSends] = useState(0);
   /** Item visível antes de carregar anteriores: depois da mudança a tela volta a mostrar o mesmo ponto. */
-  const anchor = useRef<{ element: Element; top: number } | null>(null);
-  const pendingRestore = useRef<SavedPosition | undefined>(savedPositions.get(current.id));
-  const permissionCount = useRef(0);
+  const anchor = useRef<{ element: Element; id: string | null; top: number } | null>(null);
+  const pendingRestore = useRef<SavedPosition | undefined>(savedPositions.get(visitKey));
+  const [visitAfter, setVisitAfter] = useState<number | null | undefined>(() => readChatPosition(storage, visitKey));
+  const [unreadId, setUnreadId] = useState<string | null>(null);
+  const unreadMarker = useRef<HTMLDivElement>(null);
+  const readThrough = useRef(visitAfter ?? 0);
+  const readTimer = useRef<number | null>(null);
+  const pendingCardCount = useRef(0);
   /** Posição vista pelo último evento de rolagem (ver settleUserScroll). */
   const seenTop = useRef(0);
   const [removing, setRemoving] = useState(false);
@@ -237,22 +296,85 @@ export function ChatScreen({
   const [removeError, setRemoveError] = useState<unknown>(null);
   /** Sair da sessão uma vez só: remover pelo app e o broadcast session_removed chegam juntos. */
   const leaving = useRef(false);
-  /** Posição nas setas do histórico de prompts. Volta ao rascunho quando a mensagem é enviada. */
-  const [historyCursor, setHistoryCursor] = useState<PromptCursor>(IDLE_PROMPT_CURSOR);
   const [composerFocused, setComposerFocused] = useState(false);
   /** Anexo da prévia que está sendo recortado; o resultado troca o anexo. */
   const [cropping, setCropping] = useState<DraftAttachment | null>(null);
   const promptHistory = useMemo(() => promptHistoryOf(chat.items), [chat.items]);
+  const plan = useMemo(() => chat.items.find((item) => item.kind === 'plan'), [chat.items]);
   /** Parte de baixo (indicador, anexos, comandos, setas, composer): o aviso de atualização flutua acima dela. */
   const bottomRef = useRef<HTMLDivElement>(null);
   useCssHeight(bottomRef, '--chat-bottom-h');
 
   // Unsent text or attachment drafts hold the app's reload (see updates/reloadGuard.ts).
-  useReloadGuard(draft.trim() !== '' || attachments.drafts.length > 0);
+  useReloadGuard(draft.trim() !== '' || attachments.drafts.length > 0 || dictating);
+
+  const savedDraft = historyCursor.index === null ? draft : historyCursor.draft;
+  useLayoutEffect(() => writeChatDraft(storage, visitKey, savedDraft), [storage, visitKey, savedDraft]);
+
+  useEffect(() => {
+    if (messageNotice === null) return;
+    const timer = window.setTimeout(() => setMessageNotice(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [messageNotice]);
+
+  function flushReadPosition() {
+    if (readTimer.current === null) return;
+    window.clearTimeout(readTimer.current);
+    readTimer.current = null;
+    writeChatPosition(storage, visitKey, readThrough.current);
+  }
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setVisitAfter(readChatPosition(storage, visitKey));
+      } else {
+        flushReadPosition();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushReadPosition);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushReadPosition);
+      flushReadPosition();
+    };
+  }, [storage, visitKey]);
+
+  function recordVisible(timeline: HTMLDivElement) {
+    const feed = feedRef.current;
+    if (feed === null || document.visibilityState !== 'visible') return;
+    const viewport = timeline.getBoundingClientRect();
+    learningAnchor.current = null;
+    for (const element of feed.children) {
+      if (element.querySelector('[data-slot="learning-notice"]') !== null) continue;
+      const bounds = element.getBoundingClientRect();
+      if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
+        learningAnchor.current = { element, top: bounds.top - viewport.top };
+        break;
+      }
+    }
+    const seq = visibleReadSequence(feed, viewport);
+    if (seq <= readThrough.current) return;
+    readThrough.current = seq;
+    readTimer.current ??= window.setTimeout(flushReadPosition, 300);
+  }
+
+  function preserveLearningAnchor(timeline: HTMLDivElement) {
+    const saved = learningAnchor.current;
+    if (saved !== null && saved.element.isConnected) {
+      timeline.scrollTop += saved.element.getBoundingClientRect().top - timeline.getBoundingClientRect().top - saved.top;
+    }
+    seenTop.current = timeline.scrollTop;
+  }
 
   function leave() {
     if (leaving.current) return;
     leaving.current = true;
+    if (readTimer.current !== null) window.clearTimeout(readTimer.current);
+    readTimer.current = null;
+    savedPositions.delete(visitKey);
+    forgetChatVisit(storage, visitKey);
     nav.back();
   }
 
@@ -280,12 +402,26 @@ export function ChatScreen({
   // Primeiro item renderizado: já na renderização que traz o histórico (sem pintar a conversa inteira antes),
   // ou a janela salva ao voltar ao chat. Congela em `floor` na primeira vez; daí em diante só muda por "Carregar anteriores".
   const restored = pendingRestore.current;
-  const start =
+  const baseStart =
     floor ?? (controller.loaded ? (restored === undefined ? initialFloor(chat.items.length, WINDOW_INITIAL) : Math.min(restored.floor, chat.items.length)) : 0);
+  const unreadIndex = controller.loaded && visitAfter !== undefined ? firstUnreadIndex(chat.items, visitAfter) : -1;
+  const unreadTarget = unreadIndex < 0 ? undefined : chat.items[unreadIndex];
+  const start = unreadIndex < 0 ? baseStart : Math.min(baseStart, unreadIndex);
+  const markerId = unreadTarget?.id ?? unreadId;
 
   useEffect(() => {
     if (controller.loaded && floor === null) setFloor(start);
   }, [controller.loaded, floor, start]);
+
+  const pendingQuestions = useMemo(
+    () => chat.items.filter((item): item is UserQuestionItem => item.kind === 'user_question' && item.result === null && !item.unavailable),
+    [chat.items],
+  );
+  const pendingFiles = useMemo(
+    () => chat.items.filter((item): item is FileRequestItem => item.kind === 'file_request' && item.result === null && !item.unavailable),
+    [chat.items],
+  );
+  const pendingCount = chat.permissions.length + pendingQuestions.length + pendingFiles.length;
 
   // Background work: the view the cards read their state from, the header chip count, and the nested tree of the
   // loaded window (children under their parent card; the node cache keeps unchanged rows memoized).
@@ -305,10 +441,17 @@ export function ChatScreen({
   });
   const nodeCache = useRef<ReadonlyMap<string, ChatNode>>(new Map());
   const topNodes = useMemo(() => {
-    const nested = nestItems(chat.items.slice(start), nodeCache.current);
+    const nested = nestItems(
+      chat.items.slice(start),
+      nodeCache.current,
+    );
     nodeCache.current = nested.nodes;
     return nested.roots;
   }, [chat.items, start]);
+  const toolRuns = useMemo(() => groupToolRuns(topNodes).filter((nodes) => {
+    const item = nodes[0]?.item;
+    return item === undefined || (item.kind !== 'user_question' && item.kind !== 'file_request') || item.result !== null || item.unavailable;
+  }), [topNodes]);
 
   // The first render that has the history fixes what counts as history; everything appended later is live.
   useEffect(() => {
@@ -319,15 +462,46 @@ export function ChatScreen({
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
     if (timeline === null) return;
+    const previous = scrollSnapshot.current;
+    scrollSnapshot.current = { items: chat.items, floor, start, pending: pendingCount, loaded: controller.loaded };
+    if (previous !== null && previous.items !== chat.items) {
+      quietLearningResize.current = isLearningOnlyChange(previous.items, chat.items);
+    }
+    if (quietLearningResize.current && previous !== null && previous.floor === floor && previous.start === start && previous.pending === pendingCount && previous.loaded === controller.loaded) {
+      preserveLearningAnchor(timeline);
+      recordVisible(timeline);
+      return;
+    }
+    if (controller.loaded && visitAfter !== undefined && document.visibilityState === 'visible') {
+      setVisitAfter(undefined);
+      setUnreadId(unreadTarget?.id ?? null);
+      const marker = unreadMarker.current;
+      if (unreadTarget !== undefined && marker !== null) {
+        if (start !== floor) setFloor(start);
+        pendingRestore.current = undefined;
+        timeline.scrollTop += marker.getBoundingClientRect().top - timeline.getBoundingClientRect().top - 8;
+        seenTop.current = timeline.scrollTop;
+        const near = isNearBottom(timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight);
+        stick.current = near;
+        setAtBottom(near);
+        baseline.current = conversationCount;
+        pendingCardCount.current = pendingCount;
+        recordVisible(timeline);
+        return;
+      }
+    }
     settleUserScroll(timeline);
-    if (chat.permissions.length > permissionCount.current) stick.current = true;
-    permissionCount.current = chat.permissions.length;
+    if (pendingCount > pendingCardCount.current) stick.current = true;
+    pendingCardCount.current = pendingCount;
 
     const pendingAnchor = anchor.current;
     const saved = pendingRestore.current;
     if (pendingAnchor !== null) {
       anchor.current = null;
-      timeline.scrollTop += pendingAnchor.element.getBoundingClientRect().top - pendingAnchor.top;
+      const target = pendingAnchor.element.isConnected ? pendingAnchor.element
+        : pendingAnchor.id === null ? null
+          : timeline.querySelector(`[data-item-id="${CSS.escape(pendingAnchor.id)}"]`)?.closest('[data-slot="tool-activity-run"]');
+      if (target !== null && target !== undefined) timeline.scrollTop += target.getBoundingClientRect().top - pendingAnchor.top;
     } else if (controller.loaded && saved !== undefined) {
       pendingRestore.current = undefined;
       stick.current = saved.atBottom;
@@ -337,10 +511,11 @@ export function ChatScreen({
       timeline.scrollTop = timeline.scrollHeight;
     }
     seenTop.current = timeline.scrollTop;
-  }, [controller.loaded, floor, chat.items, chat.permissions]);
+    if (controller.loaded) recordVisible(timeline);
+  }, [controller.loaded, floor, chat.items, chat.permissions, pendingCount, visitAfter, unreadTarget, start]);
 
-  /** Chip or drawer row: widens the window when the item is older than it, then asks the effect to scroll to it. */
-  function revealBackground(id: string) {
+  /** A background row or answered question: render its history row, then scroll to its confirmed state. */
+  function revealItem(id: string) {
     const index = chat.items.findIndex((item) => item.id === id);
     if (index === -1) return;
     if (index < start) setFloor(index);
@@ -376,8 +551,10 @@ export function ChatScreen({
     if (timeline === null || feed === null || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       settleUserScroll(timeline);
-      if (stick.current) timeline.scrollTop = timeline.scrollHeight;
+      if (quietLearningResize.current) preserveLearningAnchor(timeline);
+      if (stick.current && !quietLearningResize.current) timeline.scrollTop = timeline.scrollHeight;
       seenTop.current = timeline.scrollTop;
+      recordVisible(timeline);
     });
     observer.observe(timeline);
     observer.observe(feed);
@@ -390,7 +567,11 @@ export function ChatScreen({
     if (timeline === null || feed === null || start === 0) return;
     const top = timeline.getBoundingClientRect().top;
     const element = Array.from(feed.children).find((child) => child.getBoundingClientRect().bottom > top + 1);
-    anchor.current = element === undefined ? null : { element, top: element.getBoundingClientRect().top };
+    anchor.current = element === undefined ? null : {
+      element,
+      id: element.getAttribute('data-item-id') ?? element.getAttribute('data-activity-id'),
+      top: element.getBoundingClientRect().top,
+    };
     setFloor(earlierFloor(start, WINDOW_STEP));
   }
 
@@ -398,6 +579,7 @@ export function ChatScreen({
   function jumpToEnd() {
     const timeline = timelineRef.current;
     if (timeline === null) return;
+    quietLearningResize.current = false;
     stick.current = true;
     setAtBottom(true);
     // Only a real move produces the scroll events that clear the guard; with nothing to scroll it would stay armed.
@@ -424,10 +606,11 @@ export function ChatScreen({
     stick.current = near;
     if (near !== atBottom) {
       setAtBottom(near);
-      if (!near) baseline.current = chat.items.length;
+      if (!near) baseline.current = conversationCount;
     }
     if (floor !== null) {
-      savedPositions.set(current.id, { floor, top: timeline.scrollTop, atBottom: near });
+      savedPositions.set(visitKey, { floor, top: timeline.scrollTop, atBottom: near });
+      recordVisible(timeline);
       if (floor > 0 && timeline.scrollTop < LOAD_EARLIER_PX) loadEarlier();
     }
   }
@@ -445,7 +628,7 @@ export function ChatScreen({
   /** Sobe os anexos (um a um, com progresso) e depois manda o prompt citando os arquivos. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!acceptsPrompt(chat.status) || sending) return;
+    if (!canSend) return;
 
     const text = draft;
     // `/loop` belongs to Loop mode, not to the agent: with no arguments it opens the sheet; with arguments it creates the loop.
@@ -475,32 +658,22 @@ export function ChatScreen({
       return;
     }
 
-    if (attachments.drafts.length === 0) {
-      if (controller.sendPrompt(text)) {
-        clearDraft();
-        setSends((count) => count + 1);
-        stick.current = true;
-      }
-      return;
-    }
-
+    const drafts = attachments.drafts;
     setSending(true);
     setSendError(null);
-    setProgress(0);
+    if (drafts.length > 0) setProgress(0);
     try {
       const uploaded = await uploadFiles(
-        attachments.drafts.map((draftItem) => draftItem.file),
+        drafts.map((draftItem) => draftItem.file),
         (file, onProgress) => controller.uploadAttachment(file, onProgress),
         setProgress,
       );
-      // Sem conexão, o send já mostra o aviso; os anexos continuam na prévia para tentar de novo.
-      if (controller.sendPrompt(text, uploaded)) {
-        clearDraft();
-        setSends((count) => count + 1);
-        attachments.clear();
-        setAttachNotice(null);
-        stick.current = true;
-      }
+      await api.submitPrompt(current.id, text, uploaded.map((file) => file.fileId));
+      if (textarea.current?.value === text) clearDraft();
+      setSends((count) => count + 1);
+      drafts.forEach(({ id }) => attachments.remove(id));
+      setAttachNotice(null);
+      stick.current = true;
     } catch (caught) {
       setSendError(caught);
     } finally {
@@ -527,8 +700,6 @@ export function ChatScreen({
 
   /** Opens the Loop mode sheet. The composer loses focus so the iOS keyboard does not stay over the sheet. */
   function openLoop() {
-    setCommandsOpen(false);
-    setCommandQuery('');
     textarea.current?.blur();
     setLoopOpen(true);
   }
@@ -547,8 +718,6 @@ export function ChatScreen({
 
   /** Opens the sheet of a command and closes the menu. The composer is blurred so the iOS keyboard does not stay over it. */
   function openCommandSheet(sheet: CommandSheet) {
-    setCommandsOpen(false);
-    setCommandQuery('');
     setCommandSheet(sheet);
     textarea.current?.blur();
   }
@@ -558,6 +727,44 @@ export function ChatScreen({
     setDraft('');
     setCaret(0);
     setHistoryCursor(IDLE_PROMPT_CURSOR);
+  }
+
+  function useMessageAsDraft(text: string, quote: boolean) {
+    const next = insertMessageInDraft(savedDraft, text, quote);
+    setHistoryCursor(IDLE_PROMPT_CURSOR);
+    setDraft(next);
+    setCaret(next.length);
+    pendingCaret.current = next.length;
+    textarea.current?.focus();
+  }
+
+  function messageActions(message: ActionMessage): ActionSheetItem[] {
+    const text = message.kind === 'user_message'
+      ? stripPromptNotes(message.text)
+      : stripAnsi(splitLoopMarkers(message.text).text);
+    const items: ActionSheetItem[] = [
+      {
+        label: t('messageActions.copy'),
+        icon: Copy,
+        keepsFocus: true,
+        requiresActivation: true,
+        onSelect: () => {
+          void copyText(text).then((copied) =>
+            setMessageNotice(t(copied ? 'messageActions.copied' : 'messageActions.copyFailed')),
+          );
+        },
+      },
+      { label: t('messageActions.quote'), icon: Quote, onSelect: () => useMessageAsDraft(text, true) },
+    ];
+    if (message.kind === 'user_message') {
+      items.push({
+        label: t('messageActions.reuse'),
+        icon: Pencil,
+        ...(savedDraft.trim() === '' ? {} : { detail: t('messageActions.appendDetail') }),
+        onSelect: () => useMessageAsDraft(text, false),
+      });
+    }
+    return items;
   }
 
   /** Shows a recalled prompt (or the draft back) with the caret at its end. Recalled text only fills the composer. */
@@ -572,16 +779,39 @@ export function ChatScreen({
 
   /** Sends a command as text and keeps the chat at the end, like a submit. */
   function sendCommandText(text: string) {
-    if (controller.sendPrompt(text)) stick.current = true;
+    setSendError(null);
+    void api.submitPrompt(current.id, text, [])
+      .then(() => { stick.current = true; })
+      .catch(setSendError);
   }
 
   /** Puts `/<text> ` before the composer text and focuses it. The tap is a user gesture, so the keyboard opens. */
   function insertCommandText(text: string) {
     const next = insertCommand(draft, 0, text, 'prefix');
+    setHistoryCursor(IDLE_PROMPT_CURSOR);
     setDraft(next.text);
     setCaret(next.caret);
     pendingCaret.current = next.caret;
     textarea.current?.focus();
+  }
+
+  /**
+   * Sends a config change from any control (the chip, the settings drawer, the command picker). A switch into a dangerous
+   * work mode waits for the user's OK; the settings drawer closes first so the confirmation is the only sheet open.
+   */
+  function changeConfig(option: SessionConfigOption, value: ConfigValue) {
+    if (typeof value === 'string' && isDangerousSwitch(option, value, current.agent)) {
+      setConfigOpen(false);
+      setPendingDanger({ configId: option.id, value });
+      return;
+    }
+    controller.setConfig(option.id, value);
+  }
+
+  function confirmDangerSwitch() {
+    if (pendingDanger === null) return;
+    controller.setConfig(pendingDanger.configId, pendingDanger.value);
+    setPendingDanger(null);
   }
 
   /** Items of the command sheet: the config options (current one checked), or the subcommands of the hint. */
@@ -596,7 +826,7 @@ export function ChatScreen({
           checked: choice.checked,
           section: choice.section,
           onSelect: () => {
-            controller.setConfig(option.id, choice.value);
+            changeConfig(option, choice.value);
           },
         }),
       );
@@ -624,30 +854,24 @@ export function ChatScreen({
 
   /** Insere o comando e devolve o foco ao campo (o clique é gesto do usuário, então o teclado continua aberto). */
   function pickCommand(command: AvailableCommand) {
+    setHistoryCursor(IDLE_PROMPT_CURSOR);
     // A `/loop` picked from the menu opens the Loop mode sheet. Typed text is handled the same way as for other commands.
     if (command.name === 'loop') {
-      if (!commandsOpen) {
-        setDraft(draft.slice(caret).replace(/^ /, ''));
-        setCaret(0);
-      }
+      setDraft(draft.slice(caret).replace(/^ /, ''));
+      setCaret(0);
       openLoop();
       return;
     }
     const sheet = commandSheetFor(command, controller.configOptions);
     if (sheet !== undefined) {
-      // Opened by typing `/busca`: that trigger leaves the composer. Opened by the `/` button: the typed text stays.
-      if (!commandsOpen) {
-        setDraft(draft.slice(caret).replace(/^ /, ''));
-        setCaret(0);
-      }
+      setDraft(draft.slice(caret).replace(/^ /, ''));
+      setCaret(0);
       openCommandSheet(sheet);
       return;
     }
-    const next = insertCommand(draft, caret, command.name, commandsOpen ? 'prefix' : 'typed');
+    const next = insertCommand(draft, caret, command.name, 'typed');
     setDraft(next.text);
     setCaret(next.caret);
-    setCommandsOpen(false);
-    setCommandQuery('');
     pendingCaret.current = next.caret;
     textarea.current?.focus();
   }
@@ -673,12 +897,20 @@ export function ChatScreen({
   }
 
   const resumable = isResumable(chat.status);
+  const waitingForQuestion = chat.status === 'running' && chat.permissions.length === 0 && pendingQuestions.length > 0;
+  const waitingForFile = chat.status === 'running' && chat.permissions.length === 0 && pendingFiles.length > 0;
   // The line above the composer. `idle` has none.
   const working = controller.resuming
     ? t('working.resuming')
-    : chat.status === 'idle'
-      ? undefined
-      : t(`working.${chat.status}`);
+    : chat.status === 'running' && chat.permissions.length > 0
+      ? t('working.awaiting_permission')
+      : waitingForFile
+        ? t('fileRequest.waiting')
+        : waitingForQuestion
+          ? t('question.waiting')
+          : chat.status === 'idle'
+            ? undefined
+            : t(`working.${chat.status}`);
   // Stopped and error sessions take a message: sending it resumes the session.
   const placeholder = controller.resuming ? t('placeholder.resuming') : t(`placeholder.${chat.status}`);
   const inputEnabled = isInputEnabled(chat.status);
@@ -686,12 +918,12 @@ export function ChatScreen({
   const composerOpen = inputEnabled || resumable;
   const notResumable =
     controller.resumeError instanceof ApiError && controller.resumeError.kind === 'not_resumable';
-  const unseen = unseenSince(baseline.current, chat.items.length);
+  const unseen = unseenSince(baseline.current, conversationCount);
   const hasContent = draft.trim() !== '' || attachments.drafts.length > 0;
-  const canSend = acceptsPrompt(chat.status) && hasContent && !sending;
-  // Menu: aberto pelo botão, ou pelo texto `/busca` no começo do composer. Só com o campo habilitado.
-  const typedQuery = inputEnabled ? slashQuery(draft, caret) : undefined;
-  const menuQuery = !inputEnabled ? undefined : commandsOpen ? commandQuery : typedQuery;
+  const queueing = queuesPrompt(chat.status);
+  const canSend = (acceptsPrompt(chat.status) || queueing) && hasContent && !sending && !dictating;
+  const sendLabel = sending ? t('composer.sending') : queueing ? t('composer.queue') : t('composer.send');
+  const menuQuery = inputEnabled ? slashQuery(draft, caret) : undefined;
   const boxStyle = viewport === null ? undefined : { top: viewport.top, height: viewport.height };
 
   /**
@@ -707,7 +939,7 @@ export function ChatScreen({
     ) {
       event.preventDefault();
       // With the menu of a typed `/rev` open, Enter completes the command (the row on top) instead of sending half of it.
-      const completing = !commandsOpen && typedQuery !== undefined ? commandForEnter(controller.commands, typedQuery) : undefined;
+      const completing = menuQuery !== undefined ? commandForEnter(controller.commands, menuQuery) : undefined;
       if (completing !== undefined) {
         pickCommand(completing);
         return;
@@ -756,7 +988,7 @@ export function ChatScreen({
     openUsage: () => setUsageOpen(true),
     openLoop,
     openBackground: () => setBackgroundOpen(true),
-    openChanges: () => nav.push({ kind: 'changes', workspace, session: current }),
+    openHistory: () => nav.push({ kind: 'commits', workspace, session: current }),
     remove: () => setRemoving(true),
   });
 
@@ -826,9 +1058,20 @@ export function ChatScreen({
               items={menuRows}
             />
           </header>
-            {/* The place line has its own row under the title, indented to the title. The chips sit at its end: the loop's while it runs or stopped on an error, the background work's while it runs. */}
+            {/* The place line has its own row under the title, indented to the title. The chips sit at its end: the work mode's when the agent has modes, the loop's while it runs or stopped on an error, the background work's while it runs. */}
             <div className={cn('-mt-1 flex min-w-0 items-center gap-2 pr-1', backAffordance === 'back' ? 'pl-[62px]' : 'pl-[22px]')}>
               <PlaceLine text={place} />
+              {current.kind === 'acp' && (
+                <WorkModeChip
+                  option={modeOption}
+                  agentId={current.agent}
+                  disabled={!acceptsConfigChange(chat.status)}
+                  onPick={(value) => {
+                    if (modeOption !== undefined) changeConfig(modeOption, value);
+                  }}
+                  yolo={{ enabled: controller.yolo, onChange: controller.setYolo }}
+                />
+              )}
               {headerPlan.chips.loop && <LoopChip loop={controller.loop} onOpen={openLoop} />}
               {/* 44px tap area around a 24px pill; the negative margins keep the header's height unchanged. */}
               {headerPlan.chips.background && (
@@ -867,7 +1110,7 @@ export function ChatScreen({
             entries={backgroundList}
             onPick={(id) => {
               setBackgroundOpen(false);
-              revealBackground(id);
+              revealItem(id);
             }}
           />
 
@@ -888,6 +1131,10 @@ export function ChatScreen({
                 return true;
               }}
             />
+          )}
+
+          {pendingDanger !== null && (
+            <WorkModeConfirmSheet onCancel={() => setPendingDanger(null)} onConfirm={confirmDangerSwitch} />
           )}
 
           <Drawer open={configOpen} onOpenChange={setConfigOpen}>
@@ -925,7 +1172,7 @@ export function ChatScreen({
                         <ConfigSelect
                           label={control.label}
                           option={control.option}
-                          onChange={(value) => controller.setConfig(control.option.id, value)}
+                          onChange={(value) => changeConfig(control.option, value)}
                         />
                       </li>
                     ))}
@@ -950,7 +1197,9 @@ export function ChatScreen({
               error={controller.resumeError}
               action={notResumable ? { label: t('composer.newSession'), onClick: () => setSheetOpen(true) } : undefined}
             />
-            <ErrorNotice error={sendError} onRepair={onRepair} />
+            {sendError instanceof ApiError && sendError.code === 'prompt_queue_full'
+              ? <ErrorNotice message={t('queue.full')} />
+              : <ErrorNotice error={sendError} onRepair={onRepair} />}
 
             {controller.notice !== null && (
               <div
@@ -997,16 +1246,63 @@ export function ChatScreen({
                 </Button>
               )}
               <div ref={feedRef} data-slot="chat-feed" className="flex min-w-0 flex-col gap-3 wide:w-full wide:max-w-[1040px]">
-                {topNodes.map((node) => (
-                  <div
-                    key={node.item.id}
-                    data-item-id={node.item.id}
-                    className={cn(ITEM_FRAME_CLASS, arrivedLive(history, node.item.id) && 'animate-enter motion-reduce:animate-none')}
-                  >
-                    <ChatItemView node={node} api={api} view={backgroundView} history={history} />
-                  </div>
-                ))}
+                {toolRuns.map((nodes) => {
+                  const node = nodes[0];
+                  if (node === undefined) return null;
+                  const activity = node.item.kind === 'tool_call';
+                  return (
+                    <div
+                      key={node.item.id}
+                      data-item-id={activity ? undefined : node.item.id}
+                      data-activity-id={activity ? node.item.id : undefined}
+                      data-readable-seq={readableSequence(node.item)}
+                      className={cn(ITEM_FRAME_CLASS, arrivedLive(history, node.item.id) && 'animate-enter motion-reduce:animate-none')}
+                    >
+                      {node.item.id === markerId && (
+                        <div
+                          ref={unreadMarker}
+                          data-slot="unread-marker"
+                          className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
+                        >
+                          {t('timeline.newMessages')}
+                        </div>
+                      )}
+                      {activity ? (
+                        <ToolActivity nodes={nodes} view={backgroundView} history={history}
+                          renderNode={(child) => <ChatItemView node={child} api={api} view={backgroundView} nested history={history} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} workspaceId={current.workspaceId} onManageLearning={controller.manageLearningReview} />} />
+                      ) : (
+                        <ChatItemView node={node} api={api} view={backgroundView} history={history} onMessageActions={setActionsMessage} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} workspaceId={current.workspaceId} onManageLearning={controller.manageLearningReview} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+              {pendingQuestions.map((request) => (
+                <div key={request.requestId} className="wide:w-full wide:max-w-[1040px]">
+                  <UserQuestionCard
+                    request={request}
+                    onRespond={async (optionId) => {
+                      const result = await controller.answerUserQuestion(request.requestId, optionId);
+                      revealItem(request.id);
+                      return result;
+                    }}
+                  />
+                </div>
+              ))}
+              {pendingFiles.map((request) => (
+                <div key={request.requestId} className="min-w-0 max-w-full wide:w-full wide:max-w-[1040px]">
+                  <FileRequestCard
+                    api={api}
+                    request={request}
+                    onUpload={controller.uploadAttachment}
+                    onRespond={async (fileId) => {
+                      const result = await controller.answerFileRequest(request.requestId, fileId);
+                      revealItem(request.id);
+                      return result;
+                    }}
+                  />
+                </div>
+              ))}
               {chat.permissions.map((request) => (
                 <div key={request.requestId} className="wide:w-full wide:max-w-[1040px]">
                   <PermissionCard
@@ -1040,6 +1336,8 @@ export function ChatScreen({
           </div>
 
           <div ref={bottomRef} className="flex shrink-0 flex-col gap-2 wide:w-full">
+            {messageNotice !== null && <p role="status" className="text-sm text-muted-foreground">{messageNotice}</p>}
+            {plan !== undefined && <PlanDock key={current.id} entries={plan.entries} />}
             {working !== undefined && (
               <div
                 role="status"
@@ -1047,6 +1345,8 @@ export function ChatScreen({
               >
                 {controller.resuming ? (
                   <LoaderCircle className="size-4 shrink-0 animate-spin text-running motion-reduce:animate-none" aria-hidden="true" />
+                ) : waitingForQuestion ? (
+                  <MessageCircleQuestion className="size-4 shrink-0" aria-hidden="true" />
                 ) : chat.status === 'running' ? (
                   <RunningDots />
                 ) : (
@@ -1062,6 +1362,36 @@ export function ChatScreen({
                   <Button onClick={() => void controller.resume()}>{t('composer.resume')}</Button>
                 )}
               </div>
+            )}
+
+            {controller.promptQueue.length > 0 && (
+              <section aria-label={t('queue.title')} data-slot="prompt-queue" className="origin-bottom rounded-lg border border-border bg-card motion-safe:animate-enter-scale">
+                <p role="status" className="px-3 pt-2 text-xs font-medium text-muted-foreground">
+                  {t('queue.count', { count: controller.promptQueue.length })}
+                </p>
+                <ol className="max-h-32 divide-y divide-border overflow-y-auto">
+                  {controller.promptQueue.map((item) => (
+                    <li key={item.id} className="flex min-w-0 items-center gap-1 pl-3 pr-1">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{item.preview || t('queue.attachments', { count: item.attachments })}</p>
+                        {item.failed && <p className="text-xs text-destructive">{t('queue.failed')}</p>}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('queue.remove')}
+                        onClick={() => {
+                          setSendError(null);
+                          void api.removeQueuedPrompt(current.id, item.id).catch(setSendError);
+                        }}
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    </li>
+                  ))}
+                </ol>
+              </section>
             )}
 
             {(attachments.drafts.length > 0 || attachNotice !== null) && (
@@ -1095,16 +1425,7 @@ export function ChatScreen({
             )}
 
             {menuQuery !== undefined && (
-              <SlashMenu
-                commands={controller.commands}
-                query={menuQuery}
-                search={
-                  commandsOpen
-                    ? { onChange: setCommandQuery, onClose: () => setCommandsOpen(false) }
-                    : undefined
-                }
-                onPick={pickCommand}
-              />
+              <SlashMenu commands={controller.commands} query={menuQuery} onPick={pickCommand} />
             )}
 
             {historyRowVisible && (
@@ -1136,6 +1457,21 @@ export function ChatScreen({
               </div>
             )}
 
+            {dictating && (
+              <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
+                <span role="status">
+                  {dictation.stage === 'recording'
+                    ? t('transcription.recording', { seconds: dictation.elapsed })
+                    : t(`transcription.${dictation.stage === 'starting' ? 'starting' : 'transcribing'}`)}
+                </span>
+                <Button type="button" variant="ghost" size="icon" data-slot="dictation-cancel" aria-label={t('transcription.cancel')} onClick={dictation.cancel}>
+                  <X aria-hidden="true" />
+                </Button>
+              </div>
+            )}
+            {dictation.failure !== null && (
+              <p data-slot="dictation-error" role="alert" className="pb-1 text-sm text-destructive">{t(`transcription.${dictation.failure}`)}</p>
+            )}
             <form
               data-slot="chat-input"
               className="flex shrink-0 items-end gap-1.5 border-t border-border pt-2 pb-[max(8px,env(safe-area-inset-bottom,0px))]"
@@ -1161,22 +1497,6 @@ export function ChatScreen({
               >
                 <Paperclip aria-hidden="true" />
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                data-slot="command-button"
-                aria-label={t('composer.commands')}
-                aria-expanded={commandsOpen}
-                className={cn('text-muted-foreground', commandsOpen && 'bg-accent text-foreground')}
-                disabled={!inputEnabled || sending}
-                onClick={() => {
-                  setCommandQuery('');
-                  setCommandsOpen((open) => !open);
-                }}
-              >
-                <SquareSlash aria-hidden="true" />
-              </Button>
               <textarea
                 ref={textarea}
                 data-slot="chat-textarea"
@@ -1185,6 +1505,7 @@ export function ChatScreen({
                 placeholder={placeholder}
                 disabled={!composerOpen}
                 onChange={(event) => {
+                  setHistoryCursor(IDLE_PROMPT_CURSOR);
                   setDraft(event.target.value);
                   setCaret(event.target.selectionStart);
                 }}
@@ -1198,16 +1519,31 @@ export function ChatScreen({
                   resumable ? 'min-h-[4.25rem]' : 'min-h-11',
                 )}
               />
-              {/* Below 360px the text would take the room the field needs: an icon, with the text kept for screen readers. */}
+              {(transcriptionStatus?.state === 'ready' || dictating) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t(dictation.stage === 'recording' ? 'transcription.stop' : 'transcription.start')}
+                  data-slot="dictation-button"
+                  className={cn('text-muted-foreground', dictation.stage === 'recording' && 'text-destructive')}
+                  disabled={dictation.stage !== 'recording' && (!composerOpen || sending || dictating)}
+                  onClick={() => void (dictation.stage === 'recording' ? dictation.stop() : dictation.start())}
+                >
+                  {dictation.stage === 'recording' ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
+                </Button>
+              )}
               {/* Keyed by the send count: each send remounts the button, so it pops once. Enabled and disabled fade in the base button. */}
               <Button
                 key={sends}
                 type="submit"
-                className={cn('px-3.5 max-[359px]:size-11 max-[359px]:px-0', sends > 0 && 'animate-pop motion-reduce:animate-none')}
+                size="icon"
+                aria-label={sendLabel}
+                title={sendLabel}
+                className={cn('rounded-full', sends > 0 && 'animate-pop motion-reduce:animate-none')}
                 disabled={!canSend}
               >
-                <SendHorizontal className="hidden max-[359px]:block" aria-hidden="true" />
-                <span className="max-[359px]:sr-only">{sending ? t('composer.sending') : t('composer.send')}</span>
+                <Send aria-hidden="true" />
               </Button>
             </form>
             {composerOpen && (
@@ -1231,6 +1567,14 @@ export function ChatScreen({
             />
           )}
 
+          {actionsMessage !== null && (
+            <ActionSheet
+              label={t('messageActions.title')}
+              title={t('messageActions.title')}
+              items={messageActions(actionsMessage)}
+              onClose={() => setActionsMessage(null)}
+            />
+          )}
           {commandSheet !== null && (
             <ActionSheet
               label={

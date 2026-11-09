@@ -2,10 +2,13 @@
   "title": "This machine's devices",
   "list": "Devices",
   "current": "this device",
+  "expired": "Expired",
   "meta": "Created {{created}} · last seen {{lastSeen}}",
   "metaNeverSeen": "Created {{created}} · never seen",
   "revoke": "Revoke",
   "revokeLabel": "Revoke {{name}}",
-  "confirmCurrent": "Revoke \"{{name}}\"? This is this device: it loses access and must pair again.",
-  "confirmOther": "Revoke \"{{name}}\"? It loses access to this machine immediately."
+  "confirmTitle": "Revoke \"{{name}}\"?",
+  "confirmText": "It loses access to this machine right away, and its notifications stop. To use the app there again, pair it once more.",
+  "confirmAction": "Revoke",
+  "revoking": "Revoking…"
 }

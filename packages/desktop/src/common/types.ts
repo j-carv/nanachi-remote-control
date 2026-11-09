@@ -31,6 +31,8 @@ export interface PairingCode {
   code: string;
   /** Epoch ms. */
   expiresAt: number;
+  /** Private HTTPS origin discovered through the Windows Tailscale installation. */
+  externalOrigin?: string;
 }
 
 export type UpdateCheckResult =

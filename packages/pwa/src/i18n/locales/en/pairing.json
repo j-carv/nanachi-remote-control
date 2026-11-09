@@ -23,5 +23,14 @@
     "codeLength": "The code has 6 digits.",
     "tailscaleUnavailable": "Signing in with Tailscale is not enabled for this account on this PC. Use a pairing code.",
     "unexpected": "Unexpected error while pairing."
+  },
+  "link": {
+    "connecting": "Connecting to the PC…",
+    "installTitle": "Add Nanachi to the Home Screen",
+    "installIntro": "On iPhone and iPad, the Home Screen app has its own storage, separate from Safari. Pairing in Safari does not carry over to it.",
+    "installStep1": "Tap the Share button in Safari.",
+    "installStep2": "Choose Add to Home Screen, then tap Add.",
+    "installStep3": "Open Nanachi from its Home Screen icon. It should sign in by itself.",
+    "installContinue": "Pair in Safari instead"
   }
 }

@@ -115,15 +115,12 @@ describe('chat cards in English', () => {
         createElement(SlashMenu, {
           commands,
           query,
-          search: { onChange: noop, onClose: noop },
           onPick: noop,
         }),
       );
     const withCommand = menu([command], '');
     expect(withCommand).toContain('aria-label="Agent commands"');
-    expect(withCommand).toContain('aria-label="Search commands"');
-    expect(withCommand).toContain('placeholder="Search commands"');
-    expect(withCommand).toContain('aria-label="Close commands"');
+    expect(withCommand).not.toContain('type="search"');
     expect(withCommand).toContain('Troca o modelo');
     expect(menu([], '')).toContain('This agent hasn&#x27;t announced any commands.');
     expect(menu([command], ' zzz ')).toContain('No command matches “zzz”.');

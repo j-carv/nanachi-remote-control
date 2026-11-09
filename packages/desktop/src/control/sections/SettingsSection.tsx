@@ -1,5 +1,5 @@
 import { Check, CircleAlert, Download, FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Language } from '../../common/i18n/index.js';
 import type { UpdateCheckResult } from '../../common/types.js';
@@ -13,9 +13,8 @@ import { Group, Row, SectionHeading } from '../ui/Surface.js';
 import { Switch } from '../ui/Switch.js';
 import { useToast } from '../ui/Toast.js';
 import { Page } from './Page.js';
-
-/** How long the uninstall button stays off after it was pressed. */
-const UNINSTALL_GUARD_MS = 8000;
+import { WhisperSettings } from './WhisperSettings.js';
+import { TranscriptionSettings } from './TranscriptionSettings.js';
 
 export interface SettingsViewProps {
   /** Desktop's language, and the way to change it. `languageBusy`: a change is on its way to main. */
@@ -27,6 +26,8 @@ export interface SettingsViewProps {
   autostart: { value: boolean; supported: boolean } | null;
   autostartBusy: boolean;
   onAutostart: (value: boolean) => void;
+  whisper?: ReactNode;
+  transcription?: ReactNode;
   update: UpdateCheckResult | null;
   checking: boolean;
   onCheckUpdate: () => void;
@@ -60,7 +61,7 @@ function UpdateLine({ update }: { update: UpdateCheckResult | null }) {
   }
 }
 
-export function SettingsView({ language, onLanguage, languageBusy, version, dataFolder, autostart, autostartBusy, onAutostart, update, checking, onCheckUpdate, onDownload, onOpenDataFolder, uninstalling, onUninstall }: SettingsViewProps) {
+export function SettingsView({ language, onLanguage, languageBusy, version, dataFolder, autostart, autostartBusy, onAutostart, whisper, transcription, update, checking, onCheckUpdate, onDownload, onOpenDataFolder, uninstalling, onUninstall }: SettingsViewProps) {
   const { t } = useTranslation();
   return (
     <>
@@ -88,6 +89,10 @@ export function SettingsView({ language, onLanguage, languageBusy, version, data
           />
         </Group>
       </section>
+
+      {transcription}
+
+      {whisper}
 
       <section aria-labelledby="settings-updates">
         <SectionHeading id="settings-updates">{t('settings.updates')}</SectionHeading>
@@ -155,17 +160,10 @@ export function SettingsSection() {
   const reported = useReported();
   const [autostart, setAutostart] = useState<{ value: boolean; supported: boolean } | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
-  const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
+  // The last check lives in the shell, so a result survives a switch of section.
+  const { updateCheck: update, setUpdateCheck: setUpdate } = shell;
   const [checking, setChecking] = useState(false);
-  const [uninstalling, setUninstalling] = useState(false);
-  const uninstallStarted = useRef(false);
-  const uninstallTimer = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (uninstallTimer.current !== null) window.clearTimeout(uninstallTimer.current);
-    },
-    [],
-  );
+  const uninstallGuard = shell.uninstallGuard;
 
   useEffect(() => {
     let active = true;
@@ -209,17 +207,11 @@ export function SettingsSection() {
     }
   };
 
-  // The uninstaller's own window opens a few seconds after the click; until then the button stays off (a ref as well as
-  // state, so two clicks in the same frame cannot both get through).
+  // The uninstaller's own window opens a few seconds after the click; until then the button stays off. The guard lives in the
+  // shell and is set synchronously, so two clicks in the same frame cannot both get through.
   const uninstall = (): void => {
-    if (uninstallStarted.current) return;
-    uninstallStarted.current = true;
-    setUninstalling(true);
+    if (!uninstallGuard.press()) return;
     reported(() => api.settings.uninstall(), t('settings.uninstallFailed'));
-    uninstallTimer.current = window.setTimeout(() => {
-      uninstallStarted.current = false;
-      setUninstalling(false);
-    }, UNINSTALL_GUARD_MS);
   };
 
   const overview = shell.overview.status === 'ready' ? shell.overview.data : null;
@@ -236,12 +228,14 @@ export function SettingsSection() {
         autostart={autostart}
         autostartBusy={autostartBusy}
         onAutostart={(value) => void changeAutostart(value)}
+        transcription={<TranscriptionSettings />}
+        whisper={<WhisperSettings />}
         update={update}
         checking={checking}
         onCheckUpdate={() => void checkUpdate()}
         onDownload={(url) => reported(() => api.settings.openUpdate(url), t('settings.openUpdateFailed'))}
         onOpenDataFolder={() => reported(() => api.openDataFolder(), t('common.openDataFolderFailed'))}
-        uninstalling={uninstalling}
+        uninstalling={uninstallGuard.active}
         onUninstall={uninstall}
       />
     </Page>

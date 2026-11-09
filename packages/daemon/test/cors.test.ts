@@ -19,16 +19,16 @@ function preflight(url: string, method: string, headers = 'authorization,content
 }
 
 describe('CORS (PLAN: origens de corsOrigins, sem credenciais)', () => {
-  it('preflight de origem permitida anuncia só GET/POST/PATCH/DELETE e os headers do contrato', async () => {
+  it('advertises supported REST methods and required headers for schedule updates', async () => {
     const daemon = await env.start({ config: { corsOrigins: [ORIGIN] } });
     const res = await daemon.app.inject(
-      preflight('/api/workspaces/abc', 'PATCH', 'authorization,content-type,x-file-name'),
+      preflight('/api/workspaces/abc/schedules/job', 'PUT', 'authorization,content-type,x-file-name'),
     );
 
     expect(res.statusCode).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe(ORIGIN);
     const methods = String(res.headers['access-control-allow-methods']).split(',').map((m) => m.trim());
-    expect(methods.sort()).toEqual(['DELETE', 'GET', 'PATCH', 'POST']);
+    expect(methods.sort()).toEqual(['DELETE', 'GET', 'PATCH', 'POST', 'PUT']);
     const allowed = String(res.headers['access-control-allow-headers'])
       .split(',')
       .map((h) => h.trim().toLowerCase());
@@ -36,12 +36,21 @@ describe('CORS (PLAN: origens de corsOrigins, sem credenciais)', () => {
     expect(allowed).not.toContain('x-caption');
   });
 
-  it('método fora da lista (PUT) não entra em Access-Control-Allow-Methods', async () => {
+  it('does not advertise unsupported TRACE requests', async () => {
     const daemon = await env.start({ config: { corsOrigins: [ORIGIN] } });
-    const res = await daemon.app.inject(preflight('/api/workspaces/abc', 'PUT'));
+    const res = await daemon.app.inject(preflight('/api/workspaces/abc/schedules/job', 'TRACE'));
 
     const methods = String(res.headers['access-control-allow-methods'] ?? '');
-    expect(methods).not.toMatch(/\bPUT\b/);
+    expect(methods).not.toMatch(/\bTRACE\b/);
+  });
+
+  it('does not authorize schedule updates from an unlisted origin', async () => {
+    const daemon = await env.start({ config: { corsOrigins: [ORIGIN] } });
+    const request = preflight('/api/workspaces/abc/schedules/job', 'PUT');
+    request.headers.origin = 'https://unlisted.example.com';
+    const response = await daemon.app.inject(request);
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    expect(response.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
   it('nunca envia Access-Control-Allow-Credentials (sem cookies)', async () => {

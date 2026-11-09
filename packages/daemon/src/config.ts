@@ -1,14 +1,26 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { join } from 'node:path';
-import { ConfigSchema, DEFAULT_AGENTS, type Config } from '@nanachi/shared';
+import { isDeepStrictEqual } from 'node:util';
+import { ConfigSchema, DEFAULT_AGENTS, type AgentConfig, type Config } from '@nanachi/shared';
 
 /** Config com machineName sempre preenchido (default: hostname). */
 export type LoadedConfig = Config & { machineName: string };
 
-/** Agentes default que o arquivo não define entram em memória; os do arquivo vencem no mesmo id. */
+/**
+ * The `agy` entry that daemons before the ACP switch wrote into config.json (Antigravity was a terminal then). An
+ * entry exactly like this one counts as unset, so the current default applies. Any change keeps the user's entry.
+ */
+const LEGACY_AGY_TERMINAL: AgentConfig = { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' };
+
+/**
+ * Agentes default que o arquivo não define entram em memória; os do arquivo vencem no mesmo id.
+ * O `agy` do default antigo (terminal, ver LEGACY_AGY_TERMINAL) não conta como definido.
+ */
 function withDefaultAgents(config: Config): Config {
-  return { ...config, agents: { ...DEFAULT_AGENTS, ...config.agents } };
+  const agents = { ...config.agents };
+  if (isDeepStrictEqual(agents.agy, LEGACY_AGY_TERMINAL)) delete agents.agy;
+  return { ...config, agents: { ...DEFAULT_AGENTS, ...agents } };
 }
 
 /** `NANACHI_HOME` ou `%USERPROFILE%\.nanachi-remote`. */

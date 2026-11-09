@@ -233,6 +233,38 @@ describe('loadMachineOverview', () => {
     expect(result.details.agents).toEqual(['Omp']);
   });
 
+  it('keeps automation runs out of home rows, activity, counts and summary targets', async () => {
+    const ordinary = session({ id: 'ordinary', status: 'running', updatedAt: 3 });
+    const result = await loadMachineOverview(MACHINE, {
+      fetchHealth: async () => health,
+      client: () => client({
+        listSessions: async (id) => id === 'w1'
+          ? [
+              ordinary,
+              session({ id: 'scheduled-running', status: 'running', updatedAt: 100, automationRunId: 'run-1' }),
+            ]
+          : [
+              session({
+                id: 'scheduled-waiting', workspaceId: 'w2', status: 'awaiting_permission', updatedAt: 101,
+                automationRunId: 'run-2',
+              }),
+            ],
+      }),
+      now: clock(),
+    });
+
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error('Expected a ready overview');
+    expect(result.details.workspaceCount).toBe(2);
+    expect(result.details.sessions).toEqual([ordinary]);
+    expect(featuredSessions(result.details.sessions)).toEqual([ordinary]);
+    expect(countSessions(result.details.sessions)).toEqual({ running: 1, awaiting: 0, idle: 0 });
+    expect(lastActivity(result.details.sessions)).toBe(3);
+    expect(summarize([{ machineId: MACHINE.id, overview: result }])).toEqual({
+      running: 1, awaiting: 0, awaitingTarget: null,
+    });
+  });
+
   it('keeps the card when the agent accounts fail, with no agent chips', async () => {
     const result = await loadMachineOverview(MACHINE, {
       fetchHealth: async () => health,

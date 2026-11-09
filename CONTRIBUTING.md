@@ -1,6 +1,8 @@
 # Contributing to Nanachi Remote
 
-Nanachi Remote is a public repository maintained by [@j-carv](https://github.com/j-carv). Contributions are welcome, but a public repository is not permission to push, merge, or change repository settings. Public visibility is not an automatic license grant; follow any applicable license and GitHub terms. This guide does not add a license, CLA, DCO, or signature requirement.
+Nanachi Remote is a project by Everward Research. [@j-carv](https://github.com/j-carv) maintains the public repository. The project's original code is available under the [MIT License](LICENSE). See the [license scope](README.md#license) for details.
+
+Contributions are welcome. Repository permissions govern who can push, merge, or change settings. This guide does not add a CLA, DCO, or signature requirement.
 
 ## Maintainer review and merge policy
 
@@ -87,5 +89,11 @@ This template is an editing aid, not validation. Individual local commits do not
 Use synthetic examples and a disposable test workspace. Never commit or attach real credentials, tokens, pairing codes, personal data, private agent conversations, desktop captures, or real daemon data. This includes material in issue text, logs, screenshots, videos, fixtures, and pull-request descriptions.
 
 Keep `%USERPROFILE%\.nanachi-remote` and its configuration, databases, device records, and session data out of contributions. Do not publish real tailnet names, account identifiers, private paths, or agent output. If visual evidence is necessary, capture only a dedicated test interface using synthetic data, not your real desktop, and inspect the entire image for sensitive information before sharing it. For logs, provide only the minimal sanitized excerpt needed to explain the issue.
+
+Keep conversation exports outside the checkout. Exported HTML can embed Base64-encoded transcripts, credentials, and private configuration; encoding is not redaction. Root `omp-session-*.html` exports and `e2e/.mcp-*.json` state files are ignored as a publication safeguard, not as permission to share them.
+
+Write disposable test credentials and preview tickets only inside the test's temporary data directory, remove them when the fixture stops, and never print their values. Use synthetic user names and paths in fixtures. Before staging, inspect untracked files as well as tracked changes.
+
+Use a GitHub `noreply` address for this repository's Git identity. Sanitizing the current checkout does not remove personal data from existing commits. Revoking credentials and rewriting published history are separate operations; history rewriting and force-pushing require explicit maintainer authorization.
 
 A useful pull request explains what changed, why it is needed, how it was checked, and any remaining limitations. Do not paste secrets into a public report; removing them later does not undo their exposure.

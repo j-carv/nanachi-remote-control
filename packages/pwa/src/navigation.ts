@@ -12,8 +12,13 @@ export type Route =
   | { kind: 'folders' }
   | { kind: 'devices' }
   | { kind: 'sessions'; workspace: Workspace }
+  | { kind: 'schedules'; workspace: Workspace }
   | { kind: 'chat'; workspace: Workspace; session: Session }
   | { kind: 'changes'; workspace: Workspace; session: Session }
+  /** Histórico de commits do branch da sessão (HEAD), uma página por vez. */
+  | { kind: 'commits'; workspace: Workspace; session: Session }
+  /** Um commit do histórico, com os arquivos que ele mudou. `hash` é o completo, como a lista deu. */
+  | { kind: 'commit'; workspace: Workspace; session: Session; hash: string }
   /** Explorador de arquivos do workspace. `path` é a pasta aberta, relativa à raiz ("" = raiz). */
   | { kind: 'files'; workspace: Workspace; path: string }
   /** Editor de um arquivo de texto do workspace. `path` é relativo à raiz do workspace. */

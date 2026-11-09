@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 const buttonVariants = cva(
   // Colour and position ease together. The press scales to 0.98. `hover:` only applies where a pointer can hover,
   // so a touch screen never lifts a button. The lift is a 1 px move (no shadow, per the design rules); ghost buttons do not lift.
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-base font-medium whitespace-nowrap transition-[translate,scale,background-color,color,border-color,box-shadow,opacity] duration-200 ease-out-premium outline-none select-none active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-5 [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-base font-medium whitespace-nowrap transition-[translate,scale,background-color,color,border-color,box-shadow,opacity] duration-180 ease-out-premium outline-none select-none active:scale-[0.98] active:duration-110 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-5 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

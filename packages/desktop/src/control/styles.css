@@ -79,9 +79,8 @@
   /* desktop deltas: the frame (title bar and sidebar) and the text on a destructive fill */
   --ui-chrome: oklch(0.965 0 0);
   --ui-destructive-foreground: oklch(1 0 0);
-  /* Motion tokens, used by the transitions in the TSX and the keyframes below. Premium: enters and moves. Spring: the one pop. */
-  --ease-premium: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Motion curve used by the transitions and keyframes. */
+  --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -203,21 +202,21 @@
 }
 
 /*
- * Motion vocabulary. Enters and moves use the premium ease; the spring is reserved for the one pop of feedback (a copied
- * check). Durations stay short (120-280 ms). An element that already has a `transform` (a placed tooltip) animates `scale`
+ * Motion vocabulary. Arrivals settle quickly, and only a confirmation gets a small pop.
+ * Durations stay short (120-280 ms). An element that already has a `transform` (a placed tooltip) animates `scale`
  * instead, so the two never fight. Under prefers-reduced-motion every animation and transition is cut to its end state
  * (base layer); only the spinner keeps turning.
  */
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    translate: 0 4px;
   }
 }
 @keyframes row-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    translate: 0 3px;
   }
 }
 @keyframes bar-enter {
@@ -229,7 +228,7 @@
 @keyframes dialog-enter {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.97);
+    transform: translateY(4px) scale(0.985);
   }
 }
 @keyframes dialog-leave {
@@ -275,11 +274,11 @@
 @keyframes pop {
   0% {
     opacity: 0;
-    scale: 0.5;
+    scale: 0.92;
   }
   60% {
     opacity: 1;
-    scale: 1.12;
+    scale: 1.045;
   }
   100% {
     opacity: 1;
@@ -306,13 +305,13 @@
   }
 }
 
-/* Enters: the page once per section, rows with a stagger (`--row-index`, capped at the 8th row), bars, toasts, popovers. */
+/* The capped stagger groups arriving rows without delaying the end of the list. */
 @utility animate-page {
-  animation: page-enter 240ms var(--ease-premium) backwards;
+  animation: page-enter 210ms var(--ease-premium) backwards;
 }
 @utility animate-row {
-  animation: row-enter 260ms var(--ease-premium) backwards;
-  animation-delay: calc(min(var(--row-index, 0), 8) * 40ms);
+  animation: row-enter 200ms var(--ease-premium) backwards;
+  animation-delay: calc(min(var(--row-index, 0), 5) * 18ms);
 }
 @utility animate-bar {
   animation: bar-enter 240ms var(--ease-premium) backwards;
@@ -335,7 +334,7 @@
 }
 /* Feedback: a pop when a check appears, a soft breath for a running state, a sweep over a placeholder while data loads. */
 @utility animate-pop {
-  animation: pop 380ms var(--ease-spring) backwards;
+  animation: pop 220ms var(--ease-premium) backwards;
 }
 @utility animate-breathe {
   animation: breathe 2.6s ease-in-out infinite;

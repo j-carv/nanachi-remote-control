@@ -8,7 +8,8 @@ import { resolvePwaBuildDir, type StagePaths } from './stage.js';
  * not (or with `--fresh`): the stage is ~1 GB and an `npm install` away from minutes of work.
  *
  * The fingerprint is a hash of the path, size and mtime of every file the stage copies from the repository (the shared
- * and daemon builds, the PWA build the supervisor published, the icon) plus the Node version whose `node.exe` is copied.
+ * and daemon builds, the PWA build the supervisor published, the icon), of the stage script itself (its rules decide
+ * what the stage keeps, so a changed script must restage), plus the Node version whose `node.exe` is copied.
  * It is written next to the stage after a successful stage run.
  */
 
@@ -29,6 +30,8 @@ export function stageInputFiles(paths: Pick<StagePaths, 'repoRoot'>): string[] {
   const daemon = join(paths.repoRoot, 'packages', 'daemon');
   const pwa = join(paths.repoRoot, 'packages', 'pwa');
   const files = [
+    join(paths.repoRoot, 'LICENSE'),
+    join(paths.repoRoot, 'README.md'),
     join(shared, 'package.json'),
     ...listFiles(join(shared, 'dist')),
     join(daemon, 'package.json'),
@@ -36,6 +39,7 @@ export function stageInputFiles(paths: Pick<StagePaths, 'repoRoot'>): string[] {
     ...(existsSync(join(daemon, 'bin')) ? listFiles(join(daemon, 'bin')) : []),
     ...listFiles(resolvePwaBuildDir(pwa)),
     join(pwa, 'public', 'icon-192.png'),
+    join(paths.repoRoot, 'packages', 'desktop', 'scripts', 'stage.ts'),
   ];
   return files.sort();
 }

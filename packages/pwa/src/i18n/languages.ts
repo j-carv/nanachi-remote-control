@@ -1,11 +1,19 @@
-/** Languages the app is translated into. The labels are always written in their own language. */
-export const SUPPORTED_LANGUAGES = [
-  { code: 'pt-BR', label: 'Português (Brasil)' },
-  { code: 'en', label: 'English' },
-  { code: 'es', label: 'Español' },
-] as const;
+import { APP_LANGUAGES, type AppLanguage } from '@nanachi/shared';
 
-export type Language = (typeof SUPPORTED_LANGUAGES)[number]['code'];
+/** The labels are always written in their own language. */
+const LANGUAGE_LABELS: Record<AppLanguage, string> = {
+  'pt-BR': 'Português (Brasil)',
+  en: 'English',
+  es: 'Español',
+};
+
+/**
+ * Languages the app is translated into. The codes come from the shared protocol (`APP_LANGUAGES`), which the daemon
+ * also uses to write the push texts, so the two lists cannot drift apart.
+ */
+export const SUPPORTED_LANGUAGES = APP_LANGUAGES.map((code) => ({ code, label: LANGUAGE_LABELS[code] }));
+
+export type Language = AppLanguage;
 
 /** The maintainer's language, used when nothing is stored (it also keeps every E2E selector valid). */
 export const DEFAULT_LANGUAGE: Language = 'pt-BR';

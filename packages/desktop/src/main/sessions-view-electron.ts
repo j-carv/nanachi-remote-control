@@ -1,8 +1,9 @@
-import { nativeTheme, session, shell, WebContentsView } from 'electron';
+import { nativeTheme, session, shell, WebContentsView, type WebContents } from 'electron';
 import {
   backgroundColor,
   decideWindowOpen,
   isPermissionAllowed,
+  isSessionMicrophoneAllowed,
   panelWebPreferences,
   shouldAllowNavigation,
 } from './panel-policy.js';
@@ -19,6 +20,7 @@ let permissionsReady = false;
 
 /** The Electron view behind each handle, for the host that attaches it to the control window. */
 const natives = new WeakMap<ViewHandle, WebContentsView>();
+const sessionContents = new WeakSet<WebContents>();
 
 /** The `WebContentsView` of a handle made by `createElectronView`. */
 export function nativeViewOf(handle: ViewHandle): WebContentsView {
@@ -28,19 +30,29 @@ export function nativeViewOf(handle: ViewHandle): WebContentsView {
 }
 
 /**
- * The PWA runs in the default session, as the old panel window did: only the clipboard and fullscreen, and only for the
- * daemon's own origin. The control center page has its own partition and never shares it.
+ * The PWA runs in the default session. The microphone is available to the sessions view's own main frame.
+ * The control center page has its own partition and never shares it.
  */
 function setUpPermissions(origin: () => string): void {
   if (permissionsReady) return;
   permissionsReady = true;
   const target = session.defaultSession;
-  target.setPermissionRequestHandler((_contents, permission, callback, details) => {
+  target.setPermissionRequestHandler((contents, permission, callback, details) => {
+    if (permission === 'media') {
+      const types = 'mediaTypes' in details ? details.mediaTypes ?? [] : [];
+      callback(isSessionMicrophoneAllowed(contents !== null && sessionContents.has(contents), details.isMainFrame,
+        types, details.requestingUrl, origin()));
+      return;
+    }
     callback(isPermissionAllowed(permission, details.requestingUrl, origin()));
   });
-  target.setPermissionCheckHandler((_contents, permission, requestingOrigin) =>
-    isPermissionAllowed(permission, `${requestingOrigin}/`, origin()),
-  );
+  target.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
+    if (permission === 'media') {
+      return isSessionMicrophoneAllowed(contents !== null && sessionContents.has(contents), details.isMainFrame,
+        details.mediaType === undefined ? [] : [details.mediaType], requestingOrigin, origin());
+    }
+    return isPermissionAllowed(permission, requestingOrigin, origin());
+  });
 }
 
 /**
@@ -52,6 +64,7 @@ export function createElectronView(options: ElectronViewOptions): ViewHandle {
   setUpPermissions(options.origin);
   const view = new WebContentsView({ webPreferences: panelWebPreferences(options.preloadPath) });
   const contents = view.webContents;
+  sessionContents.add(contents);
   view.setVisible(false);
   // No white flash in dark mode, and the other way round.
   view.setBackgroundColor(backgroundColor(nativeTheme.shouldUseDarkColors));

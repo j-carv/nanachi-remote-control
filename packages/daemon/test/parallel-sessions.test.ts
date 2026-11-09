@@ -27,8 +27,7 @@ const env = setupDaemonTests();
 
 async function start(): Promise<TestDaemon> {
   const agents: Record<string, AgentConfig> = { fake: fakeAgent() };
-  // Aviso do phone-send desligado: o eco do fake inclui o texto do prompt, e estes testes comparam esse eco.
-  return env.start({ config: { allowedRoots: [base], agents, phoneSendHint: false } });
+  return env.start({ config: { allowedRoots: [base], agents } });
 }
 
 async function workspaceId(daemon: TestDaemon): Promise<string> {

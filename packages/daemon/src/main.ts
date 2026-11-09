@@ -5,6 +5,7 @@ import { WebSocket } from 'ws';
 import { loadConfig, resolveNanachiHome, startupWarnings } from './config.js';
 import { openDatabase } from './db.js';
 import { LiveConnections } from './live-connections.js';
+import { inactivityLimitMs } from './pairing.js';
 import { createPushNotifier } from './push.js';
 import { saveIdleSessionsForReload, takeResumeAfterReload } from './reload-resume.js';
 import { RELOAD_EXIT_CODE, ReloadWatcher } from './reload-watch.js';
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
     machineId: machine.id,
     vapid,
     connections,
+    inactivityMs: inactivityLimitMs(config.deviceInactivityDays),
     warn: (fields, message) => app.log.warn(fields, message),
   });
   const app = await buildServer({

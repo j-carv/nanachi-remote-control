@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { SessionDiffResponse } from '@nanachi/shared';
+import type { DiffFile, SessionDiffResponse } from '@nanachi/shared';
 import { EMPTY_TREE, hasCommits, isGitRepo, runGit } from './git.js';
 
 /** Soma dos patches de uma resposta. Passou disso, os patches seguintes ficam vazios e `truncated` vai para true. */
@@ -9,7 +9,6 @@ export const DIFF_MAX_BYTES = 1024 * 1024;
 /** Não rastreado maior que isso não é lido (nem contado): só o stat. Evita ler um arquivo enorme por request. */
 export const UNTRACKED_READ_MAX_BYTES = 1024 * 1024;
 
-type DiffFile = SessionDiffResponse['files'][number];
 type FileStatus = DiffFile['status'];
 
 interface Counts {
@@ -17,10 +16,19 @@ interface Counts {
   deletions: number;
 }
 
-interface TrackedChange extends Counts {
+export interface TrackedChange extends Counts {
   path: string;
   oldPath: string | undefined;
   status: FileStatus;
+}
+
+/**
+ * What a `git diff` compares. `revs` is `[base]` (base against the working tree) or `[base, commit]` (two commits).
+ * `relative` limits the paths to the cwd, as the session diff does; a commit's files are listed from the repository root.
+ */
+export interface DiffRange {
+  readonly revs: readonly string[];
+  readonly relative: boolean;
 }
 
 const NO_COUNTS: Counts = { additions: 0, deletions: 0 };
@@ -82,10 +90,15 @@ function parseNameStatus(out: string): Array<Omit<TrackedChange, keyof Counts>> 
   return changes;
 }
 
-async function trackedChanges(cwd: string, base: string): Promise<TrackedChange[]> {
+function diffArgs(range: DiffRange, options: readonly string[]): string[] {
+  return ['diff', ...range.revs, ...(range.relative ? ['--relative'] : []), ...options];
+}
+
+/** Arquivos rastreados que mudaram no intervalo (status, nomes, +/−). Sem patch: ver `trackedFiles`. */
+export async function trackedChanges(cwd: string, range: DiffRange): Promise<TrackedChange[]> {
   const [numstat, nameStatus] = await Promise.all([
-    runGit(['diff', base, '--numstat', '-z', '-M', '--relative'], { cwd }),
-    runGit(['diff', base, '--name-status', '-z', '-M', '--relative'], { cwd }),
+    runGit(diffArgs(range, ['--numstat', '-z', '-M']), { cwd }),
+    runGit(diffArgs(range, ['--name-status', '-z', '-M']), { cwd }),
   ]);
   const counts = parseNumstat(numstat);
   return parseNameStatus(nameStatus).map((change) => ({ ...change, ...(counts.get(change.path) ?? NO_COUNTS) }));
@@ -101,11 +114,11 @@ function isMaxBufferError(error: unknown): boolean {
 }
 
 /** Patch de um arquivo rastreado. `undefined` = não coube no que sobrou do limite. */
-async function trackedPatch(cwd: string, base: string, change: TrackedChange, remaining: number): Promise<string | undefined> {
+async function trackedPatch(cwd: string, range: DiffRange, change: TrackedChange, remaining: number): Promise<string | undefined> {
   if (remaining <= 0) return undefined;
   const paths = change.oldPath === undefined ? [change.path] : [change.oldPath, change.path];
   try {
-    return await runGit(['diff', base, '-M', '--relative', '--no-color', '--no-ext-diff', '--', ...paths], {
+    return await runGit([...diffArgs(range, ['-M', '--no-color', '--no-ext-diff']), '--', ...paths], {
       cwd,
       maxBuffer: remaining,
     });
@@ -113,6 +126,33 @@ async function trackedPatch(cwd: string, base: string, change: TrackedChange, re
     if (isMaxBufferError(error)) return undefined;
     throw error;
   }
+}
+
+/**
+ * Arquivos rastreados com o patch de cada um, enquanto a soma couber em `DIFF_MAX_BYTES`. Quem não cabe fica com patch
+ * vazio e `truncated` vai para true; o que já coube continua. `used` é o total gasto, para quem soma mais arquivos.
+ */
+export async function trackedFiles(
+  cwd: string,
+  range: DiffRange,
+  changes: readonly TrackedChange[],
+): Promise<{ files: DiffFile[]; used: number; truncated: boolean }> {
+  const files: DiffFile[] = [];
+  let used = 0;
+  let truncated = false;
+  for (const change of changes) {
+    const patch = await trackedPatch(cwd, range, change, DIFF_MAX_BYTES - used);
+    if (patch === undefined) truncated = true;
+    else used += Buffer.byteLength(patch, 'utf8');
+    files.push({
+      path: change.path,
+      status: change.status,
+      additions: change.additions,
+      deletions: change.deletions,
+      patch: patch ?? '',
+    });
+  }
+  return { files, used, truncated };
 }
 
 /** Linhas e se há byte zero (binário), lendo em pedaços: o arquivo não entra inteiro na memória. */
@@ -181,24 +221,13 @@ async function untrackedEntry(
 export async function sessionDiff(cwd: string): Promise<SessionDiffResponse> {
   if (!(await isGitRepo(cwd))) return { files: [], truncated: false };
   const base = (await hasCommits(cwd)) ? 'HEAD' : EMPTY_TREE;
+  const range: DiffRange = { revs: [base], relative: true };
 
-  const files: DiffFile[] = [];
-  let used = 0;
-  let truncated = false;
+  const tracked = await trackedFiles(cwd, range, await trackedChanges(cwd, range));
+  const files: DiffFile[] = tracked.files;
+  let used = tracked.used;
+  let truncated = tracked.truncated;
   const remaining = (): number => DIFF_MAX_BYTES - used;
-
-  for (const change of await trackedChanges(cwd, base)) {
-    const patch = await trackedPatch(cwd, base, change, remaining());
-    if (patch === undefined) truncated = true;
-    else used += Buffer.byteLength(patch, 'utf8');
-    files.push({
-      path: change.path,
-      status: change.status,
-      additions: change.additions,
-      deletions: change.deletions,
-      patch: patch ?? '',
-    });
-  }
 
   for (const path of await untrackedPaths(cwd)) {
     const entry = await untrackedEntry(cwd, path, remaining());

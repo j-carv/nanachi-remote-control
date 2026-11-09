@@ -44,6 +44,17 @@ export function isPermissionAllowed(permission: string, requestingUrl: string, o
   return ALLOWED_PERMISSIONS.has(permission) && isSameOrigin(requestingUrl, origin);
 }
 
+export function isSessionMicrophoneAllowed(
+  sessionView: boolean,
+  mainFrame: boolean,
+  mediaTypes: readonly string[],
+  requestingUrl: string,
+  origin: string,
+): boolean {
+  return sessionView && mainFrame && mediaTypes.length === 1 && mediaTypes[0] === 'audio' &&
+    isSameOrigin(requestingUrl, origin);
+}
+
 /** Window background before the page paints, so the dark theme does not flash white. Matches `--ui-background`. */
 export function backgroundColor(dark: boolean): string {
   return dark ? '#0a0a0a' : '#fafafa';

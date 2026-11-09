@@ -11,7 +11,7 @@
     "logged_in": "Sesión iniciada",
     "logged_out": "Sin sesión",
     "unknown": "Sin comprobar",
-    "loginHelp": "Inicia sesión desde la terminal del PC (p. ej.: claude, codex login, agy)."
+    "loginHelp": "Inicia sesión desde la terminal del PC (p. ej.: claude, codex login, agy acp --login)."
   },
   "badge": {
     "inUse": "En uso"

@@ -238,6 +238,11 @@ async function stepRunningTurn() {
 }
 
 async function stepNesting() {
+  const activity = page.locator('[data-slot="tool-activity"]', { has: cardOf('tool-sub-agent') });
+  assert.equal(await activity.evaluate((el) => el.open), false, 'activity starts collapsed');
+  const target = await activity.locator(':scope > [data-slot="tool-activity-summary"]').boundingBox();
+  assert.ok(target !== null && target.height >= 44, 'activity disclosure has a mobile tap target');
+  await activity.locator(':scope > [data-slot="tool-activity-summary"]').tap();
   await summaryOf('tool-sub-agent').tap();
   await until('contagem de ações internas aparece', () =>
     hasCount(page.locator('[data-item-id="tool-sub-agent"] [data-slot="tool-inner-count"]', {
@@ -313,6 +318,8 @@ async function stepTurnEnds() {
   await button('Parar').tap();
   await until('turno termina (Parar)', () => statusIs('idle'), 30_000);
   await page.waitForTimeout(300);
+  const activity = page.locator('[data-slot="tool-activity"]', { has: cardOf('tool-sub-agent') });
+  assert.equal(await activity.evaluate((el) => el.open), true, 'manually opened activity survives status updates');
 
   // Depois do fim do turno o que ficou em execução vira "Estado desconhecido"; o subagente terminou.
   assert.equal(await page.locator('[data-slot="chat-timeline"] [data-state="running"]').count(), 0, 'nada mais em andamento');

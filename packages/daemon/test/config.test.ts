@@ -45,13 +45,13 @@ describe('loadConfig', () => {
       corsOrigins: [],
       tailscaleAutoPair: false,
       shellSessions: true,
-      phoneSendHint: true,
       reloadQuietMs: 60000,
+      deviceInactivityDays: 90,
       agents: {
         omp: { label: 'Oh My Pi', command: 'omp', args: ['acp'], env: {}, kind: 'acp' },
         claude: { label: 'Claude Code', command: 'claude-agent-acp', args: [], env: {}, kind: 'acp' },
         codex: { label: 'Codex', command: 'codex-acp', args: [], env: {}, kind: 'acp' },
-        agy: { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' },
+        agy: { label: 'Antigravity', command: 'agy', args: ['acp'], env: {}, kind: 'acp' },
       },
     });
     const written: unknown = JSON.parse(await readFile(join(target, 'config.json'), 'utf8'));
@@ -68,10 +68,44 @@ describe('loadConfig', () => {
       omp: { label: 'Oh My Pi', command: 'omp', args: ['acp'], env: {}, kind: 'acp' },
       claude: { label: 'Claude Code', command: 'claude-agent-acp', args: [], env: {}, kind: 'acp' },
       codex: { label: 'Codex', command: 'codex-acp', args: [], env: {}, kind: 'acp' },
-      agy: { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' },
+      agy: { label: 'Antigravity', command: 'agy', args: ['acp'], env: {}, kind: 'acp' },
       x: { label: 'Outro', command: 'outro', args: [], env: {}, kind: 'acp' },
     });
     expect(await readFile(join(home, 'config.json'), 'utf8')).toBe(original);
+  });
+
+  it('trata o agy do default antigo (terminal, gravado no config.json) como não definido: vale o ACP, arquivo intocado', async () => {
+    const original = JSON.stringify({
+      agents: { agy: { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' } },
+    });
+    await writeFile(join(home, 'config.json'), original);
+
+    const config = loadConfig(home);
+
+    expect(config.agents.agy).toEqual({ label: 'Antigravity', command: 'agy', args: ['acp'], env: {}, kind: 'acp' });
+    expect(await readFile(join(home, 'config.json'), 'utf8')).toBe(original);
+  });
+
+  it('o agy antigo escrito só com label, command e kind também é migrado', async () => {
+    await writeFile(
+      join(home, 'config.json'),
+      JSON.stringify({ agents: { agy: { label: 'Antigravity', command: 'agy', kind: 'pty' } } }),
+    );
+
+    expect(loadConfig(home).agents.agy).toEqual({
+      label: 'Antigravity',
+      command: 'agy',
+      args: ['acp'],
+      env: {},
+      kind: 'acp',
+    });
+  });
+
+  it('um agy customizado no arquivo (aqui, pty com args) continua valendo: só o default antigo exato é migrado', async () => {
+    const custom = { label: 'Antigravity', command: 'agy', args: ['--mode', 'plan'], env: {}, kind: 'pty' };
+    await writeFile(join(home, 'config.json'), JSON.stringify({ agents: { agy: custom } }));
+
+    expect(loadConfig(home).agents.agy).toEqual({ ...custom });
   });
 
   it('o arquivo do usuário vence no mesmo id de agente default', async () => {

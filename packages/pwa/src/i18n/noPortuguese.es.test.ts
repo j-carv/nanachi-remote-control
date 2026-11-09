@@ -116,16 +116,28 @@ const PRODUCT_OR_TECHNICAL = [
   'workspace:sessions.terminal',
   'terminal:shellSheet.title',
   'common:sessionTitle.terminal',
-  'terminal:dismiss', // OK
-  'terminal:keys.ariaLabel.esc', // keycaps, as printed on the keyboard
-  'terminal:keys.ariaLabel.tab',
-  'terminal:keys.ariaLabel.pgup',
-  'terminal:keys.ariaLabel.pgdn',
-  'terminal:keys.ariaLabel.enter',
+  'settings:mcp.heading', // Nanachi MCP is the integration's name.
+  'settings:transcription.providers.openai',
+  'settings:transcription.providers.groq',
+  'learning:sources.openrouter',
+  'learning:sources.ollama',
+  'learning:workspace',
+  'learning:notice.counts',
+  'schedules:shell',
+  'schedules:presets.custom',
 ];
 
 /** Texts that Spanish and Portuguese happen to spell the same. `namespace:key`. */
 const SAME_WORD_IN_BOTH = [
+  'learning:source',
+  'learning:agent',
+  'learning:model',
+  'learning:maxInputChars',
+  'learning:search',
+  'learning:kind',
+  'learning:title',
+  'learning:edit',
+  'learning:cancel',
   'accounts:login.copyCode',
   'accounts:login.send',
   'accounts:login.sending',
@@ -136,15 +148,17 @@ const SAME_WORD_IN_BOTH = [
   'chat:composer.sending',
   'chat:composer.uploading',
   'chat:composer.useCrop',
+  'chat:messageActions.copy',
   'chat:commandSheet.choicesLabel',
-  'chat:slash.search',
   'chat:attachments.crop',
   'chat:tool.innerWithLast',
+  'chat:tool.activityRunning', // Only interpolated agent data and an already localized action count.
   'chat:background.title',
   'chat:background.subagents',
   'chat:background.commands',
   'chat:item.thoughtSize_other',
   'chat:agentConfig.model',
+  'chat:agentConfig.workMode.auto', // "Modo automático" in both
   'chat:loop.started',
   'chat:loop.sheet.automatic',
   'chat:loop.sheet.pause',
@@ -171,9 +185,9 @@ const SAME_WORD_IN_BOTH = [
   'pairing:tailscale.connectedAs',
   'settings:devices.heading',
   'settings:language.label',
-  'terminal:copy.copied',
+  'settings:mcp.toggle', // "para" introduces the agent in both languages.
+  'settings:whisper.ready', // "Modelo local instalado" in both languages.
   'terminal:send',
-  'terminal:keys.ariaLabel.pipe',
   'usage:windows.usageOf',
   'usage:windows.fiveHours',
   'usage:windows.weekly',
@@ -191,6 +205,17 @@ const SAME_WORD_IN_BOTH = [
   'workspace:editor.label',
   'workspace:editor.plainText',
   'workspace:sessions.notificationsMuted',
+  'schedules:agent',
+  'schedules:model',
+  'schedules:command',
+  'schedules:cancel',
+  'schedules:saving',
+  'schedules:nextRun',
+  'schedules:pause',
+  'schedules:weekdays.0',
+  'schedules:weekdays.6',
+  'schedules:statuses.cancelled',
+  'schedules:manualTrigger',
 ];
 
 const ALLOWED_IDENTICAL = [...PRODUCT_OR_TECHNICAL, ...SAME_WORD_IN_BOTH];

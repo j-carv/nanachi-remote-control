@@ -13,7 +13,7 @@ function isPlainCtrl(event: KeyLike): boolean {
   return event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
 }
 
-/** Ctrl+1..8 -> the section at that position of the sidebar. */
+/** Ctrl+1..8 -> the section with that number (`CONTROL_SECTIONS`; a section without a number has no shortcut). */
 export function sectionForShortcut(event: KeyLike): ControlSection | null {
   if (!isPlainCtrl(event) || !/^[1-9]$/.test(event.key)) return null;
   return CONTROL_SECTIONS[Number(event.key) - 1] ?? null;

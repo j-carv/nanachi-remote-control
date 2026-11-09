@@ -6,7 +6,7 @@ import { SIDEBAR_RAIL_WIDTH } from '../../common/sessions-layout.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import { Tooltip } from '../ui/Tooltip.js';
-import { SECTIONS, type SectionMeta } from './nav.js';
+import { SECTIONS, shortcutOf, type SectionMeta } from './nav.js';
 
 export const SIDEBAR_EXPANDED = 232;
 export const SIDEBAR_COLLAPSED = SIDEBAR_RAIL_WIDTH;
@@ -36,7 +36,6 @@ const ITEM =
 
 interface NavItemProps {
   meta: SectionMeta;
-  index: number;
   active: boolean;
   collapsed: boolean;
   dirty: boolean;
@@ -45,19 +44,20 @@ interface NavItemProps {
   onSelect: () => void;
 }
 
-function NavItem({ meta, index, active, collapsed, dirty, nativeTip, onSelect }: NavItemProps) {
+function NavItem({ meta, active, collapsed, dirty, nativeTip, onSelect }: NavItemProps) {
   const { t } = useTranslation();
   const Icon = meta.icon;
-  const shortcut = `Ctrl+${index + 1}`;
+  // A section without a number (Diagnostics) has no shortcut to show or to announce.
+  const shortcut = shortcutOf(meta.id);
   const label = t(`sections.${meta.id}.label`);
   const tip = dirty ? t('shell.sidebar.unsavedChangesIn', { label }) : label;
   const button = (
     <button
       type="button"
       aria-current={active ? 'page' : undefined}
-      aria-keyshortcuts={`Control+${index + 1}`}
+      aria-keyshortcuts={shortcut === null ? undefined : shortcut.replace('Ctrl+', 'Control+')}
       aria-label={collapsed ? label : undefined}
-      title={collapsed && nativeTip ? `${tip} (${shortcut})` : undefined}
+      title={collapsed && nativeTip ? (shortcut === null ? tip : `${tip} (${shortcut})`) : undefined}
       onClick={onSelect}
       className={cx(ITEM, active ? 'text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
     >
@@ -74,9 +74,11 @@ function NavItem({ meta, index, active, collapsed, dirty, nativeTip, onSelect }:
               <span className="sr-only">{t('shell.sidebar.unsavedChanges')}</span>
             </>
           ) : null}
-          <span aria-hidden="true" className="pointer-events-none absolute right-3 text-[11px] font-normal text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
-            {shortcut}
-          </span>
+          {shortcut === null ? null : (
+            <span aria-hidden="true" className="pointer-events-none absolute right-3 text-[11px] font-normal text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+              {shortcut}
+            </span>
+          )}
         </>
       )}
     </button>
@@ -84,7 +86,7 @@ function NavItem({ meta, index, active, collapsed, dirty, nativeTip, onSelect }:
   return (
     <li>
       {collapsed && !nativeTip ? (
-        <Tooltip label={tip} shortcut={shortcut} side="right">
+        <Tooltip label={tip} shortcut={shortcut ?? undefined} side="right">
           {button}
         </Tooltip>
       ) : (
@@ -105,7 +107,7 @@ function moveFocus(event: KeyboardEvent<HTMLUListElement>): void {
   items[next]?.focus();
 }
 
-/** The sidebar: the eight sections, and the version and the collapse button at the bottom. 232 px, or 64 px with icons only (always, on Sessões). */
+/** The sidebar: the sections, and the version and the collapse button at the bottom. 232 px, or 64 px with icons only (always, on Sessões). */
 export function Sidebar({ section, collapsed: saved, dirty, version, onSelect, onToggle, sessionsOpen }: SidebarProps) {
   const { t } = useTranslation();
   const collapsed = saved || sessionsOpen;
@@ -127,12 +129,12 @@ export function Sidebar({ section, collapsed: saved, dirty, version, onSelect, o
             aria-hidden="true"
             data-slot="nav-indicator"
             style={{ transform: `translateY(${activeIndex * ITEM_PITCH_REM}rem)` }}
-            className="pointer-events-none absolute inset-x-[9px] top-3 h-9 rounded-lg bg-card shadow-[0_0_0_1px_var(--ui-border),0_1px_2px_rgb(0_0_0/0.06)] transition-transform duration-300 ease-[var(--ease-premium)]"
+            className="pointer-events-none absolute inset-x-[9px] top-3 h-9 rounded-lg bg-card shadow-[0_0_0_1px_var(--ui-border),0_1px_2px_rgb(0_0_0/0.06)] transition-transform duration-240 ease-[var(--ease-premium)]"
           />
         )}
         <ul className="flex flex-col gap-0.5" onKeyDown={moveFocus}>
-          {SECTIONS.map((meta, index) => (
-            <NavItem key={meta.id} meta={meta} index={index} active={meta.id === section} collapsed={collapsed} dirty={dirty.has(meta.id)} nativeTip={sessionsOpen} onSelect={() => onSelect(meta.id)} />
+          {SECTIONS.map((meta) => (
+            <NavItem key={meta.id} meta={meta} active={meta.id === section} collapsed={collapsed} dirty={dirty.has(meta.id)} nativeTip={sessionsOpen} onSelect={() => onSelect(meta.id)} />
           ))}
         </ul>
       </div>

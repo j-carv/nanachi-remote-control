@@ -1,9 +1,12 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { RequestFileAgentResultSchema } from '@nanachi/shared';
 
 /*
  * Agente ACP falso para os testes do daemon. Roda com `node --import <tsx/esm> fake-agent.ts`
@@ -11,8 +14,11 @@ import * as acp from '@agentclientprotocol/sdk';
  *
  * Comportamento pelo texto do prompt:
  *  - "permission": pede permissão e ecoa a opção escolhida (ou "Cancelada")
+ *  - "permission-fail": falha o turno depois da resposta à permissão (testa cancelamento de perguntas pendentes)
+ *  - "/nanachi-send <JSON>" / "/nanachi-ask <JSON>" / "/nanachi-request-file <JSON>" / "/nanachi-preview <JSON>": call the real ACP MCP stdio descriptor
  *  - "slow": trabalha até receber session/cancel
  *  - "config": emite config_option_update (thought_level vira "high")
+ *  - "modo-plano": the agent switches itself to plan and says so with current_mode_update (as omp does on its own)
  *  - "die": encerra o processo no meio do turno
  *  - "LOOP-NEXT=<duração>" / "LOOP-STOP" / "LOOP-FAIL" (modo Loop): marcador de tempo, marcador de parada, ou
  *    prompt rejeitado (erro do turno). Maiúsculas de propósito: a instrução do loop não as usa.
@@ -28,6 +34,7 @@ import * as acp from '@agentclientprotocol/sdk';
  *
  * Variáveis de ambiente:
  *  - FAKE_AGENT_STYLE=modes: anuncia `modes` em vez de `configOptions` (exercita a opção sintetizada)
+ *  - FAKE_AGENT_MODE=<mode>: the current mode when the session opens (default `default`; `plan` opens in plan)
  *  - FAKE_AGENT_PID_DIR: por sessão (<AGENT_SESSION_ID>), grava o pid (.pid), o env que recebeu
  *    (.env.json: cwd, AGENT_SESSION_ID, NANACHI_URL, NANACHI_AGENT_TOKEN, PATH, CLAUDE_CONFIG_DIR, CODEX_HOME: as duas
  *    últimas são as pastas de conta dos harnesses, ausentes quando o processo não as recebeu) e cada prompt recebido
@@ -86,7 +93,7 @@ interface StoredSession {
   history: StoredHistoryItem[];
 }
 
-const state = { mode: 'default', model: 'fast', thought: 'medium' };
+const state = { mode: process.env.FAKE_AGENT_MODE ?? 'default', model: 'fast', thought: 'medium' };
 const storePath = process.env.FAKE_AGENT_STORE;
 const pageSize = Number(process.env.FAKE_AGENT_PAGE_SIZE ?? 50);
 const emptyPages = Number(process.env.FAKE_AGENT_EMPTY_PAGES ?? 0);
@@ -134,6 +141,54 @@ if (pidDir !== undefined) {
       }
     }
   });
+}
+
+let sessionMcpServers: acp.McpServer[] = [];
+
+/** Record the ACP definition without publishing its bearer token. */
+function recordMcp(method: string, params: { cwd: string; mcpServers?: acp.McpServer[] | null }): void {
+  sessionMcpServers = params.mcpServers ?? [];
+  if (pidDir === undefined) return;
+  const mcpServers = sessionMcpServers.map((server) => {
+    if ('type' in server) return server;
+    return {
+      ...server,
+      env: server.env.map((entry) => entry.name === 'NANACHI_AGENT_TOKEN'
+        ? { name: entry.name, value: '<redacted>', matchesSessionToken: entry.value === process.env.NANACHI_AGENT_TOKEN }
+        : entry),
+    };
+  });
+  appendFileSync(join(pidDir, `${sessionKey}.mcp.jsonl`), `${JSON.stringify({ method, cwd: params.cwd, mcpServers })}\n`);
+}
+
+/** Consume the real ACP descriptor with an SDK client, just as an ACP harness would. */
+async function callNanachiTool(name: 'phone_send' | 'ask_user' | 'request_file' | 'open_preview', input: Record<string, unknown>): Promise<string> {
+  const descriptor = sessionMcpServers.find((server) => server.name === 'nanachi-remote' && !('type' in server));
+  if (descriptor === undefined || 'type' in descriptor) throw new Error('Nanachi MCP not configured');
+  const client = new Client({ name: 'fake-agent', version: '1.0.0' });
+  try {
+    await client.connect(new StdioClientTransport({
+      command: descriptor.command,
+      args: descriptor.args,
+      env: Object.fromEntries(descriptor.env.map(({ name, value }) => [name, value])),
+      cwd: process.cwd(),
+      stderr: 'pipe',
+    }));
+    const listed = await client.listTools();
+    if (!listed.tools.some((tool) => tool.name === name)) throw new Error(`${name} not discovered`);
+    const result = await client.callTool({ name, arguments: input }, undefined, { timeout: 320_000 });
+    if (name === 'request_file') {
+      const fileResult = RequestFileAgentResultSchema.parse(result.structuredContent);
+      const publicResult = fileResult.status === 'received' ? { status: fileResult.status, file: fileResult.file } : fileResult;
+      // Assert the agent can consume the private path without echoing that path into chat history.
+      const fileAvailable = fileResult.status === 'received' && isAbsolute(fileResult.path)
+        && readFileSync(fileResult.path).length === fileResult.file.size;
+      return JSON.stringify({ isError: result.isError, structuredContent: publicResult, fileAvailable });
+    }
+    return JSON.stringify(result);
+  } finally {
+    await client.close();
+  }
 }
 
 function configOptions(): acp.SessionConfigOption[] {
@@ -537,6 +592,7 @@ acp.agent()
     agentCapabilities: capabilities(),
   }))
   .onRequest(acp.methods.agent.session.new, async ({ params, client }) => {
+    recordMcp('session/new', params);
     const sessionId = storePath === undefined ? ACP_SESSION_ID : randomUUID();
     if (storePath !== undefined) {
       writeStore([
@@ -552,6 +608,7 @@ acp.agent()
     return listPage(params.cursor);
   })
   .onRequest(acp.methods.agent.session.load, async ({ params, client }) => {
+    recordMcp('session/load', params);
     if (loadFails) throw acp.RequestError.invalidParams(undefined, 'falha simulada no session/load');
     if (loadDelayMs > 0) await sleep(loadDelayMs);
     // Histórico antigo reenviado durante o load: o daemon não pode gravar nem repassar isto (no resume normal).
@@ -570,7 +627,10 @@ acp.agent()
     await announce((update) => client.notify(acp.methods.client.session.update, { sessionId: params.sessionId, update }));
     return sessionState();
   })
-  .onRequest(acp.methods.agent.session.resume, () => sessionState())
+  .onRequest(acp.methods.agent.session.resume, ({ params }) => {
+    recordMcp('session/resume', params);
+    return sessionState();
+  })
   .onRequest(acp.methods.agent.session.setConfigOption, ({ params }) => {
     setConfig(params.configId, params.value);
     return { configOptions: configOptions() };
@@ -590,6 +650,22 @@ acp.agent()
 
     if (pidDir !== undefined) {
       appendFileSync(join(pidDir, `${sessionKey}.prompts.jsonl`), `${JSON.stringify(params.prompt)}\n`);
+    }
+    if (text.startsWith('/nanachi-send ')) {
+      await notify(chunk(await callNanachiTool('phone_send', JSON.parse(text.slice('/nanachi-send '.length)) as Record<string, unknown>)));
+      return { stopReason: 'end_turn' };
+    }
+    if (text.startsWith('/nanachi-ask ')) {
+      await notify(chunk(await callNanachiTool('ask_user', JSON.parse(text.slice('/nanachi-ask '.length)) as Record<string, unknown>)));
+      return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
+    }
+    if (text.startsWith('/nanachi-request-file ')) {
+      await notify(chunk(await callNanachiTool('request_file', JSON.parse(text.slice('/nanachi-request-file '.length)) as Record<string, unknown>)));
+      return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
+    }
+    if (text.startsWith('/nanachi-preview ')) {
+      await notify(chunk(await callNanachiTool('open_preview', JSON.parse(text.slice('/nanachi-preview '.length)) as Record<string, unknown>)));
+      return { stopReason: 'end_turn' };
     }
     if (text.includes('die')) process.exit(7);
     if (text.startsWith('/eco ')) {
@@ -710,10 +786,34 @@ acp.agent()
       }
     }
 
+    // "permission-repeat": pede o mesmo tool call duas vezes sem esperar a primeira resposta (o daemon cancela a primeira).
+    if (text.includes('permission-repeat')) {
+      const ask = () =>
+        client.request(acp.methods.client.session.requestPermission, {
+          sessionId: params.sessionId,
+          toolCall: { toolCallId: 'call-repeat', title: 'Executar comando', kind: 'execute' },
+          options: [
+            { optionId: 'allow', name: 'Permitir', kind: 'allow_once' },
+            { optionId: 'reject', name: 'Rejeitar', kind: 'reject_once' },
+          ],
+        });
+      await Promise.all([ask(), ask()]);
+      return { stopReason: cancelRequested ? 'cancelled' : 'end_turn' };
+    }
+
     if (text.includes('permission')) {
+      const toolCall: acp.RequestPermissionRequest['toolCall'] = text.includes('permission-edit')
+        ? {
+            toolCallId: 'call-edit',
+            title: 'Edit example.ts',
+            name: 'Edit',
+            kind: 'edit',
+            rawInput: { file_path: 'example.ts', old_string: '1', new_string: '2' },
+          }
+        : { toolCallId: 'call-2', title: 'Executar comando', kind: 'execute' };
       const response = await client.request(acp.methods.client.session.requestPermission, {
         sessionId: params.sessionId,
-        toolCall: { toolCallId: 'call-2', title: 'Executar comando', kind: 'execute' },
+        toolCall,
         options: [
           { optionId: 'allow', name: 'Permitir', kind: 'allow_once' },
           { optionId: 'reject', name: 'Rejeitar', kind: 'reject_once' },
@@ -722,6 +822,12 @@ acp.agent()
       const answer =
         response.outcome.outcome === 'selected' ? `Escolhida: ${response.outcome.optionId}` : 'Cancelada';
       await notify(chunk(answer));
+      if (text === 'permission-fail') throw new Error('synthetic failure after a real permission response');
+    }
+
+    if (text.includes('modo-plano')) {
+      state.mode = 'plan';
+      await notify({ sessionUpdate: 'current_mode_update', currentModeId: 'plan' });
     }
 
     if (text.includes('config')) {

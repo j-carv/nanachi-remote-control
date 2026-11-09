@@ -80,7 +80,7 @@ type fakeNode struct {
 	startReturned chan struct{}
 
 	statusFn func(call int) (*ipnstate.Status, error)
-	listenFn func(call int) (net.Listener, error)
+	listenFn func(addr string, call int) (net.Listener, error)
 
 	statusCalls atomic.Int32
 	listenCalls atomic.Int32
@@ -125,7 +125,7 @@ func (f *fakeNode) ListenTLS(network, addr string) (net.Listener, error) {
 	if f.listenFn == nil {
 		return net.Listen("tcp", "127.0.0.1:0")
 	}
-	return f.listenFn(call)
+	return f.listenFn(addr, call)
 }
 
 func (f *fakeNode) Close() error {
@@ -141,11 +141,12 @@ func (f *fakeNode) Close() error {
 
 func testOptions() runOptions {
 	return runOptions{
-		listenAddr:      ":443",
-		pollInterval:    3 * time.Millisecond,
-		retryDelay:      5 * time.Millisecond,
-		shutdownTimeout: 3 * time.Second,
-		logf:            func(string, ...any) {},
+		listenAddr:        ":443",
+		previewListenAddr: ":8443",
+		pollInterval:      3 * time.Millisecond,
+		retryDelay:        5 * time.Millisecond,
+		shutdownTimeout:   3 * time.Second,
+		logf:              func(string, ...any) {},
 	}
 }
 
@@ -181,9 +182,9 @@ func (h *runHandle) stop(t *testing.T) error {
 func TestRunReportsLoginThenRunningAndServesThroughTheProxy(t *testing.T) {
 	n := newFakeNode()
 	listeners := make(chan net.Listener, 1)
-	n.listenFn = func(int) (net.Listener, error) {
+	n.listenFn = func(addr string, _ int) (net.Listener, error) {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err == nil {
+		if err == nil && addr == ":443" {
 			listeners <- ln
 		}
 		return ln, err
@@ -245,9 +246,10 @@ func TestRunReportsLoginThenRunningAndServesThroughTheProxy(t *testing.T) {
 func TestRunReportsServingErrorsAndRecovers(t *testing.T) {
 	n := newFakeNode()
 	gate := make(chan struct{}) // hold ListenTLS until the first running event is out
-	n.listenFn = func(call int) (net.Listener, error) {
+	var mainAttempts atomic.Int32
+	n.listenFn = func(addr string, _ int) (net.Listener, error) {
 		<-gate
-		if call <= 2 {
+		if addr == ":443" && mainAttempts.Add(1) <= 2 {
 			return nil, errors.New("tsnet: you must enable HTTPS in the admin panel to proceed. See https://tailscale.com/s/https")
 		}
 		return net.Listen("tcp", "127.0.0.1:0")
@@ -262,8 +264,8 @@ func TestRunReportsServingErrorsAndRecovers(t *testing.T) {
 	if lines := h.out.Lines(); !strings.Contains(lines[1], "enable HTTPS") {
 		t.Errorf("error line = %s, want the HTTPS requirement", lines[1])
 	}
-	if n.listenCalls.Load() < 3 {
-		t.Errorf("ListenTLS called %d times, want a retry after each failure", n.listenCalls.Load())
+	if mainAttempts.Load() < 3 {
+		t.Errorf("main ListenTLS called %d times, want a retry after each failure", mainAttempts.Load())
 	}
 
 	if err := h.stop(t); err != nil {
@@ -315,7 +317,7 @@ func TestRunShutsDownPromptlyWhileWaitingForLogin(t *testing.T) {
 	n := newFakeNode()
 	// Like the real ListenTLS: it cannot be cancelled, it blocks until the node is
 	// running, and it only returns (with an error) once the node is closed.
-	n.listenFn = func(int) (net.Listener, error) {
+	n.listenFn = func(string, int) (net.Listener, error) {
 		<-n.closed
 		return nil, errors.New("tsnet: Up: context canceled")
 	}
@@ -324,7 +326,7 @@ func TestRunShutsDownPromptlyWhileWaitingForLogin(t *testing.T) {
 	}
 	h := startRun(t, n, newBackend(t))
 	waitForTypes(t, h.out, "needs_login")
-	waitFor(t, "ListenTLS to block", func() bool { return n.listenCalls.Load() == 1 })
+	waitFor(t, "both ListenTLS calls to block", func() bool { return n.listenCalls.Load() == 2 })
 
 	began := time.Now()
 	if err := h.stop(t); err != nil {

@@ -6,6 +6,15 @@
     "pairAgain": "Vincular de nuevo",
     "gotIt": "Entendido"
   },
+  "search": {
+    "label": "Buscar sesiones",
+    "placeholder": "Buscar sesiones y mensajes",
+    "clear": "Borrar búsqueda",
+    "noMatches": "Ninguna sesión coincide con “{{query}}”.",
+    "messages": "Mensajes",
+    "messagesLoading": "Buscando mensajes…",
+    "messagesEmpty": "Ningún mensaje coincide."
+  },
   "states": {
     "loading": "Cargando…",
     "wait": "Espera…"

@@ -1,18 +1,13 @@
 import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
 import type { AvailableCommand } from '@nanachi/shared';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { filterCommands } from './commands.js';
 
 interface SlashMenuProps {
   /** Todos os comandos que o agente anunciou para a sessão. */
   commands: readonly AvailableCommand[];
-  /** Busca atual: vem do texto (`/bus`) ou do campo do menu aberto pelo botão. */
+  /** Query typed after the leading slash in the composer. */
   query: string;
-  /** Campo de busca no topo (menu aberto pelo botão `/`). Sem ele, a busca é o próprio texto do composer. */
-  search?: { onChange(query: string): void; onClose(): void } | undefined;
   onPick(command: AvailableCommand): void;
 }
 
@@ -20,10 +15,10 @@ interface SlashMenuProps {
  * Menu de comandos acima do composer (no fluxo da coluna, então não cobre o campo). Rolagem própria; o toque
  * não tira o foco do campo, assim o teclado do iOS continua aberto.
  */
-export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
+export function SlashMenu({ commands, query, onPick }: SlashMenuProps) {
   const { t } = useTranslation('chat');
   const matches = filterCommands(commands, query);
-  // Mousedown com preventDefault: o campo (ou a busca) mantém o foco e o teclado não fecha.
+  // Keep focus in the composer when a command is tapped.
   const keepFocus = (event: MouseEvent) => event.preventDefault();
 
   return (
@@ -32,29 +27,6 @@ export function SlashMenu({ commands, query, search, onPick }: SlashMenuProps) {
       aria-label={t('slash.label')}
       className="flex animate-enter flex-col gap-1 rounded-xl border border-border bg-card p-1.5 motion-reduce:animate-none"
     >
-      {search !== undefined && (
-        <div className="flex items-center gap-1">
-          <Input
-            type="search"
-            aria-label={t('slash.search')}
-            placeholder={t('slash.search')}
-            autoFocus
-            value={query}
-            className="bg-background"
-            onChange={(event) => search.onChange(event.target.value)}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('slash.close')}
-            onMouseDown={keepFocus}
-            onClick={search.onClose}
-          >
-            <X aria-hidden="true" />
-          </Button>
-        </div>
-      )}
-
       <div className="max-h-[min(40dvh,240px)] overflow-y-auto overscroll-contain">
         {commands.length === 0 ? (
           <p data-slot="slash-empty" className="px-2 py-2.5 text-sm text-muted-foreground">

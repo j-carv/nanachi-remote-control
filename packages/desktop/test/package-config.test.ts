@@ -92,9 +92,9 @@ describe('installer electron-builder config', () => {
     expect(config.directories?.output).toBe(join(BUILD, 'installer-build'));
   });
 
-  it('carries the payload folder in its resources and stores it as is (a zip does not compress again)', () => {
+  it("carries the payload folder in its resources and compresses the installer's own Electron app", () => {
     expect(config.extraResources).toEqual([{ from: join(BUILD, 'installer-payload'), to: 'payload' }]);
-    expect(config.compression).toBe('store');
+    expect(config.compression).toBe('normal');
     expect(config.asar).toBe(false);
   });
 

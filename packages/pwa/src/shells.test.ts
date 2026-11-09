@@ -1,18 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orderShells, shellIdFromTitle } from './shells.js';
-
-describe('shellIdFromTitle', () => {
-  it('lê o shell do título "Terminal · <shell>" que o daemon grava', () => {
-    expect(shellIdFromTitle('Terminal · pwsh')).toBe('pwsh');
-    expect(shellIdFromTitle('Terminal · cmd')).toBe('cmd');
-  });
-
-  it('título que não é de terminal, ou shell desconhecido, devolve null', () => {
-    expect(shellIdFromTitle('Corrigir build')).toBeNull();
-    expect(shellIdFromTitle('Terminal · zsh')).toBeNull();
-    expect(shellIdFromTitle('Terminal · ')).toBeNull();
-  });
-});
+import { orderShells } from './shells.js';
 
 describe('orderShells', () => {
   it('coloca o shell padrão primeiro e mantém a ordem dos outros', () => {

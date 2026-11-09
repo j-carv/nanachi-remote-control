@@ -1,55 +1,13 @@
 {
-  "copy": {
-    "copied": "Copiado.",
-    "empty": "Selecciona un fragmento de la terminal para copiar.",
-    "failed": "No pude copiar. Inténtalo de nuevo."
-  },
-  "paste": {
-    "pasted": "Pegado.",
-    "empty": "El portapapeles está vacío.",
-    "failed": "No pude pegar. Mantén pulsado el campo de texto para pegar."
-  },
   "closed": {
     "plain": "Terminal cerrada",
     "reload": "Terminal cerrada por la recarga de Nanachi",
     "noCode": "Terminal cerrada (sin código)",
     "code": "Terminal cerrada (código {{code}})"
   },
-  "changes": "Cambios",
-  "dismiss": "OK",
-  "openNew": "Abrir una terminal nueva",
-  "opening": "Abriendo…",
   "loading": "Cargando terminal…",
-  "scrollToEnd": "Ir al final",
-  "fontSmaller": "Reducir el tamaño de fuente de la terminal",
-  "fontLarger": "Aumentar el tamaño de fuente de la terminal",
-  "copySelection": "Copiar selección",
-  "keysLabel": "Teclas especiales",
   "linePlaceholder": "Texto para la terminal",
   "send": "Enviar",
-  "keys": {
-    "paste": { "label": "Pegar" },
-    "ariaLabel": {
-      "esc": "Escape",
-      "tab": "Tab",
-      "ctrl": "Ctrl, la siguiente tecla se vuelve de control",
-      "alt": "Alt, la siguiente tecla se envía con Alt",
-      "up": "Flecha hacia arriba",
-      "down": "Flecha hacia abajo",
-      "left": "Flecha hacia la izquierda",
-      "right": "Flecha hacia la derecha",
-      "pipe": "Barra vertical",
-      "tilde": "Tilde",
-      "slash": "Barra diagonal",
-      "dash": "Guion",
-      "home": "Home, inicio de la línea",
-      "end": "End, fin de la línea",
-      "pgup": "Page Up",
-      "pgdn": "Page Down",
-      "paste": "Pegar desde el portapapeles",
-      "enter": "Enter"
-    }
-  },
   "shellSheet": {
     "title": "Terminal",
     "hint": "Abre una terminal en la carpeta de {{name}}.",

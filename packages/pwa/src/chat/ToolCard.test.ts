@@ -139,16 +139,33 @@ describe('ToolCard child rows and motion', () => {
 });
 
 describe('ToolCard without background work', () => {
-  it('keeps the status text and the card open while it runs', () => {
-    const live = tool({ status: 'in_progress', title: 'Editar a.ts' });
-    const html = render(live);
-    expect(html).toContain('Em andamento');
-    expect(html).toMatch(/<details[^>]*\sopen/);
+  it('uses an accessible status icon instead of a repeated status badge', () => {
+    const html = render(tool({ status: 'completed' }));
+    expect(html).toContain('role="img" aria-label="Concluído"');
+    expect(html).not.toContain('data-slot="badge"');
+    expect(html).not.toContain('ações internas');
   });
 
-  it('a finished call keeps its status text and shows no inner actions', () => {
-    const html = render(tool({ status: 'completed' }));
-    expect(html).toContain('Concluído');
-    expect(html).not.toContain('ações internas');
+  it('starts flat running rows collapsed so each action can be inspected separately', () => {
+    const html = renderToStaticMarkup(createElement(ToolCard, {
+      api, item: tool({ status: 'in_progress' }), view: ACTIVE, flat: true, renderNested: () => null,
+    }));
+    expect(html).toMatch(/<details(?![^>]*\sopen)[^>]*>/);
+    expect(html).toContain('data-state="running"');
+    expect(html).not.toContain('border border-border bg-card');
+  });
+
+  it('keeps the full location and original title in expanded inspection', () => {
+    const html = render(tool({ title: 'Read src/parser.ts', locations: ['src/parser.ts'] }));
+    expect(html).toContain('>Read parser.ts</span>');
+    expect(html).toContain('>Read src/parser.ts</p>');
+    expect(html).toContain('>src/parser.ts</li>');
+  });
+
+  it('places nested failures after the parent disclosure rather than inside its closed body', () => {
+    const failure = leaf(tool({ id: 'failed-child', status: 'failed' }));
+    const html = render(SUBAGENT, [failure]);
+    expect(html.indexOf('data-slot="tool-exceptions"')).toBeGreaterThan(html.indexOf('</details>'));
+    expect(html.indexOf('data-item-id="failed-child"')).toBeGreaterThan(html.indexOf('</details>'));
   });
 });

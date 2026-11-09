@@ -1,7 +1,9 @@
+import type { TranscriptionModelsResponse, TranscriptionSettingsResponse, TranscriptionStatus, UpdateTranscriptionSettings, WhisperStatus } from '@nanachi/shared';
 import { t } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
-import type { AccountInfo, AgentAccountsInfo, DeviceInfo } from '../common/control-api.js';
+import type { AccountInfo, AgentAccountsInfo, DeviceInfo, WhisperAction } from '../common/control-api.js';
 import type { SeedMachine } from '../common/types.js';
+import { parseTranscriptionModels, parseTranscriptionSettings, parseTranscriptionStatus, parseTranscriptionUpdate } from '../common/transcription.js';
 import { PairingError } from './pairing.js';
 
 /**
@@ -50,6 +52,11 @@ export interface DaemonActivity {
 }
 
 export interface DaemonApi {
+  whisper(action: WhisperAction): Promise<WhisperStatus>;
+  transcriptionSettings(): Promise<TranscriptionSettingsResponse>;
+  setTranscriptionSettings(settings: UpdateTranscriptionSettings): Promise<TranscriptionSettingsResponse>;
+  transcriptionStatus(): Promise<TranscriptionStatus>;
+  transcriptionModels(): Promise<TranscriptionModelsResponse>;
   /** Active (not revoked) devices; `isThisApp` marks the one Desktop itself uses. */
   devices(): Promise<DeviceInfo[]>;
   revokeDevice(id: string): Promise<void>;
@@ -90,6 +97,24 @@ function bad(what: string): DaemonApiError {
   return new DaemonApiError('bad_response', `resposta do daemon inválida (${what})`);
 }
 
+function parseWhisperStatus(body: unknown): WhisperStatus {
+  if (!isRecord(body)) throw bad('Whisper');
+  switch (body.state) {
+    case 'disabled':
+    case 'ready':
+    case 'removing':
+    case 'install_failed':
+    case 'remove_failed':
+    case 'unsupported':
+      return { state: body.state };
+    case 'installing':
+      if (typeof body.progress === 'number' && body.progress >= 0 && body.progress <= 100) {
+        return { state: 'installing', progress: body.progress };
+      }
+  }
+  throw bad('Whisper');
+}
+
 function parseDevices(body: unknown): DeviceInfo[] {
   if (!isRecord(body) || !Array.isArray(body.devices)) throw bad('devices');
   return body.devices.map((item): DeviceInfo => {
@@ -103,8 +128,9 @@ function parseDevices(body: unknown): DeviceInfo[] {
     ) {
       throw bad('dispositivo');
     }
-    // The daemon lists only devices that were not revoked.
-    return { id: item.id, name: item.name, createdAt: item.createdAt, lastSeenAt: item.lastSeenAt, revoked: false, isThisApp: item.current };
+    // The daemon lists the devices that were not revoked. An expired one (unused past the inactivity limit) is refused
+    // like a revoked one, so it is shown as revoked and gets no revoke button.
+    return { id: item.id, name: item.name, createdAt: item.createdAt, lastSeenAt: item.lastSeenAt, revoked: item.expired === true, isThisApp: item.current };
   });
 }
 
@@ -248,6 +274,32 @@ export function createDaemonApi(deps: DaemonApiDeps): DaemonApi {
   }
 
   return {
+    async whisper(action) {
+      if (action === 'install') return parseWhisperStatus(await request('POST', '/api/whisper/install'));
+      return parseWhisperStatus(await request(action === 'remove' ? 'DELETE' : 'GET', '/api/whisper'));
+    },
+    async transcriptionSettings() {
+      const result = parseTranscriptionSettings(await request('GET', '/api/transcription/settings'));
+      if (result === null) throw bad('transcription settings');
+      return result;
+    },
+    async setTranscriptionSettings(input) {
+      const settings = parseTranscriptionUpdate(input);
+      if (settings === null) throw new TypeError('invalid transcription settings');
+      const result = parseTranscriptionSettings(await request('PUT', '/api/transcription/settings', { body: settings }));
+      if (result === null) throw bad('transcription settings');
+      return result;
+    },
+    async transcriptionStatus() {
+      const result = parseTranscriptionStatus(await request('GET', '/api/transcription/status'));
+      if (result === null) throw bad('transcription status');
+      return result;
+    },
+    async transcriptionModels() {
+      const result = parseTranscriptionModels(await request('GET', '/api/transcription/models', { timeoutMs: 180_000 }));
+      if (result === null) throw bad('transcription models');
+      return result;
+    },
     async devices() {
       return parseDevices(await request('GET', '/api/devices'));
     },

@@ -1,16 +1,22 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronRight, Folder, FolderOpen, LoaderCircle, Plus, ShieldExclamationPoint, Terminal } from 'lucide-react';
+import { CalendarClock, ChevronRight, CircleAlert, Folder, FolderOpen, LoaderCircle, Plus, ShieldExclamationPoint, Terminal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Session, SessionStatus, Workspace } from '@nanachi/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ErrorNotice } from '../components/ErrorNotice.js';
+import { ActionSheetButton } from '../components/ActionSheet.js';
 import { staggerDelay } from '../components/ListGroup.js';
+import { SessionMessageMatches, type MessageMatchRow } from '../components/SessionMessageMatches.js';
+import { SessionSearchField } from '../components/SessionSearchField.js';
 import { StatusDot, TONE_TEXT, type StatusTone } from '../components/StatusDot.js';
 import { sessionGroup } from '../machineOverview.js';
 import { formatRelativeTime } from '../relativeTime.js';
-import { sessionTitle } from '../sessionText.js';
+import { sessionStatusText, sessionTitle } from '../sessionText.js';
+import { searchWords } from '../sessionSearch.js';
+import type { MessageSearchState } from '../useSessionMessageSearch.js';
 import {
+  filterTree,
   SESSION_ROW_LIMIT,
   summarizeTree,
   visibleSessionRows,
@@ -34,6 +40,11 @@ export interface ListPaneViewProps {
   /** Null until the first load answers. */
   nodes: readonly WorkspaceNode[] | null;
   error: unknown;
+  /** The search box. The words narrow the workspaces and sessions at once; the messages come from the parent. */
+  query: string;
+  onQueryChange(query: string): void;
+  messageState: MessageSearchState;
+  messageRows: readonly MessageMatchRow[];
   selection: Selection;
   /** Agent id to label, for the title of a terminal session. */
   agentLabels: ReadonlyMap<string, string>;
@@ -42,6 +53,7 @@ export interface ListPaneViewProps {
   onOpenWorkspace(workspace: Workspace): void;
   onOpenSession(workspace: Workspace, session: Session): void;
   onNewSession(workspace: Workspace): void;
+  onOpenSchedules(workspace: Workspace): void;
   onAddWorkspace(): void;
   onRepair(): void;
 }
@@ -73,6 +85,7 @@ function SessionRow({
 }) {
   const { t } = useTranslation('machines');
   const awaiting = sessionGroup(session.status) === 'awaiting';
+  const failed = session.status === 'error';
   return (
     <li>
       <button
@@ -89,12 +102,17 @@ function SessionRow({
         )}
       >
         <SessionIcon status={session.status} />
-        <span className={cn('min-w-0 flex-1 truncate text-[15px]', (awaiting || selected) && 'font-medium')}>{label}</span>
+        <span className={cn('min-w-0 flex-1 truncate text-[15px]', (awaiting || failed || selected) && 'font-medium')}>{label}</span>
         {session.kind === 'pty' && <Terminal className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
         {awaiting ? (
           <span className={cn('flex shrink-0 items-center', TONE_TEXT.attention)}>
             <ShieldExclamationPoint className="size-4" aria-hidden="true" />
             <span className="sr-only">{t('card.awaitingPermission')}</span>
+          </span>
+        ) : failed ? (
+          <span className={cn('flex shrink-0 items-center', TONE_TEXT.danger)}>
+            <CircleAlert className="size-4" aria-hidden="true" />
+            <span className="sr-only">{sessionStatusText(session.status, session.kind)}</span>
           </span>
         ) : (
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatRelativeTime(session.updatedAt, now)}</span>
@@ -110,6 +128,7 @@ function WorkspaceGroup({
   selection,
   collapsed,
   expanded,
+  searching,
   agentLabels,
   now,
   onToggle,
@@ -117,6 +136,7 @@ function WorkspaceGroup({
   onOpenWorkspace,
   onOpenSession,
   onNewSession,
+  onOpenSchedules,
 }: {
   node: WorkspaceNode;
   /** Position in the list, for the staggered entrance. */
@@ -124,6 +144,8 @@ function WorkspaceGroup({
   selection: Selection;
   collapsed: boolean;
   expanded: boolean;
+  /** The list is filtered by a search: every matching session shows, and there is no "Mostrar mais". */
+  searching: boolean;
   agentLabels: ReadonlyMap<string, string>;
   now: number;
   onToggle(): void;
@@ -131,12 +153,13 @@ function WorkspaceGroup({
   onOpenWorkspace(workspace: Workspace): void;
   onOpenSession(workspace: Workspace, session: Session): void;
   onNewSession(workspace: Workspace): void;
+  onOpenSchedules(workspace: Workspace): void;
 }) {
   const { t } = useTranslation('wide');
   const { workspace } = node;
   const selectedWorkspace = selection.workspaceId === workspace.id && selection.sessionId === null;
-  const { rows, hidden } = visibleSessionRows(node.sessions, { expanded, pinned: selection.sessionId });
-  const showToggle = expanded ? node.sessions.length > SESSION_ROW_LIMIT : hidden > 0;
+  const { rows, hidden } = visibleSessionRows(node.sessions, { expanded: expanded || searching, pinned: selection.sessionId });
+  const showToggle = !searching && (expanded ? node.sessions.length > SESSION_ROW_LIMIT : hidden > 0);
 
   return (
     <li data-slot="list-workspace" data-workspace={workspace.id} className="animate-enter" style={staggerDelay(index)}>
@@ -184,6 +207,7 @@ function WorkspaceGroup({
         >
           <Plus className="size-4" aria-hidden="true" />
         </Button>
+        <div data-slot="workspace-schedules-menu"><ActionSheetButton label={t('sessions.workspaceMenu', { ns: 'workspace', name: workspace.name })} title={workspace.name} items={[{ label: t('title', { ns: 'schedules' }), icon: CalendarClock, onSelect: () => onOpenSchedules(workspace) }]} /></div>
       </div>
 
       {!collapsed && (
@@ -230,9 +254,14 @@ export function ListPaneView({
   selection,
   agentLabels,
   now,
+  query,
+  onQueryChange,
+  messageState,
+  messageRows,
   onOpenWorkspace,
   onOpenSession,
   onNewSession,
+  onOpenSchedules,
   onAddWorkspace,
   onRepair,
 }: ListPaneViewProps) {
@@ -241,6 +270,15 @@ export function ListPaneView({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const summary = nodes === null ? null : summarizeTree(nodes);
+  const searching = searchWords(query).length > 0;
+  // The totals above count the whole machine; the rows below are the ones the search keeps.
+  const shownNodes =
+    nodes === null
+      ? null
+      : filterTree(nodes, query, (session, workspace) => {
+          const agent = agentLabels.get(session.agent) ?? session.agent;
+          return [sessionTitle(session, agent), agent, session.worktree?.branch ?? '', workspace.name];
+        });
 
   function flip(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
     const next = new Set(set);
@@ -252,6 +290,10 @@ export function ListPaneView({
   return (
     <nav aria-label={t('list.label')} data-slot="list-pane" className="flex h-full min-h-0 flex-col">
       {header}
+
+      <div className="px-2 pt-2 pb-1">
+        <SessionSearchField value={query} onChange={onQueryChange} />
+      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-6">
         {summary !== null && (summary.running > 0 || summary.awaiting > 0) && (
@@ -304,16 +346,17 @@ export function ListPaneView({
           <p className="animate-enter px-2 py-2 text-sm text-muted-foreground">{t('list.noWorkspaces')}</p>
         )}
 
-        {nodes !== null && nodes.length > 0 && (
+        {shownNodes !== null && shownNodes.length > 0 && (
           <ul className="flex flex-col gap-1">
-            {nodes.map((node, index) => (
+            {shownNodes.map((node, index) => (
               <WorkspaceGroup
                 key={node.workspace.id}
                 node={node}
                 index={index}
                 selection={selection}
-                collapsed={collapsed.has(node.workspace.id)}
+                collapsed={!searching && collapsed.has(node.workspace.id)}
                 expanded={expanded.has(node.workspace.id)}
+                searching={searching}
                 agentLabels={agentLabels}
                 now={now}
                 onToggle={() => setCollapsed((previous) => flip(previous, node.workspace.id))}
@@ -321,9 +364,31 @@ export function ListPaneView({
                 onOpenWorkspace={onOpenWorkspace}
                 onOpenSession={onOpenSession}
                 onNewSession={onNewSession}
+                onOpenSchedules={onOpenSchedules}
               />
             ))}
           </ul>
+        )}
+        {nodes !== null &&
+          nodes.length > 0 &&
+          searching &&
+          shownNodes?.length === 0 &&
+          messageRows.length === 0 &&
+          (messageState.status === 'ready' || messageState.status === 'idle') && (
+            <p className="animate-enter px-2 py-2 text-sm text-muted-foreground">
+              {t('search.noMatches', { ns: 'common', query: query.trim() })}
+            </p>
+          )}
+
+        {searching && (
+          <SessionMessageMatches
+            state={messageState}
+            rows={messageRows}
+            showWorkspace
+            selectedSessionId={selection.sessionId}
+            now={now}
+            onOpen={(row) => onOpenSession(row.workspace, row.session)}
+          />
         )}
       </div>
     </nav>

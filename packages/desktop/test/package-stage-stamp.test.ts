@@ -12,6 +12,8 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'nanachi-stamp-test-'));
   // A miniature repository: what stage.ts copies from.
   const files: Record<string, string> = {
+    LICENSE: 'MIT License',
+    'README.md': 'Runtime documentation and artwork attribution',
     'packages/shared/package.json': '{}',
     'packages/shared/dist/index.js': 'shared',
     'packages/daemon/package.json': '{}',
@@ -20,6 +22,7 @@ beforeEach(() => {
     'packages/daemon/bin/phone-send.cmd': 'x',
     'packages/pwa/dist/index.html': '<html>',
     'packages/pwa/public/icon-192.png': 'png',
+    'packages/desktop/scripts/stage.ts': 'stage',
   };
   for (const [name, content] of Object.entries(files)) {
     const path = join(root, ...name.split('/'));
@@ -38,20 +41,10 @@ afterEach(() => {
 });
 
 describe('stage fingerprint', () => {
-  it('lists what the stage copies from the repository, PWA build and icon included', () => {
-    const names = stageInputFiles({ repoRoot: root }).map((path) => path.slice(root.length + 1).replaceAll('\\', '/'));
-    expect(names).toEqual(
-      [
-        'packages/daemon/bin/phone-send.cmd',
-        'packages/daemon/dist/cli.js',
-        'packages/daemon/dist/main.js',
-        'packages/daemon/package.json',
-        'packages/pwa/dist/index.html',
-        'packages/pwa/public/icon-192.png',
-        'packages/shared/dist/index.js',
-        'packages/shared/package.json',
-      ].sort(),
-    );
+  it('changes when the stage script changes, so a new copy or prune rule is not skipped as up to date', () => {
+    const base = fingerprintStageInputs({ repoRoot: root }, 'v22.1.0');
+    writeFileSync(join(root, 'packages', 'desktop', 'scripts', 'stage.ts'), 'a stage script with a new rule');
+    expect(fingerprintStageInputs({ repoRoot: root }, 'v22.1.0')).not.toBe(base);
   });
 
   it('is stable while nothing changes and changes with a file, a size, an mtime or the Node version', () => {

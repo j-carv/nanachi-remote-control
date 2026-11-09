@@ -37,6 +37,8 @@ export const main = {
     pageTitle: 'Código de pareamento',
     codeLabel: 'Código {{code}}',
     qrAlt: 'QR do código {{code}}',
+    qrHint: 'Escaneie com a câmera do celular para abrir o Nanachi e parear.',
+    qrSetupHint: 'Conecte o Tailscale no painel do Nanachi para gerar um QR que abre no celular.',
     expiresIn: 'Expira em {{time}}',
     expired: 'Código expirado. Gere outro pelo ícone do Nanachi.',
     hint: 'No outro aparelho, abra o Nanachi, adicione uma máquina e digite o código. Uso único.',

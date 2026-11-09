@@ -15,6 +15,20 @@ import {
   usageNeedsResume,
 } from './errorMessages.js';
 
+describe('describeError: device_expired', () => {
+  it('401 com device_expired diz que o aparelho ficou sem uso e pede pareamento de novo', () => {
+    expect(describeError(new ApiError('unauthorized', 401, null, 'device_expired'))).toBe(
+      'Este aparelho ficou sem uso por tempo demais e perdeu o acesso a esta máquina. Pareie de novo com um código novo.',
+    );
+  });
+
+  it('401 comum continua com o texto de acesso perdido', () => {
+    expect(describeError(new ApiError('unauthorized', 401))).toBe(
+      'Este celular não tem mais acesso a esta máquina. Pareie de novo com um código novo.',
+    );
+  });
+});
+
 describe('describeError', () => {
   it('limite de sessões ativas diz o que fazer', () => {
     expect(describeError(new ApiError('too_many_sessions', 429))).toBe(

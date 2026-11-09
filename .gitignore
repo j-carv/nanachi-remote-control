@@ -18,6 +18,10 @@ coverage/
 
 # Capturas geradas pelos testes (podem conter dados da área de trabalho)
 e2e/screenshots/
+
+# Private conversation exports and temporary E2E credentials
+/omp-session-*.html
+/e2e/.mcp-*.json
 /packages/daemon/so-no-worktree.txt
 
 # Notas e contratos internos (locais, fora do git)

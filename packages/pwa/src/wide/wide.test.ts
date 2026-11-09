@@ -131,12 +131,17 @@ describe('ListPaneView', () => {
     header: createElement('header', null, 'HEADER'),
     nodes,
     error: null,
+    query: '',
+    onQueryChange: noop,
+    messageState: { status: 'idle' },
+    messageRows: [],
     selection: { workspaceId: 'w1', sessionId: 'idle5' },
     agentLabels: new Map([['claude', 'Claude Code']]),
     now: NOW,
     onOpenWorkspace: noop,
     onOpenSession: noop,
     onNewSession: noop,
+    onOpenSchedules: noop,
     onAddWorkspace: noop,
     onRepair: noop,
   };
@@ -148,6 +153,13 @@ describe('ListPaneView', () => {
     expect(markup.indexOf('nanachi')).toBeLessThan(markup.indexOf('docs'));
     expect(markup).toContain('aria-label="Máquinas, workspaces e sessões"');
     expect(markup.match(/data-slot="list-workspace"/g)).toHaveLength(2);
+  });
+
+  it('provides each workspace with its own scheduling menu rather than adding controls to chat rows', () => {
+    const markup = render();
+    expect(markup.match(/data-slot="workspace-schedules-menu"/g)).toHaveLength(2);
+    expect(markup).toContain('aria-label="Mais ações de nanachi"');
+    expect(markup).toContain('aria-label="Mais ações de docs"');
   });
 
   it('marks the session that is open, and no other', () => {
@@ -241,5 +253,90 @@ describe('EmptyDetail', () => {
     const markup = render();
     expect(markup).toContain('Pick a session');
     expect(markup).not.toContain('Escolha');
+  });
+});
+
+describe('ListPaneView search', () => {
+  const nodes = buildTree(
+    [workspace, docs],
+    {
+      w1: [
+        { ...session('parser', 'idle', 5), title: 'Refatorar o parser' },
+        { ...session('cafe', 'running', 8, { agent: 'omp' }), title: 'Notas do café' },
+      ],
+      w2: [{ ...session('readme', 'idle', 9, { workspaceId: 'w2' }), title: 'Revisão do README', worktree: { path: 'C:\wt', branch: 'feature/login' } }],
+    },
+    {},
+    new Set(),
+  );
+  const message = {
+    workspace,
+    session: { ...session('cafe', 'running', 8, { agent: 'omp' }), title: 'Notas do café' },
+    label: 'Notas do café',
+    snippet: 'Sessão de café em Coimbra',
+    matchedAt: NOW - 60_000,
+  };
+  const view: ListPaneViewProps = {
+    header: null,
+    nodes,
+    error: null,
+    query: '',
+    onQueryChange: noop,
+    messageState: { status: 'idle' },
+    messageRows: [],
+    selection: { workspaceId: null, sessionId: null },
+    agentLabels: new Map([
+      ['claude', 'Claude Code'],
+      ['omp', 'Oh My Pi'],
+    ]),
+    now: NOW,
+    onOpenWorkspace: noop,
+    onOpenSession: noop,
+    onNewSession: noop,
+    onOpenSchedules: noop,
+    onAddWorkspace: noop,
+    onRepair: noop,
+  };
+  const render = (overrides: Partial<ListPaneViewProps> = {}): string => html(createElement(ListPaneView, { ...view, ...overrides }));
+
+  it('renders the search field for the iOS search keyboard, with a clear button only when there is text', () => {
+    setLanguage('en');
+    const empty = render();
+    expect(empty).toContain('type="search"');
+    expect(empty).toMatch(/inputmode="search"/i);
+    expect(empty).toMatch(/enterkeyhint="search"/i);
+    expect(empty).toContain('aria-label="Search sessions"');
+    expect(empty).not.toContain('aria-label="Clear search"');
+    const typed = render({ query: 'parser' });
+    expect(typed).toContain('value="parser"');
+    expect(typed).toContain('aria-label="Clear search"');
+    // A submit button inside the search form would submit it on every clear and blur the field.
+    expect(typed).toMatch(/<button[^>]*type="button"[^>]*aria-label="Clear search"/);
+  });
+
+  it('keeps only the sessions that match the words, in the workspaces they belong to', () => {
+    const markup = render({ query: 'parser' });
+    expect(markup).toContain('Refatorar o parser');
+    expect(markup).not.toContain('Notas do café');
+    expect(markup.match(/data-slot="list-workspace"/g)).toHaveLength(1);
+  });
+
+  it('finds a session by its branch, and by its workspace name, accents aside', () => {
+    expect(render({ query: 'login' })).toContain('Revisão do README');
+    expect(render({ query: 'CAFE' })).toContain('Notas do café');
+    expect(render({ query: 'oh my' })).toContain('Notas do café');
+  });
+
+  it('shows the empty result when nothing matches, and the message matches under the tree', () => {
+    setLanguage('en');
+    expect(render({ query: 'banana', messageState: { status: 'idle' } })).toContain('No sessions match “banana”.');
+    const markup = render({
+      query: 'coimbra',
+      messageState: { status: 'ready', results: [] },
+      messageRows: [message],
+    });
+    expect(markup).toContain('data-slot="message-match"');
+    expect(markup).toContain('Sessão de café em Coimbra');
+    expect(markup).toContain('nanachi');
   });
 });

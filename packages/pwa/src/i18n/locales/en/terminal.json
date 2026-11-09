@@ -1,55 +1,13 @@
 {
-  "copy": {
-    "copied": "Copied.",
-    "empty": "Select some terminal text to copy.",
-    "failed": "Couldn't copy. Try again."
-  },
-  "paste": {
-    "pasted": "Pasted.",
-    "empty": "The clipboard is empty.",
-    "failed": "Couldn't paste. Touch and hold the text field to paste."
-  },
   "closed": {
     "plain": "Terminal closed",
     "reload": "Terminal closed by a Nanachi reload",
     "noCode": "Terminal closed (no exit code)",
     "code": "Terminal closed (exit code {{code}})"
   },
-  "changes": "Changes",
-  "dismiss": "OK",
-  "openNew": "Open new terminal",
-  "opening": "Opening…",
   "loading": "Loading terminal…",
-  "scrollToEnd": "Jump to end",
-  "fontSmaller": "Decrease terminal font size",
-  "fontLarger": "Increase terminal font size",
-  "copySelection": "Copy selection",
-  "keysLabel": "Special keys",
   "linePlaceholder": "Text for the terminal",
   "send": "Send",
-  "keys": {
-    "paste": { "label": "Paste" },
-    "ariaLabel": {
-      "esc": "Escape",
-      "tab": "Tab",
-      "ctrl": "Ctrl, the next key becomes a control key",
-      "alt": "Alt, the next key is sent with Alt",
-      "up": "Up arrow",
-      "down": "Down arrow",
-      "left": "Left arrow",
-      "right": "Right arrow",
-      "pipe": "Vertical bar",
-      "tilde": "Tilde",
-      "slash": "Slash",
-      "dash": "Hyphen",
-      "home": "Home, start of line",
-      "end": "End, end of line",
-      "pgup": "Page Up",
-      "pgdn": "Page Down",
-      "paste": "Paste from the clipboard",
-      "enter": "Enter"
-    }
-  },
   "shellSheet": {
     "title": "Terminal",
     "hint": "Opens a terminal in the {{name}} folder.",

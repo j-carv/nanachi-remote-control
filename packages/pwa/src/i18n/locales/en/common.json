@@ -6,6 +6,15 @@
     "pairAgain": "Pair again",
     "gotIt": "Got it"
   },
+  "search": {
+    "label": "Search sessions",
+    "placeholder": "Search sessions and messages",
+    "clear": "Clear search",
+    "noMatches": "No sessions match “{{query}}”.",
+    "messages": "Messages",
+    "messagesLoading": "Searching messages…",
+    "messagesEmpty": "No messages match."
+  },
   "states": {
     "loading": "Loading…",
     "wait": "Please wait…"

@@ -6,8 +6,10 @@ import {
   AgentProfileSchema,
   AgentSessionsResponseSchema,
   AgentsResponseSchema,
+  AskUserResultSchema,
   AttachmentResponseSchema,
   CommandsResponseSchema,
+  CommitRefSchema,
   ConfigOptionsResponseSchema,
   CreateAgentAccountRequestSchema,
   CreateSessionRequestSchema,
@@ -20,7 +22,20 @@ import {
   GitCheckoutRequestSchema,
   HealthResponseSchema,
   LoopRequestSchema,
+  LearningSettingsResponseSchema,
+  LearningModelsResponseSchema,
+  LearningNoticeSchema,
+  MemoryEntriesResponseSchema,
+  MemoryWriteSchema,
+  UpdateLearningSettingsSchema,
+  type LearningSettingsResponse,
+  type LearningModelsResponse,
+  type LearningNotice,
+  type MemoryEntry,
+  type MemoryWrite,
+  type UpdateLearningSettings,
   LoopResponseSchema,
+  NanachiMcpResponseSchema,
   PairRequestSchema,
   PairResponseSchema,
   ShellsResponseSchema,
@@ -31,18 +46,54 @@ import {
   PushKeyResponseSchema,
   PushSubscriptionRequestSchema,
   PushUnsubscribeRequestSchema,
+  RespondUserQuestionRequestSchema,
+  RespondFileRequestSchema,
+  RequestFileResultSchema,
+  PreviewOpenResponseSchema,
+  PreviewCloseResponseSchema,
   ResetRedeemRequestSchema,
   ResetRedeemResponseSchema,
   ResetsResponseSchema,
   RenameAgentAccountRequestSchema,
   RootsResponseSchema,
+  SessionCommitResponseSchema,
+  SessionCommitsResponseSchema,
   SessionDiffResponseSchema,
+  SessionSearchQuerySchema,
+  SessionSearchResponseSchema,
+  ScheduleInputSchema,
+  ScheduleTimingSchema,
+  ScheduleSchema,
+  SchedulesResponseSchema,
+  SchedulePreviewResponseSchema,
+  ScheduleModelsResponseSchema,
+  ScheduleRunSchema,
+  ScheduleRunsResponseSchema,
+  type Schedule,
+  type ScheduleInput,
+  type ScheduleModelsResponse,
+  type ScheduleRun,
   SessionSchema,
   SessionsResponseSchema,
   SetActiveAccountRequestSchema,
+  SetNanachiMcpAgentRequestSchema,
   SetSessionAccountRequestSchema,
+  SubmitPromptRequestSchema,
   UpdateWorkspaceRequestSchema,
   UsageResponseSchema,
+  WHISPER_MAX_WAV_BYTES,
+  TranscriptionLanguageSchema,
+  TranscriptionSettingsResponseSchema,
+  TranscriptionStatusSchema,
+  TranscriptionModelsResponseSchema,
+  TranscriptionResultSchema,
+  UpdateTranscriptionSettingsSchema,
+  WhisperStatusSchema,
+  type TranscriptionSettingsResponse,
+  type TranscriptionStatus,
+  type TranscriptionModelsResponse,
+  type TranscriptionResult,
+  type UpdateTranscriptionSettings,
   WorkspaceEntriesResponseSchema,
   WorkspaceFileResponseSchema,
   WorkspaceFileWriteRequestSchema,
@@ -56,6 +107,10 @@ import {
   type AgentSessionsResponse,
   type AgentsResponse,
   type AttachmentResponse,
+  type AskUserResult,
+  type RequestFileResult,
+  type PreviewOpenResponse,
+  type PreviewCloseResponse,
   type AvailableCommand,
   type SessionConfigOption,
   type CreateSessionRequest,
@@ -68,16 +123,22 @@ import {
   type HealthResponse,
   type Loop,
   type LoopRequest,
+  type NanachiMcpResponse,
   type PairResponse,
   type PushSubscriptionRequest,
   type ResetRedeemResponse,
   type ResetsResponse,
   type RootsResponse,
   type Session,
+  type SessionCommitResponse,
+  type SessionCommitsResponse,
   type SessionDiffResponse,
   type SessionEvent,
+  type SessionSearchResult,
   type UpdateWorkspaceRequest,
   type UsageResponse,
+  type TranscriptionLanguage,
+  type WhisperStatus,
   type Workspace,
   type WorkspaceEntriesResponse,
   type WorkspaceFileResponse,
@@ -293,6 +354,13 @@ export interface DeleteSessionOptions {
   forget?: boolean;
 }
 
+/** What the message search asks for. `limit` is 1 to 50 (the daemon's default is 20); `workspaceId` narrows to one workspace. */
+export interface SessionSearchInput {
+  q: string;
+  limit?: number;
+  workspaceId?: string;
+}
+
 export interface EventsQuery {
   /** Devolve eventos com seq > after. */
   after: number;
@@ -320,6 +388,18 @@ export interface ApiClient {
   fetchShells(): Promise<ShellsResponse['shells']>;
   /** Conta logada em cada agente do config. `refresh` ignora o cache de 5 min do daemon. */
   agentAccounts(refresh: boolean): Promise<AgentAccount[]>;
+  /** Opt-in Nanachi MCP preferences for the configured ACP agents on this PC. */
+  nanachiMcpAgents(): Promise<NanachiMcpResponse>;
+  /** Saves one agent's preference and returns the complete confirmed list. Active sessions are unchanged. */
+  setNanachiMcpAgent(agentId: string, enabled: boolean): Promise<NanachiMcpResponse>;
+  learningSettings(): Promise<LearningSettingsResponse>;
+  saveLearningSettings(input: UpdateLearningSettings): Promise<LearningSettingsResponse>;
+  learningModels(): Promise<LearningModelsResponse>;
+  listMemories(workspaceId: string, options?: { query?: string; kind?: MemoryEntry['kind']; status?: MemoryEntry['status'] }): Promise<MemoryEntry[]>;
+  saveMemory(workspaceId: string, input: MemoryWrite): Promise<MemoryEntry[]>;
+  forgetMemory(workspaceId: string, entryId: string, expectedVersion: number): Promise<void>;
+  manageLearningReview(workspaceId: string, reviewId: string, action: 'approve' | 'revert'): Promise<LearningNotice>;
+  rejectLearningReview(workspaceId: string, reviewId: string): Promise<LearningNotice>;
   /** Adds an account to an agent that supports them (`label`: 1 to 40 characters, trimmed). It starts logged out. */
   createAgentAccount(agentId: string, label: string): Promise<AgentProfile>;
   /** Renames an extra account. The principal (`default`) has no editable name: the daemon answers 400. */
@@ -342,11 +422,34 @@ export interface ApiClient {
   createWorkspace(input: CreateWorkspaceRequest): Promise<Workspace>;
   deleteWorkspace(id: string): Promise<void>;
   listSessions(workspaceId: string): Promise<Session[]>;
+  fetchSession(id: string): Promise<Session>;
+  listSchedules(workspaceId: string): Promise<Schedule[]>;
+  createSchedule(workspaceId: string, input: ScheduleInput): Promise<Schedule>;
+  updateSchedule(workspaceId: string, scheduleId: string, input: ScheduleInput): Promise<Schedule>;
+  deleteSchedule(workspaceId: string, scheduleId: string): Promise<void>;
+  previewSchedule(workspaceId: string, input: { cronExpression: string; timeZone: string }): Promise<number[]>;
+  scheduleModels(workspaceId: string, agentId: string, accountId: string): Promise<ScheduleModelsResponse>;
+  runSchedule(workspaceId: string, scheduleId: string): Promise<ScheduleRun>;
+  scheduleRuns(workspaceId: string, scheduleId: string): Promise<ScheduleRun[]>;
+  scheduleRun(workspaceId: string, scheduleId: string, runId: string): Promise<ScheduleRun>;
+  cancelScheduleRun(workspaceId: string, scheduleId: string, runId: string): Promise<ScheduleRun>;
+  /**
+   * Message search (`GET /api/sessions/search`): sessions whose user or agent messages match every word of `q`, one result
+   * each with its newest match. A query outside 2 to 100 characters is `invalid_input` and nothing is sent.
+   */
+  searchSessions(input: SessionSearchInput): Promise<SessionSearchResult[]>;
   createSession(input: CreateSessionRequest): Promise<Session>;
+  submitPrompt(sessionId: string, text: string, attachments: readonly string[]): Promise<void>;
+  removeQueuedPrompt(sessionId: string, promptId: string): Promise<void>;
   /** Sobe o agente de uma sessão parada ou com erro (`session/load`). Devolve a sessão atualizada. */
   resumeSession(id: string): Promise<Session>;
   deleteSession(id: string, options?: DeleteSessionOptions): Promise<void>;
   fetchEvents(sessionId: string, query: EventsQuery): Promise<SessionEvent[]>;
+  /** Answers this exact pending question; null explicitly cancels. A failed request is never retried automatically. */
+  answerUserQuestion(sessionId: string, requestId: string, optionId: string | null): Promise<AskUserResult>;
+  respondFileRequest(sessionId: string, requestId: string, fileId: string | null): Promise<RequestFileResult>;
+  openPreview(sessionId: string, previewId: string): Promise<PreviewOpenResponse>;
+  closePreview(sessionId: string, previewId: string): Promise<PreviewCloseResponse>;
   /** Comandos que o agente anunciou por último (lista vazia se nenhum). */
   sessionCommands(sessionId: string): Promise<AvailableCommand[]>;
   /** Opções de configuração que valem agora (lista vazia se nenhuma). */
@@ -377,6 +480,14 @@ export interface ApiClient {
   ): Promise<AttachmentResponse>;
   /** Baixa um arquivo do PC (`GET /api/files/:id`) como Blob. `mime` é o do arquivo (define o tipo do Blob). */
   fetchFileBlob(fileId: string, mime: string): Promise<Blob>;
+  whisperStatus(): Promise<WhisperStatus>;
+  installWhisper(): Promise<WhisperStatus>;
+  removeWhisper(): Promise<WhisperStatus>;
+  transcriptionSettings(): Promise<TranscriptionSettingsResponse>;
+  setTranscriptionSettings(input: UpdateTranscriptionSettings): Promise<TranscriptionSettingsResponse>;
+  transcriptionStatus(): Promise<TranscriptionStatus>;
+  transcriptionModels(): Promise<TranscriptionModelsResponse>;
+  transcribeAudio(audio: Blob, language: TranscriptionLanguage, signal: AbortSignal): Promise<TranscriptionResult>;
   updateWorkspace(id: string, input: UpdateWorkspaceRequest): Promise<Workspace>;
   /** Chave pública VAPID da máquina (`publicKey`, base64url). */
   getPushKey(): Promise<string>;
@@ -386,6 +497,10 @@ export interface ApiClient {
   workspaceInfo(id: string): Promise<WorkspaceInfoResponse>;
   /** Arquivos alterados na sessão (`git diff HEAD`, com patch unificado de cada um). */
   sessionDiff(id: string): Promise<SessionDiffResponse>;
+  /** One page of the commits on the session's HEAD, newest first (`skip` and `limit` as the daemon validates them). */
+  sessionCommits(id: string, page: { skip: number; limit: number }): Promise<SessionCommitsResponse>;
+  /** One commit with its changed files (against its first parent). A `hash` outside the daemon's format is refused here. */
+  sessionCommit(id: string, hash: string): Promise<SessionCommitResponse>;
   /**
    * Sessões que o agente tem para a pasta do workspace, para importar (`GET agent-sessions`).
    * `cursor` vem do `nextCursor` da página anterior. `supported: false`: o agente não lista sessões.
@@ -486,6 +601,7 @@ function kindFromStatus(status: number, code: string | null, sessionId: string |
       if (code === 'not_resumable') return new ApiError('not_resumable', status);
       if (code === 'already_running') return new ApiError('already_running', status, sessionId);
       if (code === 'already_linked') return new ApiError('already_linked', status, sessionId);
+      if (code === 'busy') return new ApiError('busy', status);
       return new ApiError('unexpected', status);
     case 413:
       return new ApiError('too_large', status);
@@ -585,6 +701,117 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
   return {
     baseUrl,
 
+    async fetchSession(id) {
+      return getJson(SessionSchema, `/api/sessions/${pathId(id)}`);
+    },
+
+    async listSchedules(workspaceId) {
+      return (await getJson(SchedulesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/schedules`)).schedules;
+    },
+
+    async createSchedule(workspaceId, input) {
+      const request = ScheduleInputSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return postJson(ScheduleSchema, `/api/workspaces/${pathId(workspaceId)}/schedules`, request.data);
+    },
+
+    async updateSchedule(workspaceId, scheduleId, input) {
+      const request = ScheduleInputSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(
+        await call('PUT', `/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}`, request.data),
+        ScheduleSchema,
+      );
+    },
+
+    async deleteSchedule(workspaceId, scheduleId) {
+      await remove(`/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}`);
+    },
+
+    async previewSchedule(workspaceId, input) {
+      const request = ScheduleTimingSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return (await postJson(
+        SchedulePreviewResponseSchema, `/api/workspaces/${pathId(workspaceId)}/schedules/preview`, request.data,
+      )).nextRuns;
+    },
+
+    async scheduleModels(workspaceId, agentId, accountId) {
+      const request = z.object({
+        agentId: z.string().min(1).max(200),
+        accountId: z.string().min(1).max(200),
+      }).safeParse({ agentId, accountId });
+      if (!request.success) throw new ApiError('invalid_input');
+      const query = new URLSearchParams(request.data).toString();
+      return getJson(ScheduleModelsResponseSchema, `/api/workspaces/${pathId(workspaceId)}/schedules/models?${query}`);
+    },
+
+    async runSchedule(workspaceId, scheduleId) {
+      return postJson(ScheduleRunSchema, `/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}/run`, undefined);
+    },
+
+    async scheduleRuns(workspaceId, scheduleId) {
+      return (await getJson(
+        ScheduleRunsResponseSchema, `/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}/runs`,
+      )).runs;
+    },
+
+    async scheduleRun(workspaceId, scheduleId, runId) {
+      return getJson(
+        ScheduleRunSchema, `/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}/runs/${pathId(runId)}`,
+      );
+    },
+
+    async cancelScheduleRun(workspaceId, scheduleId, runId) {
+      return postJson(
+        ScheduleRunSchema,
+        `/api/workspaces/${pathId(workspaceId)}/schedules/${pathId(scheduleId)}/runs/${pathId(runId)}/cancel`,
+        undefined,
+      );
+    },
+
+    async learningSettings() {
+      return getJson(LearningSettingsResponseSchema, '/api/learning/settings');
+    },
+
+    async saveLearningSettings(input) {
+      const request = UpdateLearningSettingsSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(await call('PUT', '/api/learning/settings', request.data), LearningSettingsResponseSchema);
+    },
+
+    async learningModels() {
+      return getJson(LearningModelsResponseSchema, '/api/learning/models');
+    },
+
+    async listMemories(workspaceId, options = {}) {
+      const query = new URLSearchParams();
+      if (options.query !== undefined) query.set('query', options.query);
+      if (options.kind !== undefined) query.set('kind', options.kind);
+      if (options.status !== undefined) query.set('status', options.status);
+      const suffix = query.size > 0 ? `?${query}` : '';
+      return (await getJson(MemoryEntriesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/memories${suffix}`)).entries;
+    },
+
+    async saveMemory(workspaceId, input) {
+      const request = MemoryWriteSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return (await postJson(MemoryEntriesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/memories`, request.data)).entries;
+    },
+
+    async forgetMemory(workspaceId, entryId, expectedVersion) {
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new ApiError('invalid_input');
+      await readBody(await call('DELETE', `/api/workspaces/${pathId(workspaceId)}/memories/${pathId(entryId)}`, { expectedVersion }), MemoryEntriesResponseSchema);
+    },
+
+    async manageLearningReview(workspaceId, reviewId, action) {
+      return postJson(LearningNoticeSchema, `/api/workspaces/${pathId(workspaceId)}/learning/${pathId(reviewId)}/${action}`, {});
+    },
+
+    async rejectLearningReview(workspaceId, reviewId) {
+      return postJson(LearningNoticeSchema, `/api/workspaces/${pathId(workspaceId)}/learning/${pathId(reviewId)}/reject`, {});
+    },
+
     async fetchRoots() {
       const { roots } = await getJson(RootsResponseSchema, '/api/roots');
       return roots;
@@ -610,6 +837,19 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       const query = refresh ? '?refresh=1' : '';
       const { accounts } = await getJson(AgentAccountsResponseSchema, `/api/agents/accounts${query}`);
       return accounts;
+    },
+
+    async nanachiMcpAgents() {
+      return getJson(NanachiMcpResponseSchema, '/api/mcp/agents');
+    },
+
+    async setNanachiMcpAgent(agentId, enabled) {
+      const request = SetNanachiMcpAgentRequestSchema.safeParse({ enabled });
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(
+        await call('PUT', `/api/mcp/agents/${pathId(agentId)}`, request.data),
+        NanachiMcpResponseSchema,
+      );
     },
 
     async createAgentAccount(agentId, label) {
@@ -717,10 +957,29 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       return sessions;
     },
 
+    async searchSessions(input) {
+      const request = SessionSearchQuerySchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      const params = new URLSearchParams({ q: request.data.q, limit: String(request.data.limit) });
+      if (request.data.workspaceId !== undefined) params.set('workspaceId', request.data.workspaceId);
+      const { results } = await getJson(SessionSearchResponseSchema, `/api/sessions/search?${params}`);
+      return results;
+    },
+
     async createSession(input) {
       const request = CreateSessionRequestSchema.safeParse(input);
       if (!request.success) throw new ApiError('invalid_input');
       return postJson(SessionSchema, '/api/sessions', request.data);
+    },
+
+    async submitPrompt(sessionId, text, attachments) {
+      const request = SubmitPromptRequestSchema.safeParse({ text: text.trim(), attachments });
+      if (!request.success) throw new ApiError('invalid_input');
+      await call('POST', `/api/sessions/${pathId(sessionId)}/queue`, request.data);
+    },
+
+    async removeQueuedPrompt(sessionId, promptId) {
+      await remove(`/api/sessions/${pathId(sessionId)}/queue/${pathId(promptId)}`);
     },
 
     async agentSessions(workspaceId, agent, cursor) {
@@ -778,6 +1037,52 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       return events;
     },
 
+    async answerUserQuestion(sessionId, requestId, optionId) {
+      const request = RespondUserQuestionRequestSchema.safeParse({ optionId });
+      if (!request.success) throw new ApiError('invalid_input');
+      const response = await send(
+        fetchFn,
+        `${baseUrl}/api/sessions/${pathId(sessionId)}/questions/${pathId(requestId)}/respond`,
+        {
+          method: 'POST',
+          headers: { authorization, 'content-type': 'application/json' },
+          body: JSON.stringify(request.data),
+          // An unavailable PC must not leave the choices locked indefinitely, even if the WebSocket also drops.
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!response.ok) throw await errorFromResponse(response);
+      return readBody(response, AskUserResultSchema);
+    },
+
+    async respondFileRequest(sessionId, requestId, fileId) {
+      const request = RespondFileRequestSchema.safeParse({ fileId });
+      if (!request.success) throw new ApiError('invalid_input');
+      const response = await send(fetchFn, `${baseUrl}/api/sessions/${pathId(sessionId)}/file-requests/${pathId(requestId)}/respond`, {
+        method: 'POST',
+        headers: { authorization, 'content-type': 'application/json' },
+        body: JSON.stringify(request.data),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw await errorFromResponse(response);
+      return readBody(response, RequestFileResultSchema);
+    },
+
+    async openPreview(sessionId, previewId) {
+      const response = await send(fetchFn, `${baseUrl}/api/sessions/${pathId(sessionId)}/previews/${pathId(previewId)}/open`, {
+        method: 'POST',
+        headers: { authorization, 'content-type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw await errorFromResponse(response);
+      return readBody(response, PreviewOpenResponseSchema);
+    },
+
+    async closePreview(sessionId, previewId) {
+      return readBody(await call('DELETE', `/api/sessions/${pathId(sessionId)}/previews/${pathId(previewId)}`), PreviewCloseResponseSchema);
+    },
+
     async uploadAttachment(sessionId, file, onProgress) {
       return upload(pathId(sessionId), file, onProgress);
     },
@@ -789,6 +1094,41 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       } catch {
         throw new ApiError('network', response.status);
       }
+    },
+
+    whisperStatus: () => getJson(WhisperStatusSchema, '/api/whisper'),
+
+    async installWhisper() {
+      return readBody(await call('POST', '/api/whisper/install'), WhisperStatusSchema);
+    },
+
+    async removeWhisper() {
+      return readBody(await call('DELETE', '/api/whisper'), WhisperStatusSchema);
+    },
+
+    transcriptionSettings: () => getJson(TranscriptionSettingsResponseSchema, '/api/transcription/settings'),
+    transcriptionStatus: () => getJson(TranscriptionStatusSchema, '/api/transcription/status'),
+    transcriptionModels: () => getJson(TranscriptionModelsResponseSchema, '/api/transcription/models'),
+
+    async setTranscriptionSettings(input) {
+      const request = UpdateTranscriptionSettingsSchema.safeParse(input);
+      if (!request.success) throw new ApiError('invalid_input');
+      return readBody(await call('PUT', '/api/transcription/settings', request.data), TranscriptionSettingsResponseSchema);
+    },
+
+    async transcribeAudio(audio, language, signal) {
+      const parsed = TranscriptionLanguageSchema.safeParse(language);
+      if (!parsed.success || audio.type !== 'audio/wav' || audio.size > WHISPER_MAX_WAV_BYTES) {
+        throw new ApiError('invalid_input');
+      }
+      const response = await send(fetchFn, `${baseUrl}/api/transcription/transcribe?language=${parsed.data}`, {
+        method: 'POST',
+        headers: { authorization, 'content-type': 'audio/wav' },
+        body: audio,
+        signal,
+      });
+      if (!response.ok) throw await errorFromResponse(response);
+      return readBody(response, TranscriptionResultSchema);
     },
 
     async updateWorkspace(id, input) {
@@ -823,6 +1163,17 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
 
     async sessionDiff(id) {
       return getJson(SessionDiffResponseSchema, `/api/sessions/${pathId(id)}/diff`);
+    },
+
+    async sessionCommits(id, page) {
+      const query = new URLSearchParams({ skip: String(page.skip), limit: String(page.limit) }).toString();
+      return getJson(SessionCommitsResponseSchema, `/api/sessions/${pathId(id)}/commits?${query}`);
+    },
+
+    async sessionCommit(id, hash) {
+      const ref = CommitRefSchema.safeParse(hash);
+      if (!ref.success) throw new ApiError('invalid_input');
+      return getJson(SessionCommitResponseSchema, `/api/sessions/${pathId(id)}/commits/${ref.data}`);
     },
 
     async devices() {

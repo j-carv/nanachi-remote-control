@@ -44,7 +44,7 @@ function notifier(options: { send?: SendNotification; live?: string[]; warn?: (.
       db,
       machineId: 'm-1',
       vapid,
-      connections: { hasLiveConnection: (deviceId: string) => (options.live ?? []).includes(deviceId) },
+      connections: { hasLiveSubscription: (deviceId: string) => (options.live ?? []).includes(deviceId) },
       send: options.send,
       warn,
     }),
@@ -74,6 +74,22 @@ describe('aviso de pareamento por Tailscale (Web Push)', () => {
       machineId: 'm-1',
       kind: 'device_paired',
     });
+  });
+
+  it('the notice goes out in each device language', async () => {
+    device('a', 'iPad');
+    device('new', 'iPhone');
+    db.prepare<[string]>("UPDATE push_subscriptions SET language = 'en' WHERE device_id = ?").run('a');
+    const sent: { endpoint: string; payload: string }[] = [];
+    const send: SendNotification = async (subscription: PushSubscription, payload: string, _o: RequestOptions) => {
+      sent.push({ endpoint: subscription.endpoint, payload });
+    };
+
+    await notifier({ send }).notifier.notifyDevicePaired('new', 'iPhone');
+
+    expect(sent.map((item) => DevicePairedPushPayloadSchema.parse(JSON.parse(item.payload)).body)).toEqual([
+      'New device joined with Tailscale: iPhone',
+    ]);
   });
 
   it('manda mesmo para device com WS aberto (o app não mostra pareamento)', async () => {

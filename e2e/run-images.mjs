@@ -292,7 +292,16 @@ async function stepImagesInChat() {
   await until('miniatura da mensagem do agente', () => hasCount(messageThumb));
   await until('miniatura da mensagem carregou', () => loaded(messageThumb.locator('img')));
 
-  // 2) Imagem em tool call (cartão em andamento, aberto): miniatura dentro do cartão.
+  // 2) Tool images remain available by expanding the activity and its individual row.
+  for (const activity of await page.locator('[data-slot="tool-activity"]').all()) {
+    if (!(await activity.evaluate((element) => element.open))) {
+      await activity.locator(':scope > [data-slot="tool-activity-summary"]').click();
+    }
+  }
+  const imageCard = toolCard('Ler teste.png');
+  if (!(await imageCard.evaluate((element) => element.open))) {
+    await imageCard.locator(':scope > summary').click();
+  }
   const toolThumb = toolCard('Ler teste.png').locator('[data-slot="file-thumb"]');
   await until('miniatura dentro do tool call', () => hasCount(toolThumb));
   await until('miniatura do tool call carregou', () => loaded(toolThumb.locator('img')));

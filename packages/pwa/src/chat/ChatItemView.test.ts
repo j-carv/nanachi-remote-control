@@ -46,6 +46,7 @@ describe('ChatItemView: texto do agente com marcadores de loop', () => {
     expect(items[0]).toEqual({
       id: 'agent_message-1',
       kind: 'agent_message',
+      lastSeq: 2,
       text: 'Passo feito. [[nanachi-loop-next: 45s]]',
     });
     const html = render(items[0]);

@@ -30,6 +30,8 @@ const shellSession: Session = { ...agentSession, id: 's2', agent: 'shell', kind:
 const chat: Route = { kind: 'chat', workspace, session: agentSession };
 const terminalChat: Route = { kind: 'chat', workspace, session: shellSession };
 const changes: Route = { kind: 'changes', workspace, session: agentSession };
+const commits: Route = { kind: 'commits', workspace, session: agentSession };
+const commit: Route = { kind: 'commit', workspace, session: agentSession, hash: 'af9384ef96648594f13a8bd80ae53aa3e830a8ae' };
 const files: Route = { kind: 'files', workspace, path: '' };
 const editor: Route = { kind: 'editor', workspace, path: 'src/a.ts' };
 
@@ -48,6 +50,11 @@ describe('what opens beside the conversation', () => {
     expect(opensInSidePane(changes, chat)).toBe(true);
     expect(opensInSidePane(files, chat)).toBe(true);
     expect(opensInSidePane(editor, chat)).toBe(true);
+  });
+
+  it('the commit history and one of its commits do, as the changes do', () => {
+    expect(opensInSidePane(commits, chat)).toBe(true);
+    expect(opensInSidePane(commit, chat)).toBe(true);
   });
 
   it('a terminal does from an agent chat, but not from another terminal', () => {
@@ -79,6 +86,15 @@ describe('the pane stack', () => {
     expect(sideBackAffordance(pane)).toBe('back');
     const back = backSidePane(pane);
     expect(back === null ? null : activeSideRoute(back, 'chat:s1')).toEqual(files);
+    expect(sideBackAffordance(back)).toBe('close');
+  });
+
+  it('the working tree opened from the commit history in the pane goes back to the history', () => {
+    const pane = pushSidePane(openSidePane('chat:s1', commits), changes);
+    expect(pane === null ? null : activeSideRoute(pane, 'chat:s1')).toEqual(changes);
+    expect(sideBackAffordance(pane)).toBe('back');
+    const back = backSidePane(pane);
+    expect(back === null ? null : activeSideRoute(back, 'chat:s1')).toEqual(commits);
     expect(sideBackAffordance(back)).toBe('close');
   });
 

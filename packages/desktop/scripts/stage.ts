@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { builtinModules } from 'node:module';
-import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertOutsideRepo, resolveBuildDir, stageDirOf } from '../src/main/build-dir.js';
 import { removeTreeOrThrow } from '../src/install/safe-remove.js';
@@ -195,6 +195,192 @@ function requireFile(path: string, hint: string): void {
   if (!existsSync(path)) throw new Error(`falta ${path}\n${hint}`);
 }
 
+/** Build-only files the runtime never loads: source maps, TypeScript declarations and Windows debug symbols. */
+const BUILD_ONLY_SUFFIXES: readonly string[] = ['.map', '.d.ts', '.d.mts', '.d.cts', '.pdb'];
+
+/** Extensions Node tries for a `main` or export target written without one (`''` is the path as written). */
+const IMPLIED_EXTENSIONS: readonly string[] = ['', '.js', '.cjs', '.mjs', '.json', '.node'];
+
+interface ScannedPackage {
+  /** The package folder: `node_modules\<name>`, or `node_modules\@scope\<name>` for a scoped package. */
+  root: string;
+  /** Every regular file below `root`, except those inside a nested `node_modules`. */
+  files: string[];
+  /** Every package.json below `root`, the package's own included. */
+  manifests: string[];
+}
+
+interface RuntimeReferences {
+  /** Runtime files and folders, as {@link protectionKey} values. A folder protects everything below it. */
+  paths: string[];
+  /** Wildcard export targets (`./tools/*`), as regular expressions over {@link protectionKey} values. */
+  patterns: RegExp[];
+}
+
+export interface PruneResult {
+  removedFiles: number;
+  freedBytes: number;
+}
+
+/**
+ * Deletes what the runtime never loads from every package under `<runtimeDir>\node_modules`: source maps, declaration
+ * files, `.pdb` debug symbols, better-sqlite3's `deps` folder (SQLite sources, build-time only) and its prebuilds for
+ * other platforms (the Windows runtime loads `prebuilds\win32-x64.node` only). Nothing outside `node_modules` is touched.
+ *
+ * Safety rule: a file that a package.json below its package names at runtime (`main`, `module`, `bin`, or an `exports`
+ * target outside a `types` condition) is kept, whatever its extension. A declaration file named only by `types` goes.
+ */
+export function pruneBuildOnlyFiles(runtimeDir: string): PruneResult {
+  const result: PruneResult = { removedFiles: 0, freedBytes: 0 };
+  const packages: ScannedPackage[] = [];
+  collectPackages(join(runtimeDir, 'node_modules'), packages);
+  for (const pkg of packages) {
+    const name = packageNameOf(pkg.root);
+    const references = runtimeReferencesOf(pkg);
+    for (const file of pkg.files) {
+      if (!isBuildOnly(name, relative(pkg.root, file).split(sep).join('/'))) continue;
+      if (isProtected(protectionKey(file), references)) continue;
+      const bytes = lstatSync(file).size;
+      removeTreeOrThrow(file);
+      result.removedFiles += 1;
+      result.freedBytes += bytes;
+    }
+    if (name === 'better-sqlite3') removeEmptyDirs(join(pkg.root, 'deps'));
+  }
+  return result;
+}
+
+/** Every package folder under `nodeModules`, and the packages nested inside those, each with its files and manifests. */
+function collectPackages(nodeModules: string, packages: ScannedPackage[]): void {
+  for (const root of packageFolders(nodeModules)) {
+    const pkg: ScannedPackage = { root, files: [], manifests: [] };
+    const nested: string[] = [];
+    scanPackage(root, pkg, nested);
+    packages.push(pkg);
+    for (const folder of nested) collectPackages(folder, packages);
+  }
+}
+
+/** The folders directly under `nodeModules` (scoped packages are one level down). Dot folders such as `.bin` are skipped. */
+function packageFolders(nodeModules: string): string[] {
+  if (!existsSync(nodeModules)) return [];
+  const folders: string[] = [];
+  for (const entry of readdirSync(nodeModules, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const full = join(nodeModules, entry.name);
+    if (!entry.name.startsWith('@')) {
+      folders.push(full);
+      continue;
+    }
+    for (const scoped of readdirSync(full, { withFileTypes: true })) {
+      if (scoped.isDirectory()) folders.push(join(full, scoped.name));
+    }
+  }
+  return folders;
+}
+
+/** Collects the files of one package. Symbolic links are not followed; a nested `node_modules` is left for later. */
+function scanPackage(dir: string, pkg: ScannedPackage, nested: string[]): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules') nested.push(full);
+      else scanPackage(full, pkg, nested);
+    } else if (entry.isFile()) {
+      pkg.files.push(full);
+      if (entry.name === 'package.json') pkg.manifests.push(full);
+    }
+  }
+}
+
+function packageNameOf(root: string): string {
+  const name = basename(root);
+  const parent = basename(dirname(root));
+  return parent.startsWith('@') ? `${parent}/${name}` : name;
+}
+
+function isBuildOnly(packageName: string, relPath: string): boolean {
+  if (BUILD_ONLY_SUFFIXES.some((suffix) => relPath.endsWith(suffix))) return true;
+  if (packageName !== 'better-sqlite3') return false;
+  if (relPath.startsWith('deps/')) return true;
+  return /^prebuilds\/[^/]+\.node$/.test(relPath) && relPath !== 'prebuilds/win32-x64.node';
+}
+
+/** Case-folded on Windows, where `Foo.map` and `foo.map` are one file. */
+function protectionKey(path: string): string {
+  const absolute = resolve(path);
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
+}
+
+function runtimeReferencesOf(pkg: ScannedPackage): RuntimeReferences {
+  const references: RuntimeReferences = { paths: [], patterns: [] };
+  for (const manifest of pkg.manifests) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(manifest, 'utf8'));
+    } catch {
+      throw new Error(`package.json inválido, o stage não consegue saber o que o pacote usa: ${manifest}`);
+    }
+    for (const target of runtimeTargetsOf(parsed)) {
+      const key = protectionKey(resolve(dirname(manifest), target));
+      if (key.includes('*')) references.patterns.push(wildcardToRegExp(key));
+      else references.paths.push(key);
+    }
+  }
+  return references;
+}
+
+/** `main`, `module`, `bin` and the `exports` targets that are not under a `types` condition. */
+function runtimeTargetsOf(manifest: unknown): string[] {
+  if (typeof manifest !== 'object' || manifest === null) return [];
+  const { main, module: moduleField, bin, exports: exportsField } = manifest as Record<string, unknown>;
+  const targets: string[] = [];
+  for (const field of [main, moduleField]) {
+    if (typeof field === 'string') targets.push(field);
+  }
+  if (typeof bin === 'string') targets.push(bin);
+  else if (typeof bin === 'object' && bin !== null) {
+    for (const value of Object.values(bin as Record<string, unknown>)) {
+      if (typeof value === 'string') targets.push(value);
+    }
+  }
+  collectExportTargets(exportsField, targets);
+  return targets;
+}
+
+function collectExportTargets(node: unknown, out: string[]): void {
+  if (typeof node === 'string') out.push(node);
+  else if (Array.isArray(node)) {
+    for (const item of node as unknown[]) collectExportTargets(item, out);
+  } else if (typeof node === 'object' && node !== null) {
+    for (const [condition, value] of Object.entries(node as Record<string, unknown>)) {
+      if (condition !== 'types') collectExportTargets(value, out);
+    }
+  }
+}
+
+function wildcardToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function isProtected(key: string, references: RuntimeReferences): boolean {
+  const namesPath = references.paths.some(
+    (path) => key.startsWith(`${path}${sep}`) || IMPLIED_EXTENSIONS.some((extension) => key === `${path}${extension}`),
+  );
+  return namesPath || references.patterns.some((pattern) => pattern.test(key));
+}
+
+/** Removes the folders below `dir` that are empty by now. The folder itself goes too when it ends up empty. */
+function removeEmptyDirs(dir: string): void {
+  if (!existsSync(dir) || !lstatSync(dir).isDirectory()) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyDirs(join(dir, entry.name));
+  }
+  // Empty by now, so the walker only removes this folder (it never reaches a file that could be kept).
+  if (readdirSync(dir).length === 0) removeTreeOrThrow(dir);
+}
+
 export function stage(paths: StagePaths): void {
   const { repoRoot, stageDir, runtimeDir } = paths;
   assertNode22(process.versions.node);
@@ -218,6 +404,8 @@ export function stage(paths: StagePaths): void {
   removeTreeOrThrow(runtimeDir);
   mkdirSync(runtimeDir, { recursive: true });
 
+  copyInto(stageDir, join(repoRoot, 'LICENSE'), join(runtimeDir, 'LICENSE'));
+  copyInto(stageDir, join(repoRoot, 'README.md'), join(runtimeDir, 'README.md'));
   copyInto(stageDir, join(shared, 'package.json'), join(runtimeDir, 'packages', 'shared', 'package.json'));
   copyInto(stageDir, join(shared, 'dist'), join(runtimeDir, 'packages', 'shared', 'dist'));
   copyInto(stageDir, join(daemon, 'package.json'), join(runtimeDir, 'packages', 'daemon', 'package.json'));
@@ -249,6 +437,10 @@ export function stage(paths: StagePaths): void {
   if (install.status !== 0) throw new Error(`npm install falhou (código ${install.status ?? 'sem código'})`);
 
   copyFileSync(process.execPath, join(runtimeDir, 'node.exe'));
+
+  // After the install, before the check: the check below proves the daemon still starts without what was removed.
+  const pruned = pruneBuildOnlyFiles(runtimeDir);
+  console.log(`  poda: ${pruned.removedFiles} arquivos de build removidos, ${megabytes(pruned.freedBytes)} liberados`);
 
   verifyRuntime(runtimeDir);
 

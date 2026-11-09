@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { PairResponse, PushKeyResponse } from '@nanachi/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli, type CliIO } from '../src/cli.js';
+import { insertSession, insertWorkspace } from '../src/repository.js';
 import { loadOrCreateVapid } from '../src/vapid.js';
 import { listen, WsTestClient } from './agent-support.js';
 import { issueCode, setupDaemonTests, type TestDaemon } from './support.js';
@@ -106,6 +107,24 @@ describe('POST /api/push/subscribe', () => {
       )
       .get(sub.endpoint);
     expect(row).toEqual({ device_id: deviceId, keys: JSON.stringify(renewed.keys) });
+  });
+
+  it('stores the app language with the subscription; a language outside the list → 400 and nothing stored', async () => {
+    const daemon = await env.start();
+    const { headers } = await pairDevice(daemon, 'iPhone');
+    const sub = subscriptionFor('lang');
+    const languageOf = (): string | null | undefined =>
+      daemon.db
+        .prepare<[string], { language: string | null }>('SELECT language FROM push_subscriptions WHERE endpoint = ?')
+        .get(sub.endpoint)?.language;
+
+    const invalid = await daemon.app.inject({ method: 'POST', url: '/api/push/subscribe', headers, payload: { ...sub, language: 'fr' } });
+    expect(invalid.statusCode).toBe(400);
+    expect(rowCount(daemon, sub.endpoint)).toBe(0);
+
+    const saved = await daemon.app.inject({ method: 'POST', url: '/api/push/subscribe', headers, payload: { ...sub, language: 'es' } });
+    expect(saved.statusCode).toBe(204);
+    expect(languageOf()).toBe('es');
   });
 
   it('corpo inválido (sem keys, endpoint não-URL) → 400; sem Bearer → 401', async () => {
@@ -277,16 +296,29 @@ describe('revoke apaga as inscrições do device', () => {
   });
 });
 
-describe('conexões WS vivas por device', () => {
-  it('hasLiveConnection é true enquanto o WS do device está aberto', async () => {
+describe('WS connections following a session', () => {
+  it('subscribe marks the device as following the session; unsubscribe and closing the WS unmark it', async () => {
     const daemon = await env.start();
     const paired = await pairDevice(daemon, 'iPhone');
-    expect(daemon.connections.hasLiveConnection(paired.deviceId)).toBe(false);
+    insertWorkspace(daemon.db, { id: 'w1', name: 'projeto', path: join(env.home, 'w1'), createdAt: 1, muted: false });
+    insertSession(daemon.db, { id: 's-a', workspaceId: 'w1', agent: 'omp', title: 'A', status: 'idle', createdAt: 1 });
+    insertSession(daemon.db, { id: 's-b', workspaceId: 'w1', agent: 'omp', title: 'B', status: 'idle', createdAt: 1 });
+    const watching = (sessionId: string): boolean => daemon.connections.hasLiveSubscription(paired.deviceId, sessionId);
+    expect(watching('s-a')).toBe(false);
 
     const client = await WsTestClient.connect(await listen(daemon), paired.token);
-    expect(daemon.connections.hasLiveConnection(paired.deviceId)).toBe(true);
+    client.send({ type: 'subscribe', sessionId: 's-a', afterSeq: 0 });
+    await client.sync();
+    expect(watching('s-a')).toBe(true);
+    expect(watching('s-b')).toBe(false);
 
+    client.send({ type: 'unsubscribe', sessionId: 's-a' });
+    await client.sync();
+    expect(watching('s-a')).toBe(false);
+
+    client.send({ type: 'subscribe', sessionId: 's-a', afterSeq: 0 });
+    await client.sync();
     await client.close();
-    await waitFor(() => !daemon.connections.hasLiveConnection(paired.deviceId));
+    await waitFor(() => !watching('s-a'));
   });
 });

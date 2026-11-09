@@ -37,8 +37,14 @@ export function toolStatusText(status: ToolCallStatus): string {
 /** Resumo de uma linha do tool call: título, arquivo, +/− e status em texto. */
 export function summarizeTool(item: ToolItem): ToolSummary {
   const firstLocation = item.locations[0] ?? null;
-  const title = item.title !== '' ? item.title : (firstLocation ?? t('chat:tool.fallbackTitle'));
-  const file = firstLocation !== null && !title.includes(firstLocation) ? firstLocation : null;
+  const basename = firstLocation?.split(/[\\/]/).filter(Boolean).at(-1) ?? firstLocation;
+  let title = item.title;
+  for (const location of item.locations) {
+    const name = location.split(/[\\/]/).filter(Boolean).at(-1);
+    if (name !== undefined && location !== '') title = title.split(location).join(name);
+  }
+  if (title === '') title = basename ?? t('chat:tool.fallbackTitle');
+  const file = basename !== null && !title.includes(basename) ? basename : null;
   const { added, removed } = countChanges(item.content);
 
   return {

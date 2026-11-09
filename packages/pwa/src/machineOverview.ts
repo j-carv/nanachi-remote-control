@@ -15,6 +15,7 @@ export interface SessionCounts {
 export interface MachineDetails {
   latencyMs: number;
   workspaceCount: number;
+  /** Ordinary sessions only; scheduled agent executions have their own workspace history. */
   sessions: readonly Session[];
   /** Labels of the agents that are logged in on the machine. */
   agents: readonly string[];
@@ -43,6 +44,16 @@ export function sessionGroup(status: SessionStatus): SessionGroup | null {
     case 'error':
       return null;
   }
+}
+
+export function sessionAttentionRank(status: SessionStatus): number {
+  if (status === 'awaiting_permission') return 0;
+  if (status === 'error') return 1;
+  return 2;
+}
+
+export function compareSessionAttention(a: Session, b: Session): number {
+  return sessionAttentionRank(a.status) - sessionAttentionRank(b.status) || b.updatedAt - a.updatedAt;
 }
 
 export function countSessions(sessions: readonly Session[]): SessionCounts {
@@ -162,7 +173,7 @@ export async function loadMachineOverview(machine: Machine, deps: OverviewDeps):
       details: {
         latencyMs,
         workspaceCount: workspaces.length,
-        sessions: perWorkspace.flat(),
+        sessions: perWorkspace.flat().filter((session) => session.automationRunId === undefined),
         agents: loggedInAgents(accounts),
       },
     };

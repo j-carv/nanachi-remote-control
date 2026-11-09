@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  AppLanguageSchema,
   AvailableCommandSchema,
   LoopSchema,
   PushSubscriptionRequestSchema,
@@ -8,15 +9,18 @@ import {
   SessionSchema,
   SessionStatusSchema,
   type AgentKind,
+  type AppLanguage,
   type AvailableCommand,
   type Loop,
   type Session,
   type SessionConfigOption,
   type SessionEvent,
+  type SessionSearchResult,
   type SessionStatus,
   type Workspace,
 } from '@nanachi/shared';
 import type Database from 'better-sqlite3';
+import { offeredConfigOptions } from './agent-modes.js';
 
 export interface Machine {
   id: string;
@@ -152,6 +156,7 @@ interface SessionDbRow {
   status: string;
   worktree: string | null;
   account_id: string | null;
+  automation_run_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -167,6 +172,7 @@ function toSession(row: SessionDbRow): Session {
     title: row.title,
     status: row.status,
     accountId: row.account_id,
+    ...(row.automation_run_id === null ? {} : { automationRunId: row.automation_run_id }),
     worktree,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -188,7 +194,11 @@ export function countLiveSessions(db: Database.Database): number {
 export function countBusySessions(db: Database.Database): number {
   return db
     .prepare<[], { n: number }>(
-      "SELECT COUNT(*) AS n FROM sessions WHERE status IN ('starting', 'running', 'awaiting_permission') AND agent <> 'shell'",
+      `SELECT
+        (SELECT COUNT(*) FROM sessions WHERE status IN ('starting', 'running', 'awaiting_permission') AND agent <> 'shell') +
+        (SELECT COUNT(*) FROM schedule_runs AS run WHERE execution_active = 1 AND NOT EXISTS (
+          SELECT 1 FROM sessions WHERE automation_run_id = run.id AND status IN ('starting', 'running', 'awaiting_permission')
+        )) AS n`,
     )
     .get()?.n ?? 0;
 }
@@ -198,7 +208,11 @@ export function hasBusySessionsInWorkspace(db: Database.Database, workspaceId: s
   return (
     db
       .prepare<[string], { found: number }>(
-        "SELECT 1 AS found FROM sessions WHERE workspace_id = ? AND status IN ('starting', 'running', 'awaiting_permission') LIMIT 1",
+        `SELECT 1 AS found FROM (
+           SELECT workspace_id FROM sessions WHERE status IN ('starting', 'running', 'awaiting_permission')
+           UNION ALL
+           SELECT workspace_id FROM schedule_runs WHERE execution_active = 1
+         ) WHERE workspace_id = ? LIMIT 1`,
       )
       .get(workspaceId) !== undefined
   );
@@ -287,6 +301,14 @@ export function deleteSessionRows(db: Database.Database, sessionId: string): voi
 /** Sessões do workspace, mais recente primeiro. */
 export function listSessionsByWorkspace(db: Database.Database, workspaceId: string): Session[] {
   return db
+    .prepare<[string], SessionDbRow>(`SELECT ${SESSION_COLUMNS} FROM sessions WHERE workspace_id = ? AND automation_run_id IS NULL ORDER BY created_at DESC, rowid DESC`)
+    .all(workspaceId)
+    .map(toSession);
+}
+
+/** Includes automation history for workspace lifecycle operations, never ordinary conversation lists. */
+export function listAllSessionsByWorkspace(db: Database.Database, workspaceId: string): Session[] {
+  return db
     .prepare<[string], SessionDbRow>(`SELECT ${SESSION_COLUMNS} FROM sessions WHERE workspace_id = ? ORDER BY created_at DESC, rowid DESC`)
     .all(workspaceId)
     .map(toSession);
@@ -305,7 +327,7 @@ export function stopInterruptedSessions(db: Database.Database, at: number): numb
 }
 
 const SESSION_COLUMNS =
-  'id, workspace_id, agent, kind, title, status, worktree, account_id, created_at, updated_at';
+  'id, workspace_id, agent, kind, title, status, worktree, account_id, automation_run_id, created_at, updated_at';
 
 export interface NewSession {
   id: string;
@@ -320,12 +342,14 @@ export interface NewSession {
   worktree?: Worktree | null;
   /** Conta do agente (null/ausente = principal). */
   accountId?: string | null;
+  /** Workspace automation owns this session before any startup event is published. */
+  automationRunId?: string;
 }
 
 export function insertSession(db: Database.Database, session: NewSession): void {
-  db.prepare<[string, string, string, string, string, string, string | null, string | null, number, number]>(
-    `INSERT INTO sessions (id, workspace_id, agent, kind, title, status, config_options, worktree, account_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?)`,
+  db.prepare<[string, string, string, string, string, string, string | null, string | null, string | null, number, number]>(
+    `INSERT INTO sessions (id, workspace_id, agent, kind, title, status, config_options, worktree, account_id, automation_run_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?)`,
   ).run(
     session.id,
     session.workspaceId,
@@ -335,6 +359,7 @@ export function insertSession(db: Database.Database, session: NewSession): void 
     session.status,
     session.worktree ? JSON.stringify(session.worktree) : null,
     session.accountId ?? null,
+    session.automationRunId ?? null,
     session.createdAt,
     session.createdAt,
   );
@@ -351,10 +376,16 @@ export function findSessionCommands(db: Database.Database, id: string): Availabl
   return row === undefined ? undefined : AvailableCommandSchema.array().parse(JSON.parse(row.commands));
 }
 
-/** Opções de configuração que valem agora (coluna `config_options`). Undefined se a sessão não existe. */
+/**
+ * Config options the session offers now (column `config_options`), filtered by agent-modes.ts; rows written before that
+ * rule are filtered too. Undefined when the session does not exist.
+ */
 export function findSessionConfigOptions(db: Database.Database, id: string): SessionConfigOption[] | undefined {
-  const row = db.prepare<[string], { config_options: string }>('SELECT config_options FROM sessions WHERE id = ?').get(id);
-  return row === undefined ? undefined : SessionConfigOptionSchema.array().parse(JSON.parse(row.config_options));
+  const row = db
+    .prepare<[string], { config_options: string; agent: string }>('SELECT config_options, agent FROM sessions WHERE id = ?')
+    .get(id);
+  if (row === undefined) return undefined;
+  return offeredConfigOptions(row.agent, SessionConfigOptionSchema.array().parse(JSON.parse(row.config_options)));
 }
 
 /** Id da sessão no agente (session/new). Undefined se a sessão não existe ou nunca abriu no agente. */
@@ -443,6 +474,46 @@ export function insertEvent(
   return Number(result.lastInsertRowid);
 }
 
+/** A request id cannot be reused, even after it has been resolved or the daemon has restarted. */
+export function hasUserQuestion(db: Database.Database, sessionId: string, requestId: string): boolean {
+  return db.prepare<[string, string], { present: number }>(
+    "SELECT 1 AS present FROM events WHERE session_id = ? AND kind = 'user_question' AND json_extract(payload, '$.requestId') = ? LIMIT 1",
+  ).get(sessionId, requestId) !== undefined;
+}
+
+/** Persisted questions without a resolution belong to a dead HTTP waiter after daemon restart. */
+export function orphanedUserQuestions(db: Database.Database): Array<{ sessionId: string; requestId: string }> {
+  return db.prepare<[], { sessionId: string; requestId: string }>(`
+    SELECT session_id AS sessionId, json_extract(payload, '$.requestId') AS requestId
+    FROM events
+    WHERE kind IN ('user_question', 'user_question_resolved')
+    GROUP BY session_id, json_extract(payload, '$.requestId')
+    HAVING SUM(CASE WHEN kind = 'user_question' THEN 1 ELSE 0 END) > 0
+       AND SUM(CASE WHEN kind = 'user_question_resolved' THEN 1 ELSE 0 END) = 0
+    ORDER BY MIN(seq)
+  `).all();
+}
+
+/** A file request's transport identity cannot be reused after completion or restart. */
+export function hasFileRequest(db: Database.Database, sessionId: string, requestId: string): boolean {
+  return db.prepare<[string, string], { present: number }>(
+    "SELECT 1 AS present FROM events WHERE session_id = ? AND kind = 'file_request' AND json_extract(payload, '$.requestId') = ? LIMIT 1",
+  ).get(sessionId, requestId) !== undefined;
+}
+
+/** A persisted request cannot restore a lost agent HTTP connection after restart. */
+export function orphanedFileRequests(db: Database.Database): Array<{ sessionId: string; requestId: string }> {
+  return db.prepare<[], { sessionId: string; requestId: string }>(`
+    SELECT session_id AS sessionId, json_extract(payload, '$.requestId') AS requestId
+    FROM events
+    WHERE kind IN ('file_request', 'file_request_resolved')
+    GROUP BY session_id, json_extract(payload, '$.requestId')
+    HAVING SUM(CASE WHEN kind = 'file_request' THEN 1 ELSE 0 END) > 0
+       AND SUM(CASE WHEN kind = 'file_request_resolved' THEN 1 ELSE 0 END) = 0
+    ORDER BY MIN(seq)
+  `).all();
+}
+
 /**
  * Apaga os `terminal_output` mais antigos de uma sessão (por seq) até liberar pelo menos `bytes` bytes de `data`.
  * Só toca nessa sessão e nesse tipo de evento. Devolve quantos bytes saíram.
@@ -497,6 +568,53 @@ export function listEvents(
         kind: row.kind,
       });
     });
+}
+
+/**
+ * Each word of the query becomes a quoted prefix term (`"word"*`). Only letters, marks and digits pass, so typed text
+ * never turns into an FTS5 operator. A query with no word has nothing to search for.
+ */
+function matchExpressionOf(query: string): string | undefined {
+  const words = query.match(/[\p{L}\p{M}\p{N}]+/gu);
+  return words === null ? undefined : words.map((word) => `"${word}"*`).join(' ');
+}
+
+/**
+ * Searches the user and agent messages (the `message_search` FTS5 index, migration 10). Every word must be in the same
+ * message; accents and case do not count. One row per session: its newest matching message, with that message's
+ * snippet. Sessions of a deleted workspace are left out, since the screens cannot open them. `workspaceId` narrows the
+ * search to one workspace. Values go in as bound parameters.
+ */
+export function searchSessionMessages(
+  db: Database.Database,
+  options: { query: string; limit: number; workspaceId?: string | null },
+): SessionSearchResult[] {
+  const match = matchExpressionOf(options.query);
+  if (match === undefined) return [];
+  const workspace = options.workspaceId ?? null;
+  return db
+    .prepare<[string, string | null, string | null, number], SessionSearchResult>(
+      `WITH hits AS (
+         SELECT session_id, ts, rowid AS row_id,
+                snippet(message_search, 0, '', '', '…', 16) AS snippet
+         FROM message_search
+         WHERE message_search MATCH ?
+       ),
+       newest AS (
+         SELECT session_id, ts, row_id, snippet,
+                ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY ts DESC, row_id DESC) AS rank_in_session
+         FROM hits
+       )
+       SELECT newest.session_id AS sessionId, sessions.workspace_id AS workspaceId, sessions.title AS title,
+              newest.snippet AS snippet, newest.ts AS matchedAt
+       FROM newest
+       JOIN sessions ON sessions.id = newest.session_id
+       JOIN workspaces ON workspaces.id = sessions.workspace_id
+       WHERE newest.rank_in_session = 1 AND sessions.automation_run_id IS NULL AND (? IS NULL OR sessions.workspace_id = ?)
+       ORDER BY newest.ts DESC, newest.session_id
+       LIMIT ?`,
+    )
+    .all(match, workspace, workspace, options.limit);
 }
 
 interface LoopDbRow {
@@ -682,17 +800,22 @@ export function findFileById(db: Database.Database, id: string): FileRecord | un
   return row === undefined ? undefined : toFileRecord(row);
 }
 
-/** Inscrição de Web Push: `keys` já validado (p256dh + auth). */
+/**
+ * Web Push subscription: `keys` already validated (p256dh + auth). `language` is the device's language when it sent one
+ * (null = unknown: the texts go out in pt-BR).
+ */
 export interface PushSubscriptionRow {
   endpoint: string;
   deviceId: string;
   keys: { p256dh: string; auth: string };
+  language: AppLanguage | null;
 }
 
 interface PushSubscriptionDbRow {
   endpoint: string;
   device_id: string;
   keys: string;
+  language: string | null;
 }
 
 /** Device dono de uma inscrição, ou undefined se o endpoint não está cadastrado. */
@@ -702,15 +825,33 @@ export function findPushSubscriptionOwner(db: Database.Database, endpoint: strin
     .get(endpoint)?.device_id;
 }
 
-/** Insere ou, se o endpoint já existe, troca o dono e as chaves (o endpoint identifica a inscrição). */
+/**
+ * Inserts, or if the endpoint already exists, replaces the owner and the keys (the endpoint identifies the subscription).
+ * A language sent replaces the stored one; without one (older client) the stored one is kept.
+ */
 export function upsertPushSubscription(
   db: Database.Database,
-  subscription: { endpoint: string; deviceId: string; keys: { p256dh: string; auth: string }; createdAt: number },
+  subscription: {
+    endpoint: string;
+    deviceId: string;
+    keys: { p256dh: string; auth: string };
+    language?: AppLanguage | undefined;
+    createdAt: number;
+  },
 ): void {
-  db.prepare<[string, string, string, number]>(
-    `INSERT INTO push_subscriptions (endpoint, device_id, keys, created_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT (endpoint) DO UPDATE SET device_id = excluded.device_id, keys = excluded.keys`,
-  ).run(subscription.endpoint, subscription.deviceId, JSON.stringify(subscription.keys), subscription.createdAt);
+  db.prepare<[string, string, string, string | null, number]>(
+    `INSERT INTO push_subscriptions (endpoint, device_id, keys, language, created_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (endpoint) DO UPDATE SET
+       device_id = excluded.device_id,
+       keys = excluded.keys,
+       language = COALESCE(excluded.language, push_subscriptions.language)`,
+  ).run(
+    subscription.endpoint,
+    subscription.deviceId,
+    JSON.stringify(subscription.keys),
+    subscription.language ?? null,
+    subscription.createdAt,
+  );
 }
 
 /** Apaga a inscrição; com `deviceId`, só se ela for desse dispositivo. Devolve false se nada foi apagado. */
@@ -724,16 +865,33 @@ export function deletePushSubscription(db: Database.Database, endpoint: string, 
   return result.changes > 0;
 }
 
-/** Todas as inscrições, com as chaves validadas pelo schema do shared. */
-export function listPushSubscriptions(db: Database.Database): PushSubscriptionRow[] {
-  return db
-    .prepare<[], PushSubscriptionDbRow>('SELECT endpoint, device_id, keys FROM push_subscriptions ORDER BY created_at, rowid')
-    .all()
-    .map((row) => ({
-      endpoint: row.endpoint,
-      deviceId: row.device_id,
-      keys: PushSubscriptionRequestSchema.shape.keys.parse(JSON.parse(row.keys)),
-    }));
+/**
+ * Todas as inscrições, com as chaves validadas pelo schema do shared. Com `activeSince`, só as de devices não revogados
+ * que usaram a API desde esse instante: device parado além do prazo não recebe push.
+ */
+export function listPushSubscriptions(db: Database.Database, activeSince?: number): PushSubscriptionRow[] {
+  const rows =
+    activeSince === undefined
+      ? db
+          .prepare<[], PushSubscriptionDbRow>(
+            'SELECT endpoint, device_id, keys, language FROM push_subscriptions ORDER BY created_at, rowid',
+          )
+          .all()
+      : db
+          .prepare<[number], PushSubscriptionDbRow>(
+            `SELECT s.endpoint, s.device_id, s.keys, s.language FROM push_subscriptions s
+             JOIN devices d ON d.id = s.device_id
+             WHERE d.revoked_at IS NULL AND COALESCE(d.last_seen_at, d.created_at) >= ?
+             ORDER BY s.created_at, s.rowid`,
+          )
+          .all(activeSince);
+  return rows.map((row) => ({
+    endpoint: row.endpoint,
+    deviceId: row.device_id,
+    keys: PushSubscriptionRequestSchema.shape.keys.parse(JSON.parse(row.keys)),
+    // A value outside the list (never written by the daemon) falls back to the default, like an old subscription.
+    language: AppLanguageSchema.safeParse(row.language).data ?? null,
+  }));
 }
 
 /** Conta extra de um agente (`agent_accounts`). A principal não tem linha: ela é o diretório normal do agente. */

@@ -1,7 +1,7 @@
 {
   "name": "@nanachi/desktop",
   "productName": "Nanachi",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Nanachi Desktop: Electron shell for Windows that hosts the daemon, the tray and the control panel.",

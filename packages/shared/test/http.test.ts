@@ -25,7 +25,12 @@ import {
   ResetRedeemResponseSchema,
   ResetsResponseSchema,
   RootsResponseSchema,
+  CommitRefSchema,
+  SessionCommitResponseSchema,
+  SessionCommitsResponseSchema,
   SessionDiffResponseSchema,
+  SessionSearchQuerySchema,
+  SessionSearchResponseSchema,
   SessionsResponseSchema,
   UpdateWorkspaceRequestSchema,
   UsageResponseSchema,
@@ -451,6 +456,15 @@ describe('PushSubscriptionRequestSchema', () => {
   it('rejeita keys ausente', () => {
     expect(PushSubscriptionRequestSchema.safeParse({ endpoint: valid.endpoint }).success).toBe(false);
   });
+
+  it('accepts the app language as an optional field: older clients send without it', () => {
+    expect(PushSubscriptionRequestSchema.parse({ ...valid, language: 'en' })).toEqual({ ...valid, language: 'en' });
+    expect(PushSubscriptionRequestSchema.parse(valid)).not.toHaveProperty('language');
+  });
+
+  it.each(['pt', 'fr', 'EN', ''])('rejects language %j outside the app list', (language) => {
+    expect(PushSubscriptionRequestSchema.safeParse({ ...valid, language }).success).toBe(false);
+  });
 });
 
 describe('PushUnsubscribeRequestSchema', () => {
@@ -550,6 +564,91 @@ describe('SessionDiffResponseSchema', () => {
   });
 });
 
+describe('SessionCommitsResponseSchema', () => {
+  const entry = {
+    hash: 'af9384ef96648594f13a8bd80ae53aa3e830a8ae',
+    shortHash: 'af9384e',
+    subject: 'segundo',
+    summary: 'corpo linha 1',
+    author: 'teste',
+    date: 1_793_935_007_000,
+  };
+
+  it('aceita uma página com commits e mais páginas', () => {
+    const body = { commits: [entry], hasMore: true };
+    expect(SessionCommitsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('aceita página vazia e summary null (commit sem corpo)', () => {
+    expect(SessionCommitsResponseSchema.parse({ commits: [], hasMore: false })).toEqual({ commits: [], hasMore: false });
+    const noBody = { commits: [{ ...entry, summary: null }], hasMore: false };
+    expect(SessionCommitsResponseSchema.parse(noBody)).toEqual(noBody);
+  });
+
+  const commitWith = (fields: Record<string, unknown>) =>
+    SessionCommitsResponseSchema.safeParse({ commits: [{ ...entry, ...fields }], hasMore: false }).success;
+
+  it.each([{ hash: 'XYZ' }, { hash: 'af93' }, { date: 1.5 }, { date: -1 }, { summary: 3 }, { subject: undefined }])(
+    'rejeita commit inválido %j',
+    (fields) => {
+      expect(commitWith(fields)).toBe(false);
+    },
+  );
+
+  it('rejeita hasMore ausente', () => {
+    expect(SessionCommitsResponseSchema.safeParse({ commits: [] }).success).toBe(false);
+  });
+});
+
+describe('SessionCommitResponseSchema', () => {
+  const file = {
+    path: 'src/a.ts',
+    status: 'added',
+    additions: 1,
+    deletions: 0,
+    patch: '@@ -0,0 +1 @@\n+a\n',
+  };
+  const commit = {
+    hash: 'af9384ef96648594f13a8bd80ae53aa3e830a8ae',
+    shortHash: 'af9384e',
+    subject: 'segundo',
+    body: 'corpo linha 1\nlinha 2',
+    author: 'teste',
+    date: 1_793_935_007_000,
+    files: [file],
+    truncated: false,
+  };
+
+  it('aceita um commit com arquivos e patch', () => {
+    expect(SessionCommitResponseSchema.parse(commit)).toEqual(commit);
+  });
+
+  it('aceita commit sem corpo e sem arquivos', () => {
+    expect(SessionCommitResponseSchema.parse({ ...commit, body: '', files: [] })).toEqual({ ...commit, body: '', files: [] });
+  });
+
+  it('usa o mesmo formato de arquivo do diff da sessão', () => {
+    expect(SessionCommitResponseSchema.safeParse({ ...commit, files: [{ ...file, status: 'copied' }] }).success).toBe(false);
+  });
+
+  it('rejeita body ou truncated ausentes', () => {
+    const { body: _body, ...withoutBody } = commit;
+    const { truncated: _truncated, ...withoutTruncated } = commit;
+    expect(SessionCommitResponseSchema.safeParse(withoutBody).success).toBe(false);
+    expect(SessionCommitResponseSchema.safeParse(withoutTruncated).success).toBe(false);
+  });
+});
+
+describe('CommitRefSchema', () => {
+  it.each(['af9384e', 'af9384ef96648594f13a8bd80ae53aa3e830a8ae'])('aceita hash abreviado ou completo %s', (ref) => {
+    expect(CommitRefSchema.parse(ref)).toBe(ref);
+  });
+
+  it.each(['af938', 'AF9384E', 'xyz1234', 'af9384ef96648594f13a8bd80ae53aa3e830a8ae0', ''])('rejeita %j', (ref) => {
+    expect(CommitRefSchema.safeParse(ref).success).toBe(false);
+  });
+});
+
 describe('DevicesResponseSchema', () => {
   const device = {
     id: 'd-1',
@@ -557,11 +656,19 @@ describe('DevicesResponseSchema', () => {
     createdAt: 1_700_000_000_000,
     lastSeenAt: 1_700_000_500_000,
     current: true,
+    expired: false,
   };
 
   it('aceita lista de dispositivos', () => {
     const body = { devices: [device, { ...device, id: 'd-2', current: false }] };
     expect(DevicesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('exige `expired` booleano (device sem uso além do prazo)', () => {
+    const { expired: _expired, ...withoutExpired } = device;
+    expect(DevicesResponseSchema.safeParse({ devices: [withoutExpired] }).success).toBe(false);
+    expect(DevicesResponseSchema.safeParse({ devices: [{ ...device, expired: 'não' }] }).success).toBe(false);
+    expect(DevicesResponseSchema.parse({ devices: [{ ...device, expired: true }] }).devices[0]?.expired).toBe(true);
   });
 
   it('aceita lista vazia', () => {
@@ -921,5 +1028,60 @@ describe('workspace files schemas', () => {
     expect(WorkspaceMkdirRequestSchema.parse({ path: 'pasta' })).toEqual({ path: 'pasta' });
     expect(WorkspaceRenameRequestSchema.parse({ from: 'a', to: 'b' })).toEqual({ from: 'a', to: 'b' });
     expect(WorkspaceRenameRequestSchema.safeParse({ from: 'a' }).success).toBe(false);
+  });
+});
+
+describe('SessionSearchQuerySchema', () => {
+  it('trims q, converts a limit given as URL text, and defaults limit to 20', () => {
+    expect(SessionSearchQuerySchema.parse({ q: '  sessão  ' })).toEqual({ q: 'sessão', limit: 20 });
+    expect(SessionSearchQuerySchema.parse({ q: 'ab', limit: '50' })).toEqual({ q: 'ab', limit: 50 });
+    expect(SessionSearchQuerySchema.parse({ q: 'ab', limit: 7 })).toEqual({ q: 'ab', limit: 7 });
+  });
+
+  it('accepts q from 2 to 100 characters and rejects anything outside that (after trimming)', () => {
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab' }).success).toBe(true);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'a'.repeat(100) }).success).toBe(true);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'a' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: '   ' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'a'.repeat(101) }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({}).success).toBe(false);
+  });
+
+  it('limit is between 1 and 50; text that is not an integer is rejected', () => {
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '1' }).success).toBe(true);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '50' }).success).toBe(true);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '51' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '0' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: 'muitos' }).success).toBe(false);
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', limit: '1.5' }).success).toBe(false);
+  });
+
+  it('workspaceId is optional, but cannot be empty when given', () => {
+    expect(SessionSearchQuerySchema.parse({ q: 'ab', workspaceId: 'w-1' })).toEqual({ q: 'ab', limit: 20, workspaceId: 'w-1' });
+    expect(SessionSearchQuerySchema.safeParse({ q: 'ab', workspaceId: '' }).success).toBe(false);
+  });
+});
+
+describe('SessionSearchResponseSchema', () => {
+  const result = {
+    sessionId: 's-1',
+    workspaceId: 'w-1',
+    title: 'Refatorar o parser',
+    snippet: 'o parser lê o arquivo…',
+    matchedAt: 1_700_000_000_000,
+  };
+
+  it('accepts the results list of GET /api/sessions/search', () => {
+    expect(SessionSearchResponseSchema.parse({ results: [result] })).toEqual({ results: [result] });
+    expect(SessionSearchResponseSchema.parse({ results: [] })).toEqual({ results: [] });
+  });
+
+  it('rejects a result without snippet or matchedAt, and a list of more than 50 results', () => {
+    const { snippet: _snippet, ...withoutSnippet } = result;
+    const { matchedAt: _matchedAt, ...withoutMatchedAt } = result;
+    expect(SessionSearchResponseSchema.safeParse({ results: [withoutSnippet] }).success).toBe(false);
+    expect(SessionSearchResponseSchema.safeParse({ results: [withoutMatchedAt] }).success).toBe(false);
+    expect(SessionSearchResponseSchema.safeParse({ results: Array.from({ length: 51 }, () => result) }).success).toBe(false);
   });
 });

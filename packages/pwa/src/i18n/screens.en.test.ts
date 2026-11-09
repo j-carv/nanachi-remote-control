@@ -237,7 +237,7 @@ describe('PairScreen', () => {
 describe('DevicesScreen', () => {
   it('shows its title and loading state in English', () => {
     setLanguage('en');
-    const markup = html(createElement(DevicesScreen, { machine, nav: { push: noop, back: noop, replace: noop }, onRevokedSelf: noop }));
+    const markup = html(createElement(DevicesScreen, { machine, nav: { push: noop, back: noop, replace: noop } }));
     expect(markup).toContain('This machine&#x27;s devices');
     expect(markup).toContain('Loading…');
     expect(markup).toContain('aria-label="Back"');

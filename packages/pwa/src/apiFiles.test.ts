@@ -290,6 +290,12 @@ describe('push', () => {
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual(SUBSCRIPTION);
   });
 
+  it('subscribePush sends the app language in the body: the daemon writes the push texts in it', async () => {
+    const { calls, fetchFn } = fakeFetch(() => new Response(null, { status: 204 }));
+    await clientWith(fetchFn).subscribePush({ ...SUBSCRIPTION, language: 'es' });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ ...SUBSCRIPTION, language: 'es' });
+  });
+
   it('subscribePush com endpoint que não é URL nem chama a rede', async () => {
     const { calls, fetchFn } = fakeFetch(() => new Response(null, { status: 204 }));
     const bad = { ...SUBSCRIPTION, endpoint: 'nao-e-url' };

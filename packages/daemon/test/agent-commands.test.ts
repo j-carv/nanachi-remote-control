@@ -2,7 +2,6 @@ import { mkdir, mkdtemp } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PHONE_SEND_HINT } from '../src/acp-mapping.js';
 import {
   CommandsResponseSchema,
   WorkspaceSchema,
@@ -76,7 +75,6 @@ async function start(agentEnv: Record<string, string> = { FAKE_AGENT_COMMANDS: '
     config: {
       allowedRoots: [workspace],
       agents: { fake: fakeAgent({ FAKE_AGENT_PID_DIR: pidDir, ...agentEnv }) },
-      phoneSendHint: true,
     },
   });
   const res = await daemon.app.inject({
@@ -232,16 +230,16 @@ describe('comandos anunciados pelo agente', () => {
     expect(user).toMatchObject({ kind: 'user_message', text: '/eco oi, tudo bem' });
   });
 
-  it('o primeiro prompt, se for comando, não leva o aviso do phone-send; o próximo leva', async () => {
+  it('slash commands and subsequent normal prompts are sent unchanged', async () => {
     const { session, client } = await start();
     client.send({ type: 'prompt', sessionId: session.id, text: '/eco primeiro', attachments: [] });
     await client.waitFor(isEvent('turn_end'));
     client.send({ type: 'prompt', sessionId: session.id, text: 'segundo', attachments: [] });
     await client.waitFor(isEvent('turn_end'));
 
-    const prompts = await promptsReceived(pidDir, session.id);
-    expect(prompts).toHaveLength(2);
-    expect(prompts[0]?.some((block) => block.type === 'text' && block.text === PHONE_SEND_HINT)).toBe(false);
-    expect(prompts[1]?.some((block) => block.type === 'text' && block.text === PHONE_SEND_HINT)).toBe(true);
+    expect(await promptsReceived(pidDir, session.id)).toEqual([
+      [{ type: 'text', text: '/eco primeiro' }],
+      [{ type: 'text', text: 'segundo' }],
+    ]);
   });
 });

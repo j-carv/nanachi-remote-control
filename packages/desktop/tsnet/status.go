@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 
@@ -128,24 +129,21 @@ func tailnetName(st *ipnstate.Status) string {
 
 // Reporter writes events to out as JSON lines and drops repeats.
 //
-// Two sources feed it. The status loop reports node state through Status; an event
-// is written only when it differs from the previous status event. The HTTPS
-// listener reports its own failures through Error, deduplicated by message. A
-// failure to serve does not change the node state, so the status loop would not
-// repeat a "running" line on its own: Recovered writes the last status event
-// again so a consumer that saw the error sees the state that supersedes it.
+// Node status and listener errors have separate lifecycles. Errors are tracked by
+// listener, so recovery on 443 cannot clear a failure on 8443. While any listener
+// is failing, a combined error remains the latest event even if node state changes.
 type Reporter struct {
-	mu         sync.Mutex
-	out        io.Writer
-	lastStatus string // JSON line of the last status event
-	lastError  string // JSON line of the last serving error, "" when none is outstanding
+	mu            sync.Mutex
+	out           io.Writer
+	lastStatus    string // JSON line of the last node status event
+	servingErrors map[string]string
 }
 
 // NewReporter returns a Reporter that writes to out.
 func NewReporter(out io.Writer) *Reporter { return &Reporter{out: out} }
 
-// Status writes ev unless it equals the previous status event. A new status
-// supersedes any outstanding serving error. It reports whether a line was written.
+// Status writes ev unless it equals the previous node status. Outstanding serving
+// errors are repeated after changed node status, and cleared only when stopped.
 func (r *Reporter) Status(ev Event) bool {
 	line := encodeLine(ev)
 	r.mu.Lock()
@@ -154,38 +152,63 @@ func (r *Reporter) Status(ev Event) bool {
 		return false
 	}
 	r.lastStatus = line
-	r.lastError = ""
+	if ev.Type == typeStopped {
+		r.servingErrors = nil
+	}
 	r.write(line)
+	if len(r.servingErrors) != 0 {
+		r.writeServingErrors()
+	}
 	return true
 }
 
-// Error writes an error event unless the same message is already outstanding.
-func (r *Reporter) Error(message string) bool {
-	line := encodeLine(errorEvent(message))
+// Error records a listener failure, deduplicated independently of other listeners.
+func (r *Reporter) Error(source, message string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if line == r.lastError {
+	if r.servingErrors[source] == message {
 		return false
 	}
-	r.lastError = line
-	r.write(line)
+	if r.servingErrors == nil {
+		r.servingErrors = make(map[string]string)
+	}
+	r.servingErrors[source] = message
+	r.writeServingErrors()
 	return true
 }
 
-// Recovered clears an outstanding serving error by writing the last status event
-// again. It does nothing when no error is outstanding.
-func (r *Reporter) Recovered() bool {
+// Recovered clears only this listener's failure. Node status is restored only
+// after every listener has recovered; otherwise the remaining errors are written.
+func (r *Reporter) Recovered(source string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.lastError == "" {
+	if _, ok := r.servingErrors[source]; !ok {
 		return false
 	}
-	r.lastError = ""
+	delete(r.servingErrors, source)
+	if len(r.servingErrors) != 0 {
+		r.writeServingErrors()
+		return true
+	}
 	if r.lastStatus == "" {
 		return false
 	}
 	r.write(r.lastStatus)
 	return true
+}
+
+// writeServingErrors runs with mu held and keeps combined messages deterministic.
+func (r *Reporter) writeServingErrors() {
+	sources := make([]string, 0, len(r.servingErrors))
+	for source := range r.servingErrors {
+		sources = append(sources, source)
+	}
+	sort.Strings(sources)
+	messages := make([]string, 0, len(sources))
+	for _, source := range sources {
+		messages = append(messages, r.servingErrors[source])
+	}
+	r.write(encodeLine(errorEvent(strings.Join(messages, "; "))))
 }
 
 func (r *Reporter) write(line string) {

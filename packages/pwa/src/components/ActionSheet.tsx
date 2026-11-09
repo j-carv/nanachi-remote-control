@@ -24,6 +24,8 @@ export interface ActionSheetItem {
   section?: string | undefined;
   /** The row keeps the user on the same screen (a toggle): the sheet hands the focus back to its trigger after the pick. */
   keepsFocus?: boolean | undefined;
+  /** Run synchronously on the click when a browser API needs a user gesture. */
+  requiresActivation?: boolean | undefined;
   onSelect(): void;
 }
 
@@ -167,6 +169,11 @@ export function ActionSheet({ label, title, items, onClose }: ActionSheetProps) 
           onPick={(action, item) => {
             // The action runs after this sheet's history entry is popped (see useModalOverlay).
             actionOwnsFocusRef.current = pickMovesFocus(item);
+            if (item.requiresActivation) {
+              action();
+              onClose();
+              return;
+            }
             closeThen(action);
           }}
         />

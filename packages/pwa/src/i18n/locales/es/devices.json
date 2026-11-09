@@ -2,10 +2,13 @@
   "title": "Dispositivos de esta máquina",
   "list": "Dispositivos",
   "current": "este dispositivo",
+  "expired": "Caducado",
   "meta": "Creado {{created}} · visto por última vez {{lastSeen}}",
   "metaNeverSeen": "Creado {{created}} · nunca visto",
   "revoke": "Revocar",
   "revokeLabel": "Revocar {{name}}",
-  "confirmCurrent": "¿Revocar \"{{name}}\"? Es este dispositivo: perderá el acceso y tendrá que vincularse de nuevo.",
-  "confirmOther": "¿Revocar \"{{name}}\"? Perderá el acceso a esta máquina de inmediato."
+  "confirmTitle": "¿Revocar \"{{name}}\"?",
+  "confirmText": "Perderá el acceso a esta máquina de inmediato y dejará de recibir notificaciones. Para volver a usar la app allí, vincúlelo de nuevo.",
+  "confirmAction": "Revocar",
+  "revoking": "Revocando…"
 }

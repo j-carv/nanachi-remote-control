@@ -6,6 +6,8 @@
  * `common/control-api.ts`: edits go through `save`, a restart goes through the daemon status events, and a
  * `ControlError` is a normal return value.
  */
+import type { TranscriptionModelsResponse, TranscriptionSettingsResponse, WhisperStatus } from '@nanachi/shared';
+import { parseTranscriptionUpdate } from '../../common/transcription.js';
 import type {
   AgentAccountsInfo,
   ControlApi,
@@ -101,6 +103,17 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
   const down = (): ControlError => error('daemon_unavailable', text().unreachable(PORT));
 
   let autostart = { value: true, supported: true };
+  let transcription: TranscriptionSettingsResponse = { provider: 'whisper', model: 'ggml-base-q5_1.bin', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: false };
+  let whisper: WhisperStatus = { state: 'disabled' };
+  const modelCatalog: TranscriptionModelsResponse['models'] = [
+    { provider: 'whisper', id: 'ggml-base-q5_1.bin', name: 'Whisper Base Q5_1' },
+    { provider: 'openai', id: 'gpt-transcribe', name: 'GPT Transcribe' },
+    { provider: 'openai', id: 'gpt-4o-transcribe', name: 'GPT-4o Transcribe', deprecated: true },
+    { provider: 'openai', id: 'gpt-4o-mini-transcribe', name: 'GPT-4o Mini Transcribe', deprecated: true },
+    { provider: 'groq', id: 'whisper-large-v3-turbo', name: 'Whisper Large v3 Turbo' },
+    { provider: 'groq', id: 'whisper-large-v3', name: 'Whisper Large v3' },
+    { provider: 'custom', id: 'faster-whisper-large-v3', name: 'faster-whisper Large v3' },
+  ];
 
   /* ---------------------------------------------------------------- window */
   let windowState: WindowState = { maximized: false, focused: true };
@@ -430,6 +443,53 @@ export function createMockControlApi(options: MockOptions = {}): MockControl {
       },
     },
     settings: {
+      async whisper(action) {
+        track(`settings.whisper:${action}`);
+        await delay();
+        if (scenario === 'down') return down();
+        if (attached) return unknownApp();
+        if (action === 'install') whisper = { state: 'ready' };
+        if (action === 'remove') whisper = { state: 'disabled' };
+        return ok({ ...whisper });
+      },
+      async transcriptionSettings() {
+        track('settings.transcriptionSettings');
+        await delay();
+        if (scenario === 'down') return down();
+        if (attached) return unknownApp();
+        return ok({ ...transcription });
+      },
+      async setTranscriptionSettings(input) {
+        track('settings.setTranscriptionSettings');
+        await delay();
+        if (scenario === 'down') return down();
+        if (attached) return unknownApp();
+        const update = parseTranscriptionUpdate(input);
+        if (!update) return error('invalid_input', text().transcriptionInvalid);
+        const sameDestination = update.provider === transcription.provider && update.baseUrl === transcription.baseUrl;
+        transcription = {
+          provider: update.provider, model: update.model, baseUrl: update.baseUrl, timeoutMs: update.timeoutMs,
+          apiKeyConfigured: update.removeApiKey ? false : update.apiKey !== undefined ? update.apiKey !== '' : sameDestination && transcription.apiKeyConfigured,
+        };
+        return ok({ ...transcription });
+      },
+      async transcriptionStatus() {
+        track('settings.transcriptionStatus');
+        await delay();
+        if (scenario === 'down') return down();
+        if (attached) return unknownApp();
+        const ready = transcription.provider === 'whisper' ? whisper.state === 'ready'
+          : transcription.model !== '' && (transcription.provider === 'custom' ? transcription.baseUrl !== '' : transcription.apiKeyConfigured);
+        return ok({ provider: transcription.provider, model: transcription.model,
+          state: ready ? 'ready' : transcription.provider === 'whisper' ? 'not_ready' : 'configuration_required' });
+      },
+      async transcriptionModels() {
+        track('settings.transcriptionModels');
+        await delay();
+        if (scenario === 'down') return down();
+        if (attached) return unknownApp();
+        return ok({ models: modelCatalog.filter((model) => model.provider === transcription.provider).map((model) => ({ ...model })), manual: transcription.provider === 'custom' });
+      },
       async setLanguage(next) {
         track(`settings.setLanguage:${next}`);
         const previous = language;

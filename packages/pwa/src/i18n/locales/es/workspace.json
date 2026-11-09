@@ -131,6 +131,23 @@
       "renamed": "Renombrado"
     }
   },
+  "commitsScreen": {
+    "title": "Historial de commits",
+    "refresh": "Actualizar commits",
+    "listLabel": "Lista de commits",
+    "empty": "No hay commits en esta carpeta.",
+    "loadMore": "Cargar más",
+    "workingTree": "Árbol de trabajo",
+    "workingTreeChanges_one": "{{count}} archivo modificado",
+    "workingTreeChanges_many": "{{count}} de archivos modificados",
+    "workingTreeChanges_other": "{{count}} archivos modificados",
+    "noUncommitted": "Sin cambios sin commit"
+  },
+  "commitScreen": {
+    "truncated": "Parte del contenido supera el límite de 1 MB. Los archivos sin parche no muestran contenido.",
+    "filesLabel": "Archivos modificados",
+    "noFiles": "Ningún archivo cambiado en este commit."
+  },
   "diff": {
     "newFile": "(nuevo)",
     "noText": "Sin diff de texto (archivo binario o vacío)."

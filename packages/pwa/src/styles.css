@@ -25,18 +25,17 @@
  * ...), so the feel stays in one place. Reduced motion is handled once, at the end of this file.
  */
 @theme {
-  --ease-out-premium: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --ease-out-premium: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --animate-dialog-in: dialog-in 160ms var(--ease-out-premium);
-  --animate-dialog-out: dialog-out 120ms ease-in forwards;
-  --animate-panel-in: panel-in 200ms var(--ease-out-premium);
-  /* Fade and a 6 px rise: lists and new rows. `backwards` keeps the start frame during a stagger delay. */
-  --animate-enter: enter 220ms var(--ease-out-premium) backwards;
-  /* Fade and a 0.96 to 1 scale: menus, from their transform origin. */
-  --animate-enter-scale: enter-scale 180ms var(--ease-out-premium) backwards;
-  /* A confirmation: 1 to 1.12 to 1 with an overshoot. */
-  --animate-pop: pop 260ms var(--ease-spring);
+  --animate-dialog-in: dialog-in 220ms var(--ease-out-premium);
+  --animate-dialog-out: dialog-out 140ms ease-in forwards;
+  --animate-panel-in: panel-in 240ms var(--ease-out-premium);
+  --animate-panel-out: panel-out 150ms ease-in forwards;
+  /* Fade and a short rise for navigation headings and live items. */
+  --animate-enter: enter 200ms var(--ease-out-premium) backwards;
+  /* Menus and small panels expand from their anchor. */
+  --animate-enter-scale: enter-scale 190ms var(--ease-out-premium) backwards;
+  --animate-pop: pop 220ms var(--ease-out-premium);
   /* Skeleton sheen; the gradient comes from `.animate-shimmer` below. */
   --animate-shimmer: shimmer 1.6s linear infinite;
   /* State, not decoration: a breathing ring in `currentColor` (or `--pulse-color`) for running and connecting dots. */
@@ -45,7 +44,7 @@
   @keyframes dialog-in {
     from {
       opacity: 0;
-      scale: 0.97;
+      scale: 0.985;
     }
     to {
       opacity: 1;
@@ -63,17 +62,23 @@
   @keyframes panel-in {
     from {
       opacity: 0;
-      translate: 24px 0;
+      translate: 16px 0;
     }
     to {
       opacity: 1;
       translate: 0 0;
     }
   }
+  @keyframes panel-out {
+    to {
+      opacity: 0;
+      translate: 12px 0;
+    }
+  }
   @keyframes enter {
     from {
       opacity: 0;
-      translate: 0 6px;
+      translate: 0 4px;
     }
     to {
       opacity: 1;
@@ -83,7 +88,7 @@
   @keyframes enter-scale {
     from {
       opacity: 0;
-      scale: 0.96;
+      scale: 0.98;
     }
     to {
       opacity: 1;
@@ -95,7 +100,7 @@
       scale: 1;
     }
     40% {
-      scale: 1.12;
+      scale: 1.045;
     }
     100% {
       scale: 1;

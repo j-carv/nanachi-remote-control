@@ -1,10 +1,11 @@
 import { Monitor, Plus, RotateCw, ShieldOff, Smartphone } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ControlError, DeviceInfo } from '../../common/control-api.js';
-import type { PairingCode } from '../../common/types.js';
+import type { DeviceInfo } from '../../common/control-api.js';
 import { errorMessage, isCalmError } from '../lib/errors.js';
 import { formatCountdown, formatDate, formatDateTime, formatPairingCode, formatRelative, remainingFraction } from '../lib/format.js';
+import { pairingLink, phoneOrigin } from '../../common/pairing-link.js';
+import type { PairingSession } from '../lib/pairing-session.js';
 import { useApi } from '../state/api.js';
 import { settle, useResource } from '../state/resource.js';
 import { useShell } from '../state/shell.js';
@@ -13,6 +14,7 @@ import { Button } from '../ui/Button.js';
 import { CopyButton } from '../ui/CopyButton.js';
 import { cx } from '../ui/cx.js';
 import { Dialog } from '../ui/Dialog.js';
+import { QrCode } from '../ui/QrCode.js';
 import { StatusDot } from '../ui/StatusDot.js';
 import { EmptyState, ErrorState, GroupSkeleton } from '../ui/States.js';
 import { Group, rowStyle } from '../ui/Surface.js';
@@ -26,12 +28,47 @@ export interface PairingViewProps {
   remainingMs: number;
   fraction: number;
   regenerating: boolean;
+  /** The link the QR code carries, or null when there is no address for the phone. Absent counts as null. */
+  link?: string | null;
+  /** Opens the Tailscale section, where the address comes from. Absent: the explanation has no button. */
+  onOpenTailscale?: () => void;
   onRegenerate: () => void;
   onClose: () => void;
 }
 
-/** The pairing code, its countdown and the steps. A code is single-use and short-lived, so expiry is a state, not an error. */
-export function PairingView({ code, remainingMs, fraction, regenerating, onRegenerate, onClose }: PairingViewProps) {
+/**
+ * The QR code the phone scans: it opens the PWA on this PC with the code in the fragment, so the phone pairs by itself. It is
+ * dimmed once the code has expired. Without an address there is nothing to draw, so a line says why and where to turn it on.
+ */
+function PairingQr({ link, expired, onOpenTailscale }: { link: string | null; expired: boolean; onOpenTailscale?: (() => void) | undefined }) {
+  const { t } = useTranslation();
+  if (link === null) {
+    return (
+      <div className="flex max-w-[220px] flex-col items-start gap-2.5 text-[13px] leading-5 text-muted-foreground">
+        <p>{t('devices.pairing.qrUnavailable')}</p>
+        {onOpenTailscale ? (
+          <Button size="sm" onClick={onOpenTailscale}>
+            {t('devices.pairing.openTailscale')}
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="flex w-[176px] flex-col gap-2">
+      <QrCode text={link} size={176} label={t('devices.pairing.qrLabel')} dimmed={expired} />
+      <div className="flex items-start gap-2">
+        <p className={cx('min-w-0 flex-1 text-[13px] leading-5', expired ? 'text-attention' : 'text-muted-foreground')}>
+          {expired ? t('devices.pairing.qrExpired') : t('devices.pairing.qrHint')}
+        </p>
+        {expired ? null : <CopyButton text={link} label={t('devices.pairing.copyLink')} />}
+      </div>
+    </div>
+  );
+}
+
+/** The pairing code, its countdown, the QR code and the steps. A code is single-use and short-lived, so expiry is a state, not an error. */
+export function PairingView({ code, remainingMs, fraction, regenerating, link = null, onOpenTailscale, onRegenerate, onClose }: PairingViewProps) {
   const { t } = useTranslation();
   const expired = remainingMs <= 0;
   return (
@@ -57,6 +94,7 @@ export function PairingView({ code, remainingMs, fraction, regenerating, onRegen
             </span>
           </div>
         </div>
+        <PairingQr link={link} expired={expired} onOpenTailscale={onOpenTailscale} />
         <ol className="min-w-[240px] flex-1 list-decimal space-y-1.5 pl-5 text-[13px] leading-5 text-muted-foreground marker:text-muted-foreground">
           <li>{t('devices.pairing.step1')}</li>
           <li>{t('devices.pairing.step2')}</li>
@@ -75,51 +113,37 @@ export function PairingView({ code, remainingMs, fraction, regenerating, onRegen
   );
 }
 
-function PairingPanel({ onClose }: { onClose: () => void }) {
+export interface PairingPanelProps {
+  session: PairingSession;
+  /** Where the phone reaches this PC, from Tailscale. Null when there is none, and then no QR code is drawn. */
+  origin: string | null;
+  onRegenerate: () => void;
+  onClose: () => void;
+  onOpenTailscale: () => void;
+}
+
+/**
+ * The panel's view of the session the shell keeps: the code, its error and whether a request is on its way. Only the countdown
+ * is local, and it reads the code's own expiry, so a panel shown again after a switch counts down what is left.
+ */
+function PairingPanel({ session, origin, onRegenerate, onClose, onOpenTailscale }: PairingPanelProps) {
   const { t } = useTranslation();
-  const api = useApi();
-  const [issued, setIssued] = useState<{ code: PairingCode; startedAt: number } | null>(null);
-  const [failed, setFailed] = useState<ControlError | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const active = useRef(true);
-
-  const generate = async (): Promise<void> => {
-    setRegenerating(true);
-    setFailed(null);
-    const result = await settle(() => api.devices.pairingCode());
-    if (!active.current) return;
-    setRegenerating(false);
-    if (result.ok) {
-      setIssued({ code: result.value, startedAt: Date.now() });
-      setNow(Date.now());
-    } else {
-      setFailed(result);
-    }
-  };
-
-  useEffect(() => {
-    active.current = true;
-    void generate();
-    return () => {
-      active.current = false;
-    };
-    // generate once, when the panel opens
-  }, []);
-
-  const expiresAt = issued?.code.expiresAt ?? 0;
+  const issued = session.issued;
+  const expiresAt = issued?.expiresAt ?? 0;
   const expired = issued !== null && expiresAt <= now;
+
   useEffect(() => {
-    if (!issued || expired) return undefined;
+    if (issued === null || expired) return undefined;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [issued, expired]);
 
-  if (failed) {
+  if (session.failed) {
     return (
       <section aria-label={t('devices.pairNew')} role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-destructive/8 px-4 py-3.5 text-[13px]">
-        <span className="min-w-0 flex-1">{errorMessage(failed, t)}</span>
-        <Button icon={<RotateCw aria-hidden="true" />} loading={regenerating} onClick={() => void generate()}>
+        <span className="min-w-0 flex-1">{errorMessage(session.failed, t)}</span>
+        <Button icon={<RotateCw aria-hidden="true" />} loading={session.pending} onClick={onRegenerate}>
           {t('common.retry')}
         </Button>
         <Button variant="ghost" onClick={onClose}>
@@ -128,7 +152,7 @@ function PairingPanel({ onClose }: { onClose: () => void }) {
       </section>
     );
   }
-  if (!issued) {
+  if (issued === null) {
     return (
       <section aria-label={t('devices.pairNew')} aria-busy="true" className="flex h-[148px] items-center justify-center rounded-lg border border-border bg-card text-[13px] text-muted-foreground">
         {t('devices.pairing.generating')}
@@ -137,11 +161,13 @@ function PairingPanel({ onClose }: { onClose: () => void }) {
   }
   return (
     <PairingView
-      code={issued.code.code}
+      code={issued.code}
       remainingMs={Math.max(0, expiresAt - now)}
       fraction={remainingFraction(expiresAt, issued.startedAt, now)}
-      regenerating={regenerating}
-      onRegenerate={() => void generate()}
+      regenerating={session.pending}
+      link={pairingLink(origin ?? issued.externalOrigin ?? null, issued.code)}
+      onOpenTailscale={onOpenTailscale}
+      onRegenerate={onRegenerate}
       onClose={onClose}
     />
   );
@@ -250,14 +276,10 @@ export function DevicesSection() {
   const shell = useShell();
   const toast = useToast();
   const devices = useResource(() => api.devices.list());
-  const [pairing, setPairing] = useState(false);
   const [target, setTarget] = useState<DeviceInfo | null>(null);
   const [revoking, setRevoking] = useState(false);
-  const { takePairingRequest } = shell;
-
-  useEffect(() => {
-    if (takePairingRequest()) setPairing(true);
-  }, [takePairingRequest]);
+  // The panel and its code live in the shell, so they survive a switch of section. Nothing here asks for a code on mount.
+  const { pairing } = shell;
 
   const revoke = async (): Promise<void> => {
     if (!target) return;
@@ -286,7 +308,7 @@ export function DevicesSection() {
           title={t('devices.empty.title')}
           description={t('devices.empty.description')}
           action={
-            <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setPairing(true)}>
+            <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => pairing.open()}>
               {t('devices.pairNew')}
             </Button>
           }
@@ -299,14 +321,22 @@ export function DevicesSection() {
     <Page
       section="devices"
       actions={
-        pairing || (devices.state.status === 'error' && isCalmError(devices.state.error.code)) ? null : (
-          <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setPairing(true)}>
+        pairing.session.open || (devices.state.status === 'error' && isCalmError(devices.state.error.code)) ? null : (
+          <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => pairing.open()}>
             {t('devices.pairNew')}
           </Button>
         )
       }
     >
-      {pairing ? <PairingPanel onClose={() => setPairing(false)} /> : null}
+      {pairing.session.open ? (
+        <PairingPanel
+          session={pairing.session}
+          origin={phoneOrigin(shell.tailscale)}
+          onRegenerate={pairing.regenerate}
+          onClose={pairing.close}
+          onOpenTailscale={() => shell.navigate('tailscale')}
+        />
+      ) : null}
       {body}
       <Dialog
         open={target !== null}

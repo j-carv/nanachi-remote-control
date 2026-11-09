@@ -3,6 +3,10 @@ import { LoopSchema } from './loop.js';
 import {
   AvailableCommandSchema,
   ConfigValueSchema,
+  hasPromptContent,
+  MAX_QUEUED_PROMPTS,
+  PromptShape,
+  QueuedPromptSchema,
   SessionConfigOptionSchema,
   SessionEventSchema,
   SessionSchema,
@@ -23,11 +27,10 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('prompt'),
       sessionId: IdSchema,
-      text: z.string().max(100_000),
       /** fileIds da mesma sessão (anexos enviados antes via POST /api/sessions/:id/attachments). */
-      attachments: z.array(IdSchema).max(10).optional(),
+      ...PromptShape,
     })
-    .refine((msg) => msg.text.length > 0 || (msg.attachments?.length ?? 0) > 0, {
+    .refine(hasPromptContent, {
       message: 'text é obrigatório quando não há anexos',
       path: ['text'],
     }),
@@ -38,6 +41,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     optionId: IdSchema.nullable(),
   }),
   z.object({ type: z.literal('cancel'), sessionId: IdSchema }),
+  z.object({ type: z.literal('set_yolo'), sessionId: IdSchema, enabled: z.boolean() }),
   z.object({
     type: z.literal('set_config'),
     sessionId: IdSchema,
@@ -70,6 +74,8 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pong') }),
   z.object({ type: z.literal('event'), event: SessionEventSchema }),
   z.object({ type: z.literal('session'), session: SessionSchema }),
+  z.object({ type: z.literal('yolo'), sessionId: IdSchema, enabled: z.boolean() }),
+  z.object({ type: z.literal('prompt_queue'), sessionId: IdSchema, queue: z.array(QueuedPromptSchema).max(MAX_QUEUED_PROMPTS) }),
   /**
    * Lista de comandos da sessão, só para quem está inscrito nela: no subscribe (depois do replay, se houver lista)
    * e cada vez que o agente manda uma lista diferente. Lista vazia = o agente zerou os comandos.

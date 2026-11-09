@@ -130,6 +130,22 @@
       "renamed": "Renamed"
     }
   },
+  "commitsScreen": {
+    "title": "Commit history",
+    "refresh": "Refresh commits",
+    "listLabel": "Commit list",
+    "empty": "No commits in this folder.",
+    "loadMore": "Load more",
+    "workingTree": "Working tree",
+    "workingTreeChanges_one": "{{count}} changed file",
+    "workingTreeChanges_other": "{{count}} changed files",
+    "noUncommitted": "No uncommitted changes"
+  },
+  "commitScreen": {
+    "truncated": "Part of the content is over the 1 MB limit. Files without a patch show no content.",
+    "filesLabel": "Changed files",
+    "noFiles": "No files changed in this commit."
+  },
   "diff": {
     "newFile": "(new)",
     "noText": "No text diff (binary or empty file)."

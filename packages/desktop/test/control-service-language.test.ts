@@ -37,6 +37,11 @@ const THIS_APP: DeviceInfo = { id: 'self', name: 'Nanachi Desktop', createdAt: 1
 
 function build(host: ControlHost, devices: DeviceInfo[] = []): ControlActions {
   const daemon: DaemonApi = {
+    whisper: async () => ({ state: 'disabled' }),
+    transcriptionSettings: async () => ({ provider: 'whisper', model: 'ggml-base-q5_1.bin', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: false }),
+    setTranscriptionSettings: async (settings) => ({ provider: settings.provider, model: settings.model, baseUrl: settings.baseUrl, timeoutMs: settings.timeoutMs, apiKeyConfigured: Boolean(settings.apiKey) }),
+    transcriptionStatus: async () => ({ provider: 'whisper', model: 'ggml-base-q5_1.bin', state: 'not_ready' }),
+    transcriptionModels: async () => ({ models: [], manual: false }),
     devices: vi.fn(() => Promise.resolve(devices)),
     revokeDevice: vi.fn(() => Promise.resolve()),
     accounts: vi.fn(() => Promise.resolve([])),

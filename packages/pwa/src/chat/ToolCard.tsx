@@ -6,45 +6,20 @@ import { Badge } from '@/components/ui/badge';
 import { ToolContentView } from '../components/ToolContentView.js';
 import { cn } from '@/lib/utils';
 import { summarizeTool, type ToolItem } from './toolSummary.js';
-import type { ToolCallStatus } from './reducer.js';
+import { hasToolFailure, toolActivityState } from './activityGrouping.js';
 import { BackgroundJobRows, BackgroundStatus } from './BackgroundStatus.js';
-import { effectiveState, type BackgroundState, type BackgroundView } from './background.js';
+import { jobStateOf, type BackgroundView } from './background.js';
 import { arrivedLive, type HistoryIds } from './liveItems.js';
 import type { ChatNode } from './nesting.js';
 import { NESTED_FRAME_CLASS } from './itemFrame.js';
 
 export type { ToolItem } from './toolSummary.js';
 
-const STATUS_TONE: Record<ToolCallStatus, string> = {
-  pending: 'text-running',
-  in_progress: 'text-running',
-  completed: 'text-success',
-  failed: 'text-destructive',
-};
-
 const NO_NODES: readonly ChatNode[] = [];
 
 /** Chevron of a summary: turns when the card opens (the transition is the only motion here). */
 const CHEVRON_CLASS =
   'size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-(--ease-out-premium) group-open:rotate-180 motion-reduce:transition-none';
-
-/** State shown on the card: the background state when the call has one, else what its ACP status says. */
-function cardState(item: ToolItem, view: BackgroundView): BackgroundState {
-  if (item.background !== undefined) {
-    return effectiveState({ background: item.background, timing: item.timing }, view);
-  }
-  switch (item.status) {
-    case 'pending':
-    case 'in_progress':
-      return 'running';
-    case 'completed':
-      return 'completed';
-    case 'failed':
-      return 'failed';
-    case null:
-      return 'unknown';
-  }
-}
 
 /** Title of a child in the parent's "latest" line: its background label, or its summary title. */
 function titleOf(node: ChatNode): string {
@@ -67,36 +42,47 @@ export interface ToolCardProps {
 }
 
 /**
- * Tool call: uma linha de resumo (status, título, arquivo, +/−). Aberto enquanto está em andamento; depois de
- * concluído recolhe sozinho, a não ser que o usuário tenha aberto ou fechado à mão. Um subagente (ou qualquer
- * tool call com trabalho em segundo plano ou filhos) mostra rótulo, tipo do agente, estado e quantas ações internas
- * tem; começa recolhido e abre para listar os filhos.
+ * Tool call: uma linha de resumo (status, título, arquivo, +/−). Em um grupo, começa recolhido; a escolha do
+ * usuário permanece durante atualizações. Um subagente mostra rótulo, tipo, estado e ações internas.
+ * Falhas e seus ancestrais mantêm as linhas dos filhos fora do conteúdo recolhido.
  */
 export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = false, view, history }: ToolCardProps) {
   const { t } = useTranslation('chat');
   const background = item.background;
-  const state = cardState(item, view);
+  const state = toolActivityState(item, view);
   const backgroundStyle = background !== undefined || nested.length > 0;
   const collapsedByDefault = background?.kind === 'subagent' || nested.length > 0;
   const live = item.status === 'pending' || item.status === 'in_progress';
   const [choice, setChoice] = useState<boolean | null>(null);
-  const open = choice ?? (live && !collapsedByDefault);
+  const open = choice ?? (state === 'failed' || (live && !collapsedByDefault && !flat));
   const summary = useMemo(() => summarizeTool(item), [item]);
   const hasChanges = summary.added > 0 || summary.removed > 0;
-  const tone = item.status === null ? 'text-muted-foreground' : STATUS_TONE[item.status];
-  // The status text as the card first showed it: a later change cross-fades, the first value does not (history).
-  const [initialStatusText] = useState(summary.statusText);
   const last = nested.at(-1);
   const lastTitle = last === undefined ? '' : titleOf(last);
   const innerCount = t('tool.innerActions', { count: nested.length });
   const rowHover = 'transition-colors duration-200 hover:bg-accent motion-reduce:transition-none';
+  const exposedChildren = nested.some(hasToolFailure);
+  const failedJobs = background?.jobs?.some((job) => jobStateOf(job, state) === 'failed') === true;
+  const children = nested.length === 0 ? null : (
+    <ul data-slot="tool-inner" className="flex flex-col divide-y divide-border">
+      {nested.map((child) => (
+        <li key={child.item.id} data-item-id={child.item.id}
+          className={cn(NESTED_FRAME_CLASS, arrivedLive(history, child.item.id) && 'animate-enter motion-reduce:animate-none')}>
+          {renderNested(child)}
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
+    <>
     <details
       data-slot="tool-card"
       className={cn('group overflow-hidden', flat ? 'rounded-none' : 'rounded-xl border border-border bg-card')}
       open={open}
-      onToggle={(event) => setChoice(event.currentTarget.open)}
+      onToggle={(event) => {
+        if (event.target === event.currentTarget) setChoice(event.currentTarget.open);
+      }}
     >
       {backgroundStyle ? (
         <summary
@@ -130,16 +116,7 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
             rowHover,
           )}
         >
-          <Badge
-            key={summary.statusText}
-            className={cn(
-              'bg-secondary font-semibold',
-              tone,
-              summary.statusText !== initialStatusText && 'animate-enter-scale motion-reduce:animate-none',
-            )}
-          >
-            {summary.statusText}
-          </Badge>
+          <BackgroundStatus state={state} />
           <span className="flex min-w-0 flex-1 items-baseline gap-1.5 whitespace-nowrap">
             <span data-slot="tool-title" className="min-w-0 truncate font-mono text-sm font-semibold">
               {summary.title}
@@ -164,20 +141,11 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
 
       {/* Browsers hide a closed card's body, so the fade-in runs each time the card opens. */}
       <div className={cn('flex flex-col gap-2.5 px-3 pb-3 group-open:animate-enter motion-reduce:animate-none', flat && 'pb-1')}>
-        {nested.length > 0 && (
-          <ul data-slot="tool-inner" className="flex flex-col divide-y divide-border">
-            {nested.map((child) => (
-              <li
-                key={child.item.id}
-                data-item-id={child.item.id}
-                className={cn(NESTED_FRAME_CLASS, arrivedLive(history, child.item.id) && 'animate-enter')}
-              >
-                {renderNested(child)}
-              </li>
-            ))}
-          </ul>
+        {item.title !== '' && item.title !== summary.title && (
+          <p className="font-mono text-sm [overflow-wrap:anywhere]">{item.title}</p>
         )}
-        {background?.jobs !== undefined && <BackgroundJobRows jobs={background.jobs} parent={state} />}
+        {!exposedChildren && children}
+        {!failedJobs && background?.jobs !== undefined && <BackgroundJobRows jobs={background.jobs} parent={state} />}
         {item.locations.length > 0 && (
           <ul className="m-0 list-none font-mono text-[13px] text-muted-foreground [overflow-wrap:anywhere]">
             {item.locations.map((location) => (
@@ -190,5 +158,12 @@ export function ToolCard({ api, item, nested = NO_NODES, renderNested, flat = fa
         ))}
       </div>
     </details>
+    {(exposedChildren || failedJobs) && (
+      <div data-slot="tool-exceptions" className="min-w-0 pl-3">
+        {exposedChildren && children}
+        {failedJobs && background?.jobs !== undefined && <BackgroundJobRows jobs={background.jobs} parent={state} />}
+      </div>
+    )}
+    </>
   );
 }

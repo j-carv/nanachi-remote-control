@@ -165,6 +165,18 @@ describe('CLI', () => {
     expect(output).not.toContain(paired.token);
   });
 
+  it('devices mostra expirado o device parado além de deviceInactivityDays (padrão 90 dias)', async () => {
+    const daemon = await env.start();
+    const paired = await pairWithCli(daemon, 'iPad antigo');
+    daemon.db
+      .prepare<[number, string]>('UPDATE devices SET last_seen_at = ? WHERE id = ?')
+      .run(Date.now() - 91 * 24 * 60 * 60 * 1000, paired.deviceId);
+
+    const cli = captureIO();
+    expect(await runCli(['devices'], { NANACHI_HOME: env.home }, cli.io)).toBe(0);
+    expect(cli.out.join('\n')).toMatch(new RegExp(`${paired.deviceId}.*expirado`));
+  });
+
   it('revoke <id> invalida o token do dispositivo', async () => {
     const daemon = await env.start();
     const paired = await pairWithCli(daemon, 'iPhone');

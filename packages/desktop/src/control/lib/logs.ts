@@ -1,3 +1,5 @@
+import { analyzeLogLine, type LogLevel } from './log-tokens.js';
+
 export interface ScrollMetrics {
   scrollTop: number;
   clientHeight: number;
@@ -9,13 +11,14 @@ export function isNearBottom(metrics: ScrollMetrics, threshold = 24): boolean {
   return metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= threshold;
 }
 
-export type LogLevel = 'error' | 'warn' | 'info';
+export type { LogLevel } from './log-tokens.js';
 
-/** Only clear markers get a tone; everything else is plain text. Word boundaries keep `terror` from being an error. */
+/**
+ * The level of a line: the one it names (`"level":50`, `[warn]`, a level word at its start), or for a line that names none,
+ * a clear marker such as `error` or `warning`. Word boundaries keep `terror` from being an error.
+ */
 export function classifyLogLine(line: string): LogLevel {
-  if (/\b(error|erro|fatal|exception|uncaught|panic)\b/i.test(line)) return 'error';
-  if (/\b(warn|warning|aviso)\b/i.test(line)) return 'warn';
-  return 'info';
+  return analyzeLogLine(line).level;
 }
 
 export function sameLines(a: readonly string[], b: readonly string[]): boolean {

@@ -9,7 +9,6 @@ import {
   listedUpdatedAt,
   modeConfigOption,
   newestFirst,
-  PHONE_SEND_HINT,
   promptBlocks,
   restoreMethodOf,
   sameWorkingDirectory,
@@ -430,18 +429,13 @@ describe('promptBlocks', () => {
     ]);
   });
 
-  it('com hint, o bloco do aviso vai por último, como bloco de texto próprio', () => {
-    const blocks = promptBlocks('olha', [{ path: '/f/a.pdf', mime: 'application/pdf' }], PHONE_SEND_HINT);
+  it('a loop instruction goes last as its own text block', () => {
+    const instruction = 'Continue the self-paced loop.';
+    const blocks = promptBlocks('olha', [{ path: '/f/a.pdf', mime: 'application/pdf' }], instruction);
     expect(blocks).toEqual([
       { type: 'text', text: 'olha\n\n[Arquivo anexado: /f/a.pdf]' },
-      { type: 'text', text: PHONE_SEND_HINT },
+      { type: 'text', text: instruction },
     ]);
-  });
-
-  it('o aviso é exatamente o do PLAN.md', () => {
-    expect(PHONE_SEND_HINT).toBe(
-      '[Nanachi Remote] O usuário está no celular. Para mandar um arquivo ou imagem a ele, rode no terminal: phone-send "<caminho>" (opcional: --caption "texto"). Para mandar uma print da tela do PC: phone-send --screenshot.',
-    );
   });
 
   it('vários caminhos ficam um por linha dupla', () => {

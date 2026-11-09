@@ -52,8 +52,7 @@ function agents(): Record<string, AgentConfig> {
 }
 
 async function start(): Promise<TestDaemon> {
-  // Aviso do phone-send desligado: o eco do fake inclui o texto do prompt.
-  return env.start({ config: { allowedRoots: [base], agents: agents(), phoneSendHint: false } });
+  return env.start({ config: { allowedRoots: [base], agents: agents() } });
 }
 
 async function createWorkspaceId(daemon: TestDaemon): Promise<string> {

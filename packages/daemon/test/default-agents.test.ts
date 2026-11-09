@@ -16,8 +16,8 @@ describe('agentes default', () => {
     expect(resolved.file).toContain(join('node_modules', '.bin', 'codex-acp'));
   });
 
-  it('antigravity é terminal (pty) e Oh My Pi continua ACP', () => {
-    expect(DEFAULT_AGENTS.agy).toMatchObject({ command: 'agy', kind: 'pty' });
+  it('antigravity roda por ACP (agy acp) e Oh My Pi continua ACP', () => {
+    expect(DEFAULT_AGENTS.agy).toMatchObject({ command: 'agy', args: ['acp'], kind: 'acp' });
     expect(DEFAULT_AGENTS.omp).toMatchObject({ command: 'omp', kind: 'acp' });
   });
 });

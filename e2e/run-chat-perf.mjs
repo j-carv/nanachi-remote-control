@@ -354,6 +354,10 @@ async function visualChecks() {
     await shot(`${tag}-01-topo`);
 
     const tool = page.locator('[data-slot="tool-card"]').nth(3);
+    const activity = page.locator('[data-slot="tool-activity"]', { has: tool });
+    if (!(await activity.evaluate((element) => element.open))) {
+      await activity.locator(':scope > [data-slot="tool-activity-summary"]').click();
+    }
     await tool.scrollIntoViewIfNeeded();
     await page.waitForTimeout(200);
     await shot(`${tag}-02-tool-recolhido`);

@@ -23,9 +23,24 @@ describe('notifyOf', () => {
     expect(notifyOf(file)).toEqual({ kind: 'file', details: file });
   });
 
+  it('turn_end com stopReason error não avisa como concluído (o evento error do mesmo turno já avisou)', () => {
+    const failed: SessionEvent = { ...meta, kind: 'turn_end', stopReason: 'error' };
+    expect(notifyOf(failed)).toBeUndefined();
+  });
+
   it('terminal_exit (fim de sessão PTY) avisa como turn_end, com o próprio evento como detalhe', () => {
     const exit: SessionEvent = { ...meta, kind: 'terminal_exit', exitCode: 3 };
     expect(notifyOf(exit)).toEqual({ kind: 'turn_end', details: exit });
+  });
+
+  it('announces new file requests and previews, never their settled events', () => {
+    const requestId = '50efca7a-6ceb-4bd5-8c38-d6ab7f317ce9';
+    const request: SessionEvent = { ...meta, kind: 'file_request', requestId, prompt: 'Choose a file', expiresAt: 100 };
+    const preview: SessionEvent = { ...meta, kind: 'preview', previewId: requestId, port: 3000, title: 'App', path: '/', expiresAt: 100 };
+    expect(notifyOf(request)).toEqual({ kind: 'file_request', details: request });
+    expect(notifyOf(preview)).toEqual({ kind: 'preview', details: preview });
+    expect(notifyOf({ ...meta, kind: 'file_request_resolved', requestId, result: { status: 'cancelled', reason: 'user_cancelled' } })).toBeUndefined();
+    expect(notifyOf({ ...meta, kind: 'preview_closed', previewId: requestId, reason: 'closed' })).toBeUndefined();
   });
 
   it('demais eventos não avisam', () => {

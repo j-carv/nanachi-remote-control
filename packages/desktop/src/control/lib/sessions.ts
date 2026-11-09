@@ -1,4 +1,4 @@
-import { CONTROL_SECTIONS, type ControlSection, type SessionsViewState } from '../../common/control-api.js';
+import { SIDEBAR_SECTIONS, type ControlSection, type SessionsViewState } from '../../common/control-api.js';
 import { daemonReady } from '../../common/daemon-ready.js';
 import type { DaemonStatus } from '../../common/types.js';
 
@@ -38,5 +38,5 @@ export function sessionsViewWanted(state: SessionsState): boolean {
 /** The section a window was opened on (`?section=sessions`, set by main for the tray's "Abrir sessões"); anything else is the overview. */
 export function initialSection(search: string): ControlSection {
   const requested = new URLSearchParams(search).get('section');
-  return CONTROL_SECTIONS.find((section) => section === requested) ?? 'overview';
+  return SIDEBAR_SECTIONS.find((section) => section === requested) ?? 'overview';
 }

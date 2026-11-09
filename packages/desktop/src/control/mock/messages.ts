@@ -18,6 +18,7 @@ export interface MockMessages {
   deviceGone: string;
   deviceSelf: string;
   accountsRefused: string;
+  transcriptionInvalid: string;
 }
 
 export const MOCK_MESSAGES: Record<Language, MockMessages> = {
@@ -32,6 +33,7 @@ export const MOCK_MESSAGES: Record<Language, MockMessages> = {
     deviceGone: 'Esse aparelho não existe mais.',
     deviceSelf: 'Este app não pode revogar o próprio acesso.',
     accountsRefused: 'O daemon que já estava rodando não aceitou o acesso deste app.',
+    transcriptionInvalid: 'Confira os campos da configuração de transcrição.',
   },
   en: {
     notPaired: 'This app is not paired yet with the daemon that was already running, so it cannot read this.',
@@ -44,6 +46,7 @@ export const MOCK_MESSAGES: Record<Language, MockMessages> = {
     deviceGone: 'That device no longer exists.',
     deviceSelf: 'This app cannot revoke its own access.',
     accountsRefused: 'The daemon that was already running did not accept this app’s access.',
+    transcriptionInvalid: 'Check the transcription settings fields.',
   },
   es: {
     notPaired: 'Esta app aún no está emparejada con el daemon que ya estaba en ejecución, así que no puede leer esto.',
@@ -56,5 +59,6 @@ export const MOCK_MESSAGES: Record<Language, MockMessages> = {
     deviceGone: 'Ese dispositivo ya no existe.',
     deviceSelf: 'Esta app no puede revocar su propio acceso.',
     accountsRefused: 'El daemon que ya estaba en ejecución no aceptó el acceso de esta app.',
+    transcriptionInvalid: 'Revisa los campos de la configuración de transcripción.',
   },
 };

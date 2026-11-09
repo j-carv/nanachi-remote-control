@@ -130,6 +130,22 @@
       "renamed": "Renomeado"
     }
   },
+  "commitsScreen": {
+    "title": "Histórico de commits",
+    "refresh": "Atualizar commits",
+    "listLabel": "Commits",
+    "empty": "Nenhum commit nesta pasta.",
+    "loadMore": "Carregar mais",
+    "workingTree": "Árvore de trabalho",
+    "workingTreeChanges_one": "{{count}} arquivo alterado",
+    "workingTreeChanges_other": "{{count}} arquivos alterados",
+    "noUncommitted": "Nenhuma alteração sem commit"
+  },
+  "commitScreen": {
+    "truncated": "Parte do conteúdo passou do limite de 1 MB. Os arquivos sem patch aparecem sem o conteúdo.",
+    "filesLabel": "Arquivos alterados",
+    "noFiles": "Nenhum arquivo alterado neste commit."
+  },
   "diff": {
     "newFile": "(novo)",
     "noText": "Sem diff de texto (arquivo binário ou vazio)."

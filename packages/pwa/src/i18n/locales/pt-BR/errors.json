@@ -23,6 +23,9 @@
     "worktree_dirty": "O worktree tem alterações não commitadas; ele foi mantido.",
     "unexpected": "O servidor respondeu de forma inesperada. O daemon está atualizado?"
   },
+  "device": {
+    "expired": "Este aparelho ficou sem uso por tempo demais e perdeu o acesso a esta máquina. Pareie de novo com um código novo."
+  },
   "workspace": {
     "not_a_git_repo": "Esta pasta não é um repositório git.",
     "sessions_running": "Há sessões rodando neste workspace. Espere terminarem ou encerre-as.",

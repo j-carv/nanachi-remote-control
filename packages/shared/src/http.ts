@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { AgentKindSchema } from './config.js';
+import { AppLanguageSchema } from './language.js';
 import { ShellIdSchema } from './shell.js';
+import { FileInfoSchema } from './file.js';
 import {
   AgentSessionSummarySchema,
+  hasPromptContent,
+  PromptShape,
   AvailableCommandSchema,
   ConfigValueSchema,
-  FileInfoSchema,
   SessionConfigOptionSchema,
   SessionEventSchema,
   SessionSchema,
@@ -225,6 +228,12 @@ export const SessionsResponseSchema = z.object({
 
 export type SessionsResponse = z.infer<typeof SessionsResponseSchema>;
 
+/** POST /api/sessions/:id/queue accepts a chat message and responds with 204. */
+export const SubmitPromptRequestSchema = z.object(PromptShape).refine(hasPromptContent, {
+  message: 'A message needs text or an attachment',
+  path: ['text'],
+});
+
 /**
  * POST /api/sessions (Bearer token). `config` é aplicado logo após `session/new`.
  * `worktree: true` cria um worktree git separado (só para workspace git).
@@ -286,6 +295,40 @@ export const EventsResponseSchema = z.object({
 
 export type EventsResponse = z.infer<typeof EventsResponseSchema>;
 
+/**
+ * GET /api/sessions/search?q=&limit=&workspaceId= (Bearer token): message search. `q` arrives trimmed and must be 2 to
+ * 100 characters. `limit` (1 to 50, default 20) arrives as URL text. `workspaceId` narrows the search to one workspace;
+ * the phone's sessions screen uses it, the wide list pane does not.
+ */
+export const SESSION_SEARCH_MIN_LENGTH = 2;
+const SESSION_SEARCH_MAX_LENGTH = 100;
+const SESSION_SEARCH_DEFAULT_LIMIT = 20;
+const SESSION_SEARCH_MAX_LIMIT = 50;
+
+export const SessionSearchQuerySchema = z.object({
+  q: z.string().trim().min(SESSION_SEARCH_MIN_LENGTH).max(SESSION_SEARCH_MAX_LENGTH),
+  limit: z.coerce.number().int().min(1).max(SESSION_SEARCH_MAX_LIMIT).default(SESSION_SEARCH_DEFAULT_LIMIT),
+  workspaceId: z.string().min(1).optional(),
+});
+
+/** One session with a matching message: its newest match, with that message's snippet. `matchedAt` is epoch ms. */
+export const SessionSearchResultSchema = z.object({
+  sessionId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  title: z.string(),
+  snippet: z.string(),
+  matchedAt: z.number().int().nonnegative(),
+});
+
+export type SessionSearchResult = z.infer<typeof SessionSearchResultSchema>;
+
+/** Response of GET /api/sessions/search: the matches, newest first, at most 50. */
+export const SessionSearchResponseSchema = z.object({
+  results: z.array(SessionSearchResultSchema).max(SESSION_SEARCH_MAX_LIMIT),
+});
+
+export type SessionSearchResponse = z.infer<typeof SessionSearchResponseSchema>;
+
 /** PATCH /api/workspaces/:id (Bearer token). */
 export const UpdateWorkspaceRequestSchema = z.object({
   muted: z.boolean(),
@@ -305,13 +348,17 @@ export const PushKeyResponseSchema = z.object({
 
 export type PushKeyResponse = z.infer<typeof PushKeyResponseSchema>;
 
-/** POST /api/push/subscribe (Bearer token). */
+/**
+ * POST /api/push/subscribe (Bearer token). `language` is the phone's UI language: the daemon writes the push texts in it.
+ * Optional, for older clients; without it the daemon uses pt-BR.
+ */
 export const PushSubscriptionRequestSchema = z.object({
   endpoint: z.url(),
   keys: z.object({
     p256dh: z.string().min(1),
     auth: z.string().min(1),
   }),
+  language: AppLanguageSchema.optional(),
 });
 
 export type PushSubscriptionRequest = z.infer<typeof PushSubscriptionRequestSchema>;
@@ -333,23 +380,75 @@ export const WorkspaceInfoResponseSchema = z.object({
 
 export type WorkspaceInfoResponse = z.infer<typeof WorkspaceInfoResponseSchema>;
 
+/** One changed file with its patch: the session's changes (`GET .../diff`) and one commit's (`GET .../commits/:hash`). */
+export const DiffFileSchema = z.object({
+  path: z.string().min(1),
+  status: z.enum(['added', 'modified', 'deleted', 'renamed']),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  patch: z.string(),
+});
+
+export type DiffFile = z.infer<typeof DiffFileSchema>;
+
 /** GET /api/sessions/:id/diff (Bearer token). `git diff HEAD` no cwd da sessão. */
 export const SessionDiffResponseSchema = z.object({
-  files: z.array(
-    z.object({
-      path: z.string().min(1),
-      status: z.enum(['added', 'modified', 'deleted', 'renamed']),
-      additions: z.number().int().nonnegative(),
-      deletions: z.number().int().nonnegative(),
-      patch: z.string(),
-    }),
-  ),
+  files: z.array(DiffFileSchema),
   truncated: z.boolean(),
 });
 
 export type SessionDiffResponse = z.infer<typeof SessionDiffResponseSchema>;
 
-/** GET /api/devices (Bearer token). Não revogados; `current` marca o device que fez a chamada. */
+/**
+ * A commit named in a URL: a hash prefix of 7 to 40 lowercase hex digits, or the full hash. Used by
+ * `GET /api/sessions/:id/commits/:hash`, which answers 400 `invalid_request` for anything else.
+ */
+export const CommitRefSchema = z.string().regex(/^[0-9a-f]{7,40}$/);
+
+/** One commit of a session's history. `summary` is the first non-empty line of the body, or null when there is none. */
+export const CommitEntrySchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/),
+  shortHash: z.string().min(1),
+  subject: z.string(),
+  summary: z.string().nullable(),
+  author: z.string(),
+  /** Author date, in epoch milliseconds. */
+  date: z.number().int().nonnegative(),
+});
+
+export type CommitEntry = z.infer<typeof CommitEntrySchema>;
+
+/** GET /api/sessions/:id/commits?skip&limit (Bearer token). One page of HEAD's history, newest first. */
+export const SessionCommitsResponseSchema = z.object({
+  commits: z.array(CommitEntrySchema),
+  hasMore: z.boolean(),
+});
+
+export type SessionCommitsResponse = z.infer<typeof SessionCommitsResponseSchema>;
+
+/**
+ * GET /api/sessions/:id/commits/:hash (Bearer token). One commit against its first parent (against the empty tree for
+ * a root commit). `truncated` is true when some patches did not fit the 1 MB limit shared with the session diff.
+ */
+export const SessionCommitResponseSchema = z.object({
+  hash: z.string().regex(/^[0-9a-f]{40,64}$/),
+  shortHash: z.string().min(1),
+  subject: z.string(),
+  /** The message after the subject, trimmed; empty when the commit has only a subject. */
+  body: z.string(),
+  author: z.string(),
+  /** Author date, in epoch milliseconds. */
+  date: z.number().int().nonnegative(),
+  files: z.array(DiffFileSchema),
+  truncated: z.boolean(),
+});
+
+export type SessionCommitResponse = z.infer<typeof SessionCommitResponseSchema>;
+
+/**
+ * GET /api/devices (Bearer token). Não revogados; `current` marca o device que fez a chamada; `expired` marca o que passou
+ * do prazo de inatividade (`deviceInactivityDays`) e não tem mais acesso.
+ */
 export const DevicesResponseSchema = z.object({
   devices: z.array(
     z.object({
@@ -358,6 +457,7 @@ export const DevicesResponseSchema = z.object({
       createdAt: z.number().int().nonnegative(),
       lastSeenAt: z.number().int().nonnegative().nullable(),
       current: z.boolean(),
+      expired: z.boolean(),
     }),
   ),
 });

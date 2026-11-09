@@ -53,6 +53,8 @@ export function allowsSidePane(mode: LayoutMode): boolean {
 export function keepsBackOnWide(route: Route): boolean {
   switch (route.kind) {
     case 'changes':
+    case 'commits':
+    case 'commit':
     case 'files':
     case 'editor':
     case 'devices':
@@ -63,6 +65,7 @@ export function keepsBackOnWide(route: Route): boolean {
     case 'settings':
     case 'workspaces':
     case 'sessions':
+    case 'schedules':
     case 'chat':
       return false;
   }
@@ -73,9 +76,13 @@ export function detailKey(route: Route): string {
   switch (route.kind) {
     case 'chat':
     case 'changes':
+    case 'commits':
       return `${route.kind}:${route.session.id}`;
+    case 'commit':
+      return `commit:${route.session.id}:${route.hash}`;
     case 'sessions':
-      return `sessions:${route.workspace.id}`;
+    case 'schedules':
+      return `${route.kind}:${route.workspace.id}`;
     case 'files':
     case 'editor':
       return `${route.kind}:${route.workspace.id}:${route.path}`;

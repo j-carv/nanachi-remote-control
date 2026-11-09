@@ -63,7 +63,7 @@ async function start(): Promise<Started> {
     FAKE_AGENT_IMAGE_OUTSIDE: join(base, 'fora.png'),
   });
   const daemon = await env.start({
-    config: { allowedRoots: [workspace], agents: { fake: agent }, phoneSendHint: false },
+    config: { allowedRoots: [workspace], agents: { fake: agent } },
     onNotify: (_sessionId, kind) => {
       notified.push(kind);
     },

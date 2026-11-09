@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PairResponse } from '@nanachi/shared';
-import { createApiClient } from './api.js';
+import { createApiClient, pair } from './api.js';
 import { getBrowserStorage } from './browserStorage.js';
 import { ErrorNotice } from './components/ErrorNotice.js';
 import {
@@ -22,6 +22,8 @@ import {
   type SessionTarget,
 } from './push/notificationRoute.js';
 import {
+  isSafePairingBaseUrl,
+  normalizeBaseUrl,
   readMachines,
   readSelectedId,
   readStoredMachines,
@@ -33,6 +35,7 @@ import {
   type Machine,
   type StorageLike,
 } from './machines.js';
+import { pairLinkStart, readPairEnvironment } from './pairLink.js';
 import { requestPersistentStorageOnce } from './persistStorage.js';
 import {
   activeRoute,
@@ -51,6 +54,7 @@ import {
 } from './navigation.js';
 import { DevicesScreen } from './screens/DevicesScreen.js';
 import { MainScreen } from './screens/MainScreen.js';
+import { PairConnecting, PairInstallGuide } from './screens/PairLinkScreens.js';
 import { PairScreen } from './screens/PairScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
 import { useConnectionPool } from './useConnectionPool.js';
@@ -60,6 +64,27 @@ import { WideLayout } from './wide/WideLayout.js';
 
 /** What the access notice at the top says. Kept as a kind, not a text, so it follows the language when it changes. */
 type AccessNotice = 'save_failed' | 'read_failed';
+
+/** A pair link (`/#pair=<code>`) this page load is handling. While it is set, the pair link owns the screen. */
+type PairLinkState =
+  | { kind: 'connecting'; code: string }
+  | { kind: 'install-guide'; code: string }
+  /** The pairing screen with the code filled in. `error` says why the automatic attempt failed (undefined: no reason). */
+  | { kind: 'manual'; code: string; error: unknown };
+
+/** The state a pair link starts in. Read before the first render, when the fragment is still in the URL. */
+function startPairLink(): PairLinkState | null {
+  const start = pairLinkStart(window.location.hash, readPairEnvironment());
+  if (start === null) return null;
+  return start.action === 'install-guide'
+    ? { kind: 'install-guide', code: start.code }
+    : { kind: 'connecting', code: start.code };
+}
+
+/** Removes the fragment and keeps the path and query. The code is single-use, so it must not stay in the URL. */
+function dropPairFragment(): void {
+  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+}
 
 /** Pedido de persistência do storage (token), só se o navegador tiver `navigator.storage.persist`. */
 function persistRequest(storage: StorageLike) {
@@ -94,6 +119,9 @@ function AppRoutes() {
   // Assim, abrir o app offline não apaga o lugar salvo.
   const persistRef = useRef(false);
   const navigatedRef = useRef(false);
+  const [pairLink, setPairLink] = useState<PairLinkState | null>(startPairLink);
+  // One attempt per page load. A ref, not state: StrictMode runs the mount effect twice and keeps refs between the runs.
+  const pairAttemptRef = useRef(false);
 
   function markNavigated(): void {
     navigatedRef.current = true;
@@ -102,7 +130,8 @@ function AppRoutes() {
 
   // Gesto de voltar do iOS dispara popstate; a profundidade no history.state diz qual tela voltar.
   useEffect(() => {
-    window.history.replaceState({ depth: 0 }, '');
+    // Keeps the URL, fragment included: an install guide for a pair link reads its code from the fragment.
+    window.history.replaceState({ depth: 0 }, '', window.location.href);
     const onPop = (event: PopStateEvent) => {
       markNavigated();
       setNav((previous) => goToDepth(previous, depthOf(event.state)));
@@ -162,6 +191,12 @@ function AppRoutes() {
   // Reabre onde parou. Se o app abriu por uma notificação (?machine=&workspace=&session=), o destino
   // vence a rota salva, e a query sai da URL para não reabrir ao recarregar.
   useEffect(() => {
+    // Um link de pareamento (/#pair=) começa o app sozinho: a rota salva espera, e o guia de instalação mantém a URL.
+    if (pairLink !== null) {
+      if (pairLink.kind === 'connecting') attemptPairLink(pairLink.code);
+      return;
+    }
+
     const devices = parseDevicesSearch(window.location.search);
     if (devices !== null) {
       window.history.replaceState(window.history.state, '', window.location.pathname);
@@ -286,6 +321,38 @@ function AppRoutes() {
     else router.replace({ kind: 'home' });
   }
 
+  /**
+   * Pairs with the code of a pair link, once per page load. The fragment goes first, so the code stays out of the URL
+   * even if the request fails. A failure opens the pairing screen with the code filled in and the reason.
+   */
+  function attemptPairLink(code: string): void {
+    if (pairAttemptRef.current) return;
+    pairAttemptRef.current = true;
+    dropPairFragment();
+    const origin = window.location.origin;
+    const baseUrl = normalizeBaseUrl(origin);
+    if (baseUrl === null || !isSafePairingBaseUrl(baseUrl, origin)) {
+      setPairLink({ kind: 'manual', code, error: undefined });
+      return;
+    }
+    const deviceName = t('defaultDeviceName', { ns: 'pairing' });
+    void (async () => {
+      try {
+        const result = await pair({ baseUrl, code, deviceName });
+        setPairLink(null);
+        handlePaired(result, baseUrl);
+      } catch (caught) {
+        setPairLink({ kind: 'manual', code, error: caught });
+      }
+    })();
+  }
+
+  /** The install guide's "Pair in Safari instead": the code moves to the pairing screen, and only the user sends it. */
+  function pairInBrowser(code: string): void {
+    dropPairFragment();
+    setPairLink({ kind: 'manual', code, error: undefined });
+  }
+
   /** Esquece a máquina neste celular (sem perguntar). Devolve a que ficou selecionada, se houver. */
   function forgetMachine(machine: Machine): Machine | undefined {
     const next = removeMachine(machines, machine.id);
@@ -347,15 +414,7 @@ function AppRoutes() {
 
     if (current.kind === 'devices') {
       return (
-        <DevicesScreen
-          machine={selected}
-          nav={navigator}
-          onRevokedSelf={() => {
-            // Revogou este aparelho: a máquina sai daqui e o app vai para o pareamento dela.
-            forgetMachine(selected);
-            navigator.replace({ kind: 'pair', baseUrl: selected.baseUrl });
-          }}
-        />
+        <DevicesScreen machine={selected} nav={navigator} />
       );
     }
 
@@ -368,6 +427,30 @@ function AppRoutes() {
         status={statuses[selected.id]}
         storage={storage}
       />
+    );
+  }
+
+  if (pairLink !== null) {
+    return (
+      <Fragment key={i18n.language}>
+        {pairLink.kind === 'connecting' && <PairConnecting />}
+        {pairLink.kind === 'install-guide' && (
+          <PairInstallGuide onContinue={() => pairInBrowser(pairLink.code)} />
+        )}
+        {pairLink.kind === 'manual' && (
+          <PairScreen
+            initialBaseUrl={window.location.origin}
+            canCancel={machines.length > 0}
+            onCancel={() => setPairLink(null)}
+            onPaired={(result, baseUrl) => {
+              setPairLink(null);
+              handlePaired(result, baseUrl);
+            }}
+            initialCode={pairLink.code}
+            initialError={pairLink.error}
+          />
+        )}
+      </Fragment>
     );
   }
 

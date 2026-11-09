@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, CircleCheck, CircleDashed, Ellipsis, Plus, RefreshCw, TriangleExclamationPoint, type LucideIcon } from 'lucide-react';
 import type { AgentAccount, AgentProfile } from '@nanachi/shared';
+import { agentIcons } from '../../../shared/assets/agent-icons.js';
 import { loadAgentAccounts } from '../agentAccountsCache.js';
 import { createApiClient, type ApiClient } from '../api.js';
 import {
@@ -282,6 +283,16 @@ const ACCOUNT_ICON: Record<'ok' | 'warn' | 'muted', { tone: StatusTone; Icon: Lu
 
 const DOT_TONE: Record<AccountTone, StatusTone> = { ok: 'success', warn: 'attention', muted: 'muted' };
 
+function ProviderIcon({ agentId }: { agentId: string }) {
+  const icon = agentIcons.get(agentId);
+  if (icon === undefined) return null;
+  return (
+    <span className={cn('grid size-7 shrink-0 place-items-center rounded-md', agentId === 'omp' ? 'bg-[#161616]' : 'bg-muted')}>
+      <img src={icon} alt="" className="size-5 object-contain" />
+    </span>
+  );
+}
+
 interface AgentAccountGroupProps {
   agent: AgentAccount;
   now: number;
@@ -296,7 +307,10 @@ export function AgentAccountGroup({ agent, now, onOpen, onAdd }: AgentAccountGro
   return (
     <div role="group" aria-label={agent.label} data-slot="agent-accounts" className="flex flex-col gap-1.5 pt-1">
       <div className="flex items-baseline justify-between gap-3 pl-1">
-        <h3 className="min-w-0 truncate text-base font-medium">{agent.label}</h3>
+        <h3 className="flex min-w-0 items-center gap-2 text-base font-medium">
+          <ProviderIcon agentId={agent.agentId} />
+          <span className="truncate">{agent.label}</span>
+        </h3>
         <span className="shrink-0 text-xs text-muted-foreground">{checkedText(agent.checkedAt, now)}</span>
       </div>
       <ListGroup>
@@ -359,7 +373,10 @@ function AccountRow({ account, now }: { account: AgentAccount; now: number }) {
   return (
     <li className={cn(listRowClass, 'items-start py-3')}>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-base font-medium">{account.label}</span>
+        <span className="flex items-center gap-2 text-base font-medium">
+          <ProviderIcon agentId={account.agentId} />
+          {account.label}
+        </span>
         {account.account !== null && <span className="truncate text-sm text-foreground/80">{account.account}</span>}
         {account.detail !== null && <span className="text-sm text-muted-foreground">{account.detail}</span>}
         {view.help !== null && <span className="text-sm text-muted-foreground">{view.help}</span>}

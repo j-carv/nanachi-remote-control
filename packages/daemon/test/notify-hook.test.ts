@@ -103,6 +103,35 @@ describe('onNotify (ponto de extensão para o Web Push)', () => {
     expect(calls.map((call) => call.kind)).toContain('error');
   });
 
+  it('prompt rejeitado avisa error uma vez e não avisa turn_end (o turno não terminou)', async () => {
+    const calls: Call[] = [];
+    const { session, client } = await open((sessionId, kind, details) => calls.push({ sessionId, kind, details }));
+
+    client.send({ type: 'prompt', sessionId: session.id, text: 'LOOP-FAIL' });
+    await client.waitFor(isEvent('error'));
+    await client.waitFor((message) => message.type === 'session' && message.session.status === 'idle');
+
+    expect(calls.map((call) => call.kind)).toEqual(['error']);
+  });
+
+  it('o mesmo tool call pedido de novo enquanto a permissão espera resposta não avisa outra vez', async () => {
+    const calls: Call[] = [];
+    const { daemon, session, client } = await open((sessionId, kind, details) => calls.push({ sessionId, kind, details }));
+
+    client.send({ type: 'prompt', sessionId: session.id, text: 'permission-repeat' });
+    await client.waitFor(isEvent('permission_request'));
+    const second = await client.waitFor(isEvent('permission_request'));
+    if (second.type !== 'event' || second.event.kind !== 'permission_request') throw new Error('esperava permission_request');
+    client.send({ type: 'permission_response', sessionId: session.id, requestId: second.event.requestId, optionId: 'allow' });
+    await client.waitFor(isEvent('turn_end'));
+
+    expect(calls.map((call) => call.kind)).toEqual(['permission_request', 'turn_end']);
+    const stored = daemon.db
+      .prepare<[string], { n: number }>("SELECT COUNT(*) AS n FROM events WHERE session_id = ? AND kind = 'permission_request'")
+      .get(session.id);
+    expect(stored).toEqual({ n: 2 });
+  });
+
   it('avisa file quando o agente manda um arquivo para o celular', async () => {
     const calls: Call[] = [];
     const { daemon, session } = await open((sessionId, kind, details) => calls.push({ sessionId, kind, details }));

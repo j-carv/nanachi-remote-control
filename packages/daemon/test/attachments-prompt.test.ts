@@ -48,8 +48,7 @@ function agents(): Record<string, AgentConfig> {
 }
 
 async function start(): Promise<TestDaemon> {
-  // Aviso do phone-send desligado aqui: estes testes comparam os blocos exatos do prompt (ver phone-send-hint.test.ts).
-  return env.start({ config: { allowedRoots: [base], agents: agents(), phoneSendHint: false } });
+  return env.start({ config: { allowedRoots: [base], agents: agents() } });
 }
 
 interface Open {

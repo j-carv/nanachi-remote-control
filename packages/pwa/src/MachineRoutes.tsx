@@ -9,6 +9,7 @@ import { FilesScreen } from './screens/FilesScreen.js';
 import { FolderPickerScreen } from './screens/FolderPickerScreen.js';
 import { SessionsScreen } from './screens/SessionsScreen.js';
 import { WorkspacesScreen } from './screens/WorkspacesScreen.js';
+import { SchedulesScreen } from './screens/SchedulesScreen.js';
 
 // Telas pesadas (markdown, xterm) saem do bundle principal: carregam ao abrir a primeira vez.
 // O service worker precacheia os chunks, então funcionam offline depois de instalados.
@@ -20,6 +21,12 @@ const TerminalScreen = lazy(() =>
 );
 const ChangesScreen = lazy(() =>
   import('./screens/ChangesScreen.js').then((module) => ({ default: module.ChangesScreen })),
+);
+const CommitsScreen = lazy(() =>
+  import('./screens/CommitsScreen.js').then((module) => ({ default: module.CommitsScreen })),
+);
+const CommitScreen = lazy(() =>
+  import('./screens/CommitScreen.js').then((module) => ({ default: module.CommitScreen })),
 );
 // O editor traz o CodeMirror (e os parsers de linguagem): fica fora do bundle principal até abrir um arquivo.
 const EditorScreen = lazy(() =>
@@ -87,6 +94,9 @@ export function MachineRoutes({ machine, route, nav, connection, status, storage
         />
       );
 
+    case 'schedules':
+      return <SchedulesScreen key={JSON.stringify([machine.id, machine.baseUrl, machine.token, route.workspace.id])} api={api} workspace={route.workspace} machineName={machine.name} nav={nav} onRepair={onRepair} />;
+
     case 'chat':
       // Sessão PTY não tem chat: mesma rota e cabeçalho, com o terminal no lugar da conversa.
       if (route.session.kind === 'pty') {
@@ -100,7 +110,6 @@ export function MachineRoutes({ machine, route, nav, connection, status, storage
               api={api}
               connection={connection}
               nav={nav}
-              onRepair={onRepair}
             />
           </Lazy>
         );
@@ -108,7 +117,8 @@ export function MachineRoutes({ machine, route, nav, connection, status, storage
       return (
         <Lazy>
           <ChatScreen
-            key={route.session.id}
+            key={JSON.stringify([machine.id, route.session.id])}
+            machineId={machine.id}
             machineName={machine.name}
             workspace={route.workspace}
             session={route.session}
@@ -128,6 +138,37 @@ export function MachineRoutes({ machine, route, nav, connection, status, storage
             machineName={machine.name}
             workspace={route.workspace}
             session={route.session}
+            api={api}
+            nav={nav}
+            onRepair={onRepair}
+          />
+        </Lazy>
+      );
+
+    case 'commits':
+      return (
+        <Lazy>
+          <CommitsScreen
+            key={route.session.id}
+            machineName={machine.name}
+            workspace={route.workspace}
+            session={route.session}
+            api={api}
+            nav={nav}
+            onRepair={onRepair}
+          />
+        </Lazy>
+      );
+
+    case 'commit':
+      return (
+        <Lazy>
+          <CommitScreen
+            key={route.hash}
+            machineName={machine.name}
+            workspace={route.workspace}
+            session={route.session}
+            hash={route.hash}
             api={api}
             nav={nav}
             onRepair={onRepair}

@@ -233,8 +233,11 @@ export async function removeProfileHome(
   });
 }
 
-/** Remove um caminho sem seguir links: link (inclusive junção) sai como link; pasta real é esvaziada e apagada. */
-async function removeTree(path: string, retry: Retry): Promise<void> {
+/** Removes an owned tree without following symlinks or junctions. The caller validates the target. */
+export async function removeTree(
+  path: string,
+  retry: Retry = { retries: DEFAULT_RETRIES, delayMs: DEFAULT_RETRY_DELAY_MS },
+): Promise<void> {
   const info = await lstatOrUndefined(path);
   if (info === undefined) return;
   if (info.isSymbolicLink()) {

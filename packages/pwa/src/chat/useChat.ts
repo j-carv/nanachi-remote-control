@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
 import type {
+  AskUserResult,
   AvailableCommand,
   ClientMessage,
   ConfigValue,
   FileInfo,
   Loop,
   LoopRequest,
+  QueuedPrompt,
+  RequestFileResult,
+  PreviewOpenResponse,
   Session,
   SessionConfigOption,
   SessionEvent,
 } from '@nanachi/shared';
-import type { ApiClient } from '../api.js';
+import { ApiError, type ApiClient } from '../api.js';
 import type { Connection } from '../connection.js';
 import { writeAgentConfig } from '../agentConfig.js';
 import { t } from '../i18n/index.js';
 import type { StorageLike } from '../machines.js';
 import { applyAccountReply } from './accountReply.js';
-import { applyEvents, createChatState, withStatus, type ChatState } from './reducer.js';
+import { applyEvents, createChatState, withStatus, withUserQuestionResult, withFileRequestResult, withPreviewClosed, withLearningNotice, type ChatState } from './reducer.js';
 import { loadHistory } from './history.js';
 import { pickLoop } from './loop.js';
 import { createFrameBatcher } from './frameBatch.js';
@@ -58,7 +62,16 @@ export interface ChatController {
   sendPrompt(text: string, attachments?: readonly FileInfo[]): boolean;
   cancel(): boolean;
   respond(requestId: string, optionId: string): boolean;
+  /** HTTP confirmation updates history even when the WebSocket is temporarily disconnected. */
+  answerUserQuestion(requestId: string, optionId: string | null): Promise<AskUserResult>;
+  answerFileRequest(requestId: string, fileId: string | null): Promise<RequestFileResult>;
+  openPreview(previewId: string): Promise<PreviewOpenResponse>;
+  closePreview(previewId: string): Promise<void>;
+  manageLearningReview(reviewId: string, action: 'approve' | 'reject' | 'revert'): Promise<void>;
   setConfig(configId: string, value: ConfigValue): boolean;
+  yolo: boolean;
+  setYolo(enabled: boolean): boolean;
+  promptQueue: readonly QueuedPrompt[];
   /**
    * Moves the session to another account (`default` = principal): the daemon stops the agent and resumes it there.
    * Applies the session it answers with, except its status (the WebSocket reports that). A failure throws the `ApiError` (see `describeAccountError`).
@@ -95,6 +108,8 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
   const [resumeError, setResumeError] = useState<unknown>(null);
   const [commands, setCommands] = useState<readonly AvailableCommand[]>([]);
   const [configOptions, setConfigOptions] = useState<readonly SessionConfigOption[]>([]);
+  const [yolo, setYolo] = useState(false);
+  const [promptQueue, setPromptQueue] = useState<readonly QueuedPrompt[]>([]);
   const [loop, setLoop] = useState<Loop | null>(null);
   const [loopLoaded, setLoopLoaded] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
@@ -136,6 +151,10 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
         if (message.sessionId === sessionId) {
           applyLoop(message.loop);
         }
+      } else if (message.type === 'yolo') {
+        if (message.sessionId === sessionId) setYolo(message.enabled);
+      } else if (message.type === 'prompt_queue') {
+        if (message.sessionId === sessionId) setPromptQueue(message.queue);
       } else if (message.type === 'error') {
         if (message.sessionId === undefined || message.sessionId === sessionId) {
           setNotice(message.message);
@@ -170,7 +189,10 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
       .then((events) => {
         if (!active) return;
         const lastSeq = events.reduce((max, event) => Math.max(max, event.seq), 0);
-        setChat((previous) => applyEvents(previous, events));
+        setChat((previous) => {
+          const next = applyEvents(previous, events);
+          return previous.status === 'stopped' || previous.status === 'error' ? withStatus(next, previous.status) : next;
+        });
         connection?.subscribe(sessionId, lastSeq);
         setLoaded(true);
       })
@@ -185,6 +207,29 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
       connection?.unsubscribe(sessionId);
     };
   }, [api, connection, sessionId]);
+
+  useEffect(() => {
+    let expiresAt = Infinity;
+    for (const item of chat.items) {
+      if (item.kind === 'file_request' && item.result === null && !item.unavailable) expiresAt = Math.min(expiresAt, item.expiresAt);
+    }
+    if (expiresAt === Infinity) return;
+    const expire = () => {
+      const now = Date.now();
+      setChat((previous) => {
+        let next = previous;
+        for (const item of previous.items) {
+          if (item.kind === 'file_request' && item.result === null && !item.unavailable && item.expiresAt <= now) {
+            next = withFileRequestResult(next, item.requestId, null);
+          }
+        }
+        return next;
+      });
+    };
+    const timer = window.setTimeout(expire, Math.max(0, expiresAt - Date.now()));
+    document.addEventListener('visibilitychange', expire);
+    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', expire); };
+  }, [chat.items]);
 
   useEffect(() => {
     if (configOptions.length > 0) {
@@ -214,6 +259,16 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
     }
   }
 
+  function refreshEvents(): void {
+    void loadHistory((after, limit) => api.fetchEvents(sessionId, { after, limit }), chat.lastSeq)
+      .then((events) => setChat((previous) => applyEvents(previous, events)))
+      .catch(() => undefined);
+  }
+
+  function isStale(error: unknown): boolean {
+    return error instanceof ApiError && error.status !== null && [404, 409, 410].includes(error.status);
+  }
+
   return {
     chat,
     session,
@@ -225,6 +280,13 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
     dismissNotice: () => setNotice(null),
     resuming,
     resumeError,
+    async manageLearningReview(reviewId, action) {
+      const result = action === 'reject'
+        ? await api.rejectLearningReview(session.workspaceId, reviewId)
+        : await api.manageLearningReview(session.workspaceId, reviewId, action);
+      setChat((previous) => withLearningNotice(previous, result));
+    },
+
 
     async resume() {
       setResuming(true);
@@ -264,8 +326,72 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
       return send({ type: 'permission_response', sessionId, requestId, optionId });
     },
 
+    async answerUserQuestion(requestId, optionId) {
+      try {
+        const result = await api.answerUserQuestion(sessionId, requestId, optionId);
+        setChat((previous) => withUserQuestionResult(previous, requestId, result));
+        return result;
+      } catch (error: unknown) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 409 || error.status === 410)) {
+          setChat((previous) => withUserQuestionResult(previous, requestId, null));
+          setNotice(t('chat:question.unavailable'));
+          // Another phone may have answered while this one was offline. Do not retry the write or infer its choice.
+          void loadHistory((after, limit) => api.fetchEvents(sessionId, { after, limit }), chat.lastSeq)
+            .then((events) => setChat((previous) => applyEvents(previous, events)))
+            .catch(() => undefined);
+        }
+        throw error;
+      }
+    },
+
+    async answerFileRequest(requestId, fileId) {
+      try {
+        const result = await api.respondFileRequest(sessionId, requestId, fileId);
+        setChat((previous) => withFileRequestResult(previous, requestId, result));
+        return result;
+      } catch (error: unknown) {
+        if (isStale(error)) {
+          setChat((previous) => withFileRequestResult(previous, requestId, null));
+          setNotice(t('chat:fileRequest.unavailable'));
+          refreshEvents();
+        }
+        throw error;
+      }
+    },
+
+    async openPreview(previewId) {
+      try {
+        return await api.openPreview(sessionId, previewId);
+      } catch (error: unknown) {
+        if (isStale(error)) {
+          setChat((previous) => withPreviewClosed(previous, previewId, null));
+          refreshEvents();
+        }
+        throw error;
+      }
+    },
+
+    async closePreview(previewId) {
+      try {
+        await api.closePreview(sessionId, previewId);
+        setChat((previous) => withPreviewClosed(previous, previewId, 'closed'));
+      } catch (error: unknown) {
+        if (isStale(error)) {
+          setChat((previous) => withPreviewClosed(previous, previewId, null));
+          refreshEvents();
+        }
+        throw error;
+      }
+    },
+
     setConfig(configId, value) {
       return send({ type: 'set_config', sessionId, configId, value });
+    },
+
+    yolo,
+    promptQueue,
+    setYolo(enabled) {
+      return send({ type: 'set_yolo', sessionId, enabled });
     },
 
     async setAccount(accountId) {

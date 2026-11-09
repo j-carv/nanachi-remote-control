@@ -274,18 +274,11 @@ export interface PromptAttachment {
 }
 
 /**
- * Aviso do phone-send, no primeiro prompt de sessão criada pelo app (ver PLAN.md, Extra 03/11). Vai como bloco de
- * texto próprio, depois do que o usuário digitou; o user_message gravado não o contém.
- */
-export const PHONE_SEND_HINT =
-  '[Nanachi Remote] O usuário está no celular. Para mandar um arquivo ou imagem a ele, rode no terminal: phone-send "<caminho>" (opcional: --caption "texto"). Para mandar uma print da tela do PC: phone-send --screenshot.';
-
-/**
  * Blocos do `session/prompt`: um bloco de texto (o do usuário + um `[Arquivo anexado: <caminho>]` por anexo
  * que não vai inline) e, depois, uma imagem por anexo com `imageData`. Sem texto nem caminhos, não há bloco de texto.
- * `hint` (se houver) vai por último, como bloco de texto próprio.
+ * `instruction` (se houver) vai por último, como bloco de texto próprio.
  */
-export function promptBlocks(text: string, attachments: readonly PromptAttachment[], hint?: string): acp.ContentBlock[] {
+export function promptBlocks(text: string, attachments: readonly PromptAttachment[], instruction?: string): acp.ContentBlock[] {
   const paths = attachments
     .filter((attachment) => attachment.imageData === undefined)
     .map((attachment) => `[Arquivo anexado: ${attachment.path}]`);
@@ -298,7 +291,7 @@ export function promptBlocks(text: string, attachments: readonly PromptAttachmen
       blocks.push({ type: 'image', data: attachment.imageData, mimeType: attachment.mime });
     }
   }
-  if (hint !== undefined) blocks.push({ type: 'text', text: hint });
+  if (instruction !== undefined) blocks.push({ type: 'text', text: instruction });
   return blocks;
 }
 

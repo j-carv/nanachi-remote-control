@@ -7,7 +7,8 @@ import { app, dialog, ipcMain, Notification, safeStorage, session, shell } from 
 import { CONTROL_EVENT_CHANNELS, EVENT_CHANNELS } from '../common/channels.js';
 import { setLanguage, t, type Language } from '../common/i18n/index.js';
 import { messageOf } from '../common/message.js';
-import type { DaemonStatus, TailscaleStatus } from '../common/types.js';
+import { phoneOrigin } from '../common/pairing-link.js';
+import type { DaemonStatus, PairingCode, TailscaleStatus } from '../common/types.js';
 import { APP_USER_MODEL_ID, UNINSTALL_ARG } from '../install/constants.js';
 import { createAutostart, HIDDEN_ARG } from './autostart.js';
 import { resolveBuildDir } from './build-dir.js';
@@ -30,6 +31,7 @@ import { createSessionsView } from './sessions-view.js';
 import { clearPwaCache, createElectronView, nativeViewOf } from './sessions-view-electron.js';
 import { createSettingsStore, pendingPwaLanguage, resolveStartupLanguage, settingsFileExists } from './settings.js';
 import { fetchHealth, isPortFree, killProcessTree, runProcess, spawnHidden, spawnSidecar } from './system.js';
+import { externalPhoneOrigin } from './tailscale-serve-origin.js';
 import { createTray } from './tray.js';
 import { createTsnetHost, resolveSidecarPath, tsnetHostname } from './tsnet-host.js';
 import { launchUninstaller } from './uninstall-launch.js';
@@ -148,7 +150,18 @@ async function boot(): Promise<void> {
   });
   const autostart = createAutostart(app, app.isPackaged);
 
-  const pairingWindow = createPairingWindow({ generate: () => pairing.generateCode(), iconPath });
+  async function generatePhonePairingCode(): Promise<PairingCode> {
+    const code = await pairing.generateCode();
+    if (phoneOrigin(tsnet.status()) !== null) return code;
+    const externalOrigin = await externalPhoneOrigin(host.port());
+    return externalOrigin === null ? code : { ...code, externalOrigin };
+  }
+
+  const pairingWindow = createPairingWindow({
+    generate: generatePhonePairingCode,
+    tailscaleStatus: () => tsnet.status(),
+    iconPath,
+  });
 
   /** The control center, on the "Sessões" section: where the PWA (sessions and chat) lives. */
   function openSessions(): void {
@@ -353,7 +366,7 @@ async function boot(): Promise<void> {
       statfs: (path) => statfs(path),
     }),
     tailscale: { status: () => tsnet.status(), start: startTailscale, stop: stopTailscale },
-    pairingCode: () => pairing.generateCode(),
+    pairingCode: generatePhonePairingCode,
     language: { set: applyLanguage },
     readLogs: () => readDesktopLogs(logFile),
     autostart: { supported: autostart.supported, get: () => autostart.get(), set: setAutostart },

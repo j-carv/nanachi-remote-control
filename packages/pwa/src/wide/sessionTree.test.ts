@@ -3,6 +3,7 @@ import type { Session, SessionStatus, Workspace } from '@nanachi/shared';
 import type { Route } from '../navigation.js';
 import {
   buildTree,
+  filterTree,
   mergeSessions,
   selectionOf,
   SESSION_ROW_LIMIT,
@@ -51,6 +52,17 @@ describe('mergeSessions', () => {
   it('keeps the loaded session when it is newer than a stale live one (a reload finished after the message)', () => {
     const merged = mergeSessions([session('a', 'w', 90, 'idle')], { a: session('a', 'w', 50, 'running') }, new Set());
     expect(merged[0]?.status).toBe('idle');
+  });
+
+  it('keeps automation ownership hidden across stale loaded and live snapshots', () => {
+    const loadedRun = { ...session('loaded-run', 'w', 90, 'running'), automationRunId: 'loaded-run-id' };
+    const liveRun = { ...session('live-run', 'w', 10, 'awaiting_permission'), automationRunId: 'live-run-id' };
+    const loaded = [loadedRun, session('live-run', 'w', 90, 'running'), session('ordinary', 'w', 30)];
+    const live = { 'loaded-run': session('loaded-run', 'w', 100), 'live-run': liveRun };
+
+    expect(mergeSessions(loaded, live, new Set()).map((item) => item.id)).toEqual(['ordinary']);
+    expect(loaded[1]?.automationRunId).toBeUndefined();
+    expect(live['loaded-run'].automationRunId).toBeUndefined();
   });
 
   it('drops the sessions removed from the app, loaded or live', () => {
@@ -112,6 +124,61 @@ describe('buildTree', () => {
     );
     expect(tree[0]?.counts).toEqual({ running: 2, awaiting: 1, idle: 1 });
   });
+
+  it('excludes loaded and live automation runs from rows, counts, search and the awaiting target', () => {
+    const ordinaryWaiting = session('waiting', 'w1', 1, 'awaiting_permission');
+    const tree = buildTree(
+      workspaces,
+      {
+        w1: [
+          ordinaryWaiting,
+          session('ordinary-running', 'w1', 2, 'running'),
+          { ...session('scheduled-loaded', 'w1', 100, 'awaiting_permission'), automationRunId: 'loaded-run' },
+        ],
+      },
+      {
+        idle: session('idle', 'w2', 3),
+        scheduled: { ...session('scheduled-live', 'w2', 101, 'running'), automationRunId: 'live-run' },
+      },
+      new Set(),
+    );
+
+    expect(tree.map((node) => node.sessions.map((item) => item.id))).toEqual([
+      ['ordinary-running', 'waiting'], ['idle'], [],
+    ]);
+    expect(tree.map((node) => node.counts)).toEqual([
+      { running: 1, awaiting: 1, idle: 0 },
+      { running: 0, awaiting: 0, idle: 1 },
+      { running: 0, awaiting: 0, idle: 0 },
+    ]);
+    expect(summarizeTree(tree)).toEqual({
+      running: 1, awaiting: 1, awaitingTarget: { workspace: workspaces[0], session: ordinaryWaiting },
+    });
+    expect(filterTree(tree, 'scheduled', (item) => [item.id])).toEqual([]);
+  });
+
+  it('drops a loaded ordinary row and updates totals when a live message marks it as an automation run', () => {
+    const loaded = {
+      w1: [
+        session('becomes-scheduled', 'w1', 1, 'awaiting_permission'),
+        session('ordinary', 'w1', 2, 'running'),
+      ],
+    };
+    const before = buildTree(workspaces, loaded, {}, new Set());
+    expect(before[0]?.counts).toEqual({ running: 1, awaiting: 1, idle: 0 });
+    expect(summarizeTree(before).awaitingTarget?.session.id).toBe('becomes-scheduled');
+
+    const after = buildTree(workspaces, loaded, {
+      'becomes-scheduled': {
+        ...session('becomes-scheduled', 'w1', 3, 'awaiting_permission'), automationRunId: 'run',
+      },
+      ordinary: session('ordinary', 'w1', 4, 'idle'),
+    }, new Set());
+
+    expect(after[0]?.sessions.map((item) => [item.id, item.status])).toEqual([['ordinary', 'idle']]);
+    expect(after[0]?.counts).toEqual({ running: 0, awaiting: 0, idle: 1 });
+    expect(summarizeTree(after)).toEqual({ running: 0, awaiting: 0, awaitingTarget: null });
+  });
 });
 
 describe('visibleSessionRows', () => {
@@ -139,13 +206,14 @@ describe('visibleSessionRows', () => {
     expect(hidden).toBe(many.length - SESSION_ROW_LIMIT - 1);
   });
 
-  it('keeps the sessions that need the user visible past the limit', () => {
+  it('puts approvals and errors at the top, even if they were older than the visible rows', () => {
     const list = [
       ...many.slice(0, 9),
       session('urgent', 'w', 1, 'awaiting_permission'),
+      session('failed', 'w', 2, 'error'),
     ];
     const { rows } = visibleSessionRows(list, { expanded: false, pinned: null });
-    expect(rows.map((item) => item.id)).toContain('urgent');
+    expect(rows.slice(0, 3).map((item) => item.id)).toEqual(['urgent', 'failed', 's0']);
   });
 
   it('shows all of them once expanded', () => {
@@ -157,11 +225,15 @@ describe('selectionOf', () => {
   const ws = workspace('w1');
   const open = session('s1', 'w1', 1);
 
-  it('marks the workspace and the session of a conversation or its changes', () => {
+  it('marks the workspace and the session of a conversation, its changes or its commit history', () => {
     const chat: Route = { kind: 'chat', workspace: ws, session: open };
     const changes: Route = { kind: 'changes', workspace: ws, session: open };
+    const commits: Route = { kind: 'commits', workspace: ws, session: open };
+    const commit: Route = { kind: 'commit', workspace: ws, session: open, hash: 'af9384e' };
     expect(selectionOf(chat)).toEqual({ workspaceId: 'w1', sessionId: 's1' });
     expect(selectionOf(changes)).toEqual({ workspaceId: 'w1', sessionId: 's1' });
+    expect(selectionOf(commits)).toEqual({ workspaceId: 'w1', sessionId: 's1' });
+    expect(selectionOf(commit)).toEqual({ workspaceId: 'w1', sessionId: 's1' });
   });
 
   it('marks only the workspace for its sessions list, its files and its editor', () => {
@@ -222,5 +294,49 @@ describe('shouldReloadTree', () => {
     expect(shouldReloadTree('offline', 'connecting', true)).toBe(false);
     expect(shouldReloadTree('offline', 'unauthorized', true)).toBe(false);
     expect(shouldReloadTree('online', undefined, true)).toBe(false);
+  });
+});
+
+describe('filterTree', () => {
+  const home = { id: 'w-home', name: 'Nanachi', path: 'C:\Projects\home', muted: false, createdAt: 1 };
+  const docs = { id: 'w-docs', name: 'Documentos', path: 'C:\Projects\docs', muted: false, createdAt: 2 };
+  const nodes = buildTree(
+    [home, docs],
+    {
+      'w-home': [
+        { ...session('a', 'w-home', 3), title: 'Refatorar o parser' },
+        { ...session('b', 'w-home', 2), title: 'Notas do café', agent: 'omp' },
+      ],
+      'w-docs': [{ ...session('c', 'w-docs', 1), title: 'Revisão do README', worktree: { path: 'C:\wt', branch: 'feature/login' } }],
+    },
+    {},
+    new Set(),
+  );
+  const fieldsOf = (item: Session, owner: Workspace): string[] => [
+    item.title,
+    item.agent,
+    item.worktree?.branch ?? '',
+    owner.name,
+  ];
+
+  it('leaves the nodes as they are for a blank query', () => {
+    expect(filterTree(nodes, '   ', fieldsOf)).toEqual(nodes);
+  });
+
+  it('keeps only the matching sessions, with counts that follow them, and drops a workspace with none', () => {
+    const found = filterTree(nodes, 'parser', fieldsOf);
+    expect(found.map((node) => node.workspace.id)).toEqual(['w-home']);
+    expect(found[0]?.sessions.map((item) => item.id)).toEqual(['a']);
+    expect(found[0]?.counts).toEqual({ running: 0, awaiting: 0, idle: 1 });
+  });
+
+  it('finds sessions by branch or workspace name, and ignores accents', () => {
+    expect(filterTree(nodes, 'login', fieldsOf).map((node) => node.workspace.id)).toEqual(['w-docs']);
+    expect(filterTree(nodes, 'documentos', fieldsOf)[0]?.sessions.map((item) => item.id)).toEqual(['c']);
+    expect(filterTree(nodes, 'cafe', fieldsOf)[0]?.sessions.map((item) => item.id)).toEqual(['b']);
+  });
+
+  it('nothing matches: an empty list', () => {
+    expect(filterTree(nodes, 'banana', fieldsOf)).toEqual([]);
   });
 });

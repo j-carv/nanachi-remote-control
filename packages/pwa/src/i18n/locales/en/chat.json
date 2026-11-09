@@ -3,7 +3,7 @@
   "header": {
     "usage": "Agent usage",
     "loop": "Loop mode",
-    "changes": "Changes",
+    "history": "Commit history",
     "configure": "Session settings",
     "moreActions": "More session actions",
     "removeFromApp": "Remove from app",
@@ -22,24 +22,50 @@
   "placeholder": {
     "starting": "Waiting for the agent",
     "idle": "Message",
-    "running": "Wait for the agent",
+    "running": "Write your next message",
     "awaiting_permission": "See the permission request",
     "stopped": "Resume and send",
     "error": "Resume and send",
     "resuming": "Resuming…"
   },
   "timeline": {
+    "newMessages": "New messages",
     "loading": "Loading conversation…",
     "loadEarlier": "Load earlier messages",
     "jumpToEnd": "Jump to latest"
   },
+  "messageActions": {
+    "title": "Message actions",
+    "copy": "Copy",
+    "quote": "Quote in reply",
+    "reuse": "Edit and resend",
+    "appendDetail": "Adds the text to the current draft.",
+    "copied": "Message copied.",
+    "copyFailed": "Could not copy the message."
+  },
+  "transcription": {
+    "start": "Dictate a message",
+    "stop": "Stop recording",
+    "cancel": "Cancel dictation",
+    "starting": "Opening microphone…",
+    "recording": "Recording… {{seconds}} s",
+    "transcribing": "Transcribing the recording…",
+    "blocked": "Allow microphone access to use dictation.",
+    "microphoneFailed": "Could not record. Check your microphone and try again.",
+    "network": "The connection dropped during dictation. Try again.",
+    "noSpeech": "No speech was recognized. Try recording again.",
+    "busy": "This PC is already transcribing another recording. Try again.",
+    "unavailable": "The selected transcription provider is unavailable. Check voice dictation in Settings.",
+    "timeout": "Transcription took too long. Try a shorter recording.",
+    "failed": "Could not transcribe the recording. Try again."
+  },
   "composer": {
     "send": "Send",
     "sending": "Sending…",
+    "queue": "Add to queue",
     "uploading": "Sending… {{percent}}%",
     "uploadProgress": "Upload progress",
     "attach": "Attach file",
-    "commands": "Agent commands",
     "previous": "Previous message",
     "next": "Next message",
     "stop": "Stop",
@@ -63,8 +89,6 @@
   },
   "slash": {
     "label": "Agent commands",
-    "search": "Search commands",
-    "close": "Close commands",
     "none": "This agent hasn't announced any commands.",
     "noMatch": "No command matches “{{query}}”."
   },
@@ -76,8 +100,77 @@
   "permission": {
     "label": "Permission request"
   },
+  "fileRequest": {
+    "accept": "Accepted types: {{types}}",
+    "hint": "Choose a file, then send it to the agent. This does not send a new message.",
+    "waiting": "Waiting for your file",
+    "choose": "Choose file",
+    "send": "Send file",
+    "cancel": "Cancel request",
+    "selected": "Selected: {{name}}",
+    "uploading": "Uploading… {{percent}}%",
+    "saving": "Confirming your response…",
+    "invalidType": "This file does not match the requested types. Choose another file.",
+    "uploadFailed": "The upload failed. Retry with the selected file or choose another.",
+    "responseFailed": "Could not confirm your response. Retry the same response; the file will not be uploaded again.",
+    "unconfirmed": "Not yet confirmed: {{name}}",
+    "unconfirmedCancel": "Cancellation is not yet confirmed.",
+    "retry": "Retry response",
+    "received": "File received by the agent.",
+    "unavailable": "This file request is no longer available.",
+    "cancelled": {
+      "user_cancelled": "You cancelled this file request.",
+      "expired": "This file request expired.",
+      "disconnected": "The agent disconnected before receiving a file.",
+      "session_ended": "The session ended before receiving a file."
+    }
+  },
+  "preview": {
+    "label": "App preview",
+    "target": "PC port {{port}} · {{path}}",
+    "hint": "Opens the app in a separate window on an isolated preview origin, without access to Nanachi storage or tokens.",
+    "singleActive": "One active preview per browser and PC. Opening another preview switches the target for all preview windows in this browser.",
+    "open": "Open preview",
+    "opening": "Opening…",
+    "close": "Close preview",
+    "closing": "Closing…",
+    "connecting": "Connecting to the app on your PC…",
+    "opened": "Opened in a separate window. If you open another preview, reopen this one to switch back.",
+    "open_failed": "Could not open the app. Check that its server is running on the PC, then try Open preview again.",
+    "close_failed": "Could not confirm closure. Try Close preview again to revoke access.",
+    "popup_blocked": "The browser blocked the new window. Allow pop-ups for Nanachi, then try Open preview again.",
+    "unavailable": "This preview is no longer available. Ask the agent to create another.",
+    "closed": {
+      "closed": "Preview closed. Access has been revoked.",
+      "expired": "This preview expired. Ask the agent to create another.",
+      "session_ended": "The session ended and preview access was revoked."
+    }
+  },
+  "question": {
+    "label": "Agent question",
+    "hint": "Choose one option to send your answer to the agent.",
+    "waiting": "Waiting for your answer",
+    "cancel": "Cancel question",
+    "saving": "Confirming your response…",
+    "failed": "Could not confirm your response. It may already have reached the PC. Retry sends the same response.",
+    "unconfirmed": "Unconfirmed response: {{label}}",
+    "retry": "Retry this response",
+    "change": "Choose another response",
+    "answered": "Answer confirmed: {{label}}",
+    "unavailable": "This question is no longer available. No new response can be sent from this card.",
+    "cancelled": {
+      "user_cancelled": "Question cancelled by you.",
+      "expired": "This question has expired and no longer accepts responses.",
+      "disconnected": "The agent disconnected. This question was cancelled.",
+      "session_ended": "The session or turn ended. This question was cancelled."
+    }
+  },
   "plan": {
-    "title": "Plan"
+    "title": "Plan",
+    "show": "Show agent plan",
+    "hide": "Collapse agent plan",
+    "progress": "{{completed}} of {{total}} completed",
+    "done": "Plan completed"
   },
   "status": {
     "pending": "Pending",
@@ -88,6 +181,11 @@
   "tool": {
     "fallbackTitle": "Tool",
     "noStatus": "Tool",
+    "activityActions_one": "{{count}} action",
+    "activityActions_other": "{{count}} actions",
+    "activityCompleted_one": "{{count}} action completed",
+    "activityCompleted_other": "{{count}} actions completed",
+    "activityRunning": "{{title}} · {{summary}}",
     "linesAdded_one": "{{count}} line added",
     "linesAdded_other": "{{count}} lines added",
     "linesRemoved_one": "{{count}} removed",
@@ -113,12 +211,24 @@
       "unknown": "Unknown state"
     }
   },
+  "queue": {
+    "title": "Message queue",
+    "count_one": "{{count}} queued message",
+    "count_other": "{{count}} queued messages",
+    "attachments_one": "{{count}} attachment",
+    "attachments_other": "{{count}} attachments",
+    "remove": "Remove from queue",
+    "failed": "Couldn't send. Remove this message to continue the queue.",
+    "full": "The queue is full. Wait for a message to send or remove one."
+  },
   "item": {
     "loopRound": "Loop #{{number}}",
     "thought": "Thinking",
     "thoughtSize_one": "{{count}} character",
     "thoughtSize_other": "{{count}} characters",
-    "accountChanged": "Switched to account {{label}}"
+    "accountChanged": "Switched to account {{label}}",
+    "yoloApproved": "Permission approved by YOLO",
+    "yoloApprovedTool": "YOLO approved {{title}}"
   },
   "markdown": {
     "image": "image",
@@ -130,7 +240,27 @@
   "agentConfig": {
     "mode": "Access",
     "model": "Model",
-    "thought_level": "Effort"
+    "thought_level": "Effort",
+    "workMode": {
+      "title": "Work mode",
+      "chipLabel": "Work mode: {{label}}. Change work mode",
+      "readOnly": "Read only",
+      "ask": "Ask before edits",
+      "acceptEdits": "Accept edits automatically",
+      "plan": "Planning",
+      "auto": "Automatic mode",
+      "dontAsk": "Don't ask",
+      "bypass": "Bypass permissions",
+      "confirmTitle": "Turn on bypass permissions?",
+      "confirmBody": "The agent will run tools and change files on this PC without asking you first. You can switch to another mode at any time.",
+      "confirmAction": "Turn on",
+      "providerModes": "Agent modes",
+      "yoloDetail": "Approves recognized low-risk requests. Select to turn on or off.",
+      "yoloLimited": "Limited coverage. The agent may act without asking or send requests that need review. Select to turn on or off.",
+      "yoloConfirmTitle": "Turn on YOLO for this session?",
+      "yoloConfirmBody": "Nanachi approves recognized low-risk requests. Deletions, database operations, and commands that need review still ask for your confirmation when they reach the app. Some agent actions happen outside this approval flow.",
+      "yoloConfirmAction": "Turn on YOLO"
+    }
   },
   "loop": {
     "started": "Loop started",

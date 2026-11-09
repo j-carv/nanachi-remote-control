@@ -14,6 +14,7 @@ const PersistedRouteSchema = z.discriminatedUnion('kind', [
   BaseSchema.extend({ kind: z.literal('workspaces') }),
   BaseSchema.extend({ kind: z.literal('folders') }),
   BaseSchema.extend({ kind: z.literal('sessions'), workspaceId: z.string().min(1) }),
+  BaseSchema.extend({ kind: z.literal('schedules'), workspaceId: z.string().min(1) }),
   BaseSchema.extend({
     kind: z.literal('chat'),
     workspaceId: z.string().min(1),
@@ -26,7 +27,7 @@ export type PersistedRoute = z.infer<typeof PersistedRouteSchema>;
 /** Dados que a reconstrução da pilha precisa do PC. Os erros 404 viram "não existe mais". */
 export interface RouteSource {
   listWorkspaces(): Promise<Workspace[]>;
-  listSessions(workspaceId: string): Promise<Session[]>;
+  fetchSession(sessionId: string): Promise<Session>;
 }
 
 /**
@@ -40,7 +41,8 @@ export function toPersistedRoute(machineId: string, route: Route): PersistedRout
     case 'folders':
       return { machineId, kind: route.kind };
     case 'sessions':
-      return { machineId, kind: 'sessions', workspaceId: route.workspace.id };
+    case 'schedules':
+      return { machineId, kind: route.kind, workspaceId: route.workspace.id };
     case 'chat':
       return {
         machineId,
@@ -48,11 +50,13 @@ export function toPersistedRoute(machineId: string, route: Route): PersistedRout
         workspaceId: route.workspace.id,
         sessionId: route.session.id,
       };
-    // Alterações e dispositivos são telas de passagem: a última rota salva continua sendo a conversa/lista.
+    // Alterações, histórico de commits e dispositivos são telas de passagem: a última rota salva continua sendo a conversa/lista.
     case 'pair':
     case 'settings':
     case 'devices':
     case 'changes':
+    case 'commits':
+    case 'commit':
     case 'files':
     case 'editor':
       return null;
@@ -108,13 +112,14 @@ export async function planRestore(saved: PersistedRoute, source: RouteSource): P
     case 'folders':
       return [...home, { kind: 'workspaces' }, { kind: 'folders' }];
     case 'sessions':
+    case 'schedules':
     case 'chat':
       return restoreWorkspaceLevels(saved, source);
   }
 }
 
 async function restoreWorkspaceLevels(
-  saved: Extract<PersistedRoute, { kind: 'sessions' | 'chat' }>,
+  saved: Extract<PersistedRoute, { kind: 'sessions' | 'schedules' | 'chat' }>,
   source: RouteSource,
 ): Promise<Route[]> {
   const workspacesLevel: Route[] = [{ kind: 'home' }, { kind: 'workspaces' }];
@@ -123,13 +128,14 @@ async function restoreWorkspaceLevels(
 
   const sessionsLevel: Route[] = [...workspacesLevel, { kind: 'sessions', workspace }];
   if (saved.kind === 'sessions') return sessionsLevel;
+  if (saved.kind === 'schedules') return [...sessionsLevel, { kind: 'schedules', workspace }];
 
   try {
-    const session = (await source.listSessions(workspace.id)).find((item) => item.id === saved.sessionId);
-    if (session === undefined) return sessionsLevel;
+    const session = await source.fetchSession(saved.sessionId);
+    if (session.workspaceId !== workspace.id) return sessionsLevel;
     return [...sessionsLevel, { kind: 'chat', workspace, session }];
   } catch (error) {
-    if (isNotFound(error)) return workspacesLevel;
+    if (isNotFound(error)) return sessionsLevel;
     throw error;
   }
 }

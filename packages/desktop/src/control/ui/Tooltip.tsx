@@ -4,8 +4,8 @@ import { cx } from './cx.js';
 
 export interface TooltipProps {
   label: string;
-  /** Shown after the label, quieter (`Ctrl+B`). */
-  shortcut?: string;
+  /** Shown after the label, quieter (`Ctrl+B`). Absent for a section without a shortcut. */
+  shortcut?: string | undefined;
   side?: 'top' | 'bottom' | 'right';
   /** `end` right-aligns the tooltip to its anchor (for controls at the window edge). */
   align?: 'center' | 'end';

@@ -22,9 +22,11 @@ import enDesktop from './locales/en/desktop.json';
 import enDevices from './locales/en/devices.json';
 import enErrors from './locales/en/errors.json';
 import enFiles from './locales/en/files.json';
+import enLearning from './locales/en/learning.json';
 import enMachines from './locales/en/machines.json';
 import enPairing from './locales/en/pairing.json';
 import enSettings from './locales/en/settings.json';
+import enSchedules from './locales/en/schedules.json';
 import enTerminal from './locales/en/terminal.json';
 import enUsage from './locales/en/usage.json';
 import enWide from './locales/en/wide.json';
@@ -110,9 +112,11 @@ describe('the English translation files', () => {
     devices: enDevices,
     errors: enErrors,
     files: enFiles,
+    learning: enLearning,
     machines: enMachines,
     pairing: enPairing,
     settings: enSettings,
+    schedules: enSchedules,
     terminal: enTerminal,
     usage: enUsage,
     wide: enWide,

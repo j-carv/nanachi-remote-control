@@ -98,11 +98,66 @@ describe('createApiClient: diff da sessão', () => {
   });
 });
 
+describe('createApiClient: histórico de commits', () => {
+  const HASH = 'af9384ef96648594f13a8bd80ae53aa3e830a8ae';
+  const entry = {
+    hash: HASH,
+    shortHash: 'af9384e',
+    subject: 'segundo',
+    summary: 'corpo linha 1',
+    author: 'teste',
+    date: 1_793_935_007_000,
+  };
+
+  it('sessionCommits faz GET em /commits com skip e limit e valida a página', async () => {
+    const body = { commits: [entry], hasMore: true };
+    const { calls, fetchFn } = fakeFetch(() => json(body));
+    expect(await clientWith(fetchFn).sessionCommits('s-1', { skip: 30, limit: 30 })).toEqual(body);
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7777/api/sessions/s-1/commits?skip=30&limit=30');
+  });
+
+  it('sessionCommits com commit fora do formato vira unexpected', async () => {
+    const body = { commits: [{ ...entry, date: 1.5 }], hasMore: false };
+    const { fetchFn } = fakeFetch(() => json(body));
+    const error = await errorOf(clientWith(fetchFn).sessionCommits('s-1', { skip: 0, limit: 30 }));
+    expect(error.kind).toBe('unexpected');
+  });
+
+  it('sessionCommit faz GET no hash e valida arquivos e patch', async () => {
+    const body = {
+      hash: HASH,
+      shortHash: 'af9384e',
+      subject: 'segundo',
+      body: 'corpo linha 1\nlinha 2',
+      author: 'teste',
+      date: 1_793_935_007_000,
+      files: [{ path: 'a.txt', status: 'renamed', additions: 0, deletions: 0, patch: 'rename from b.txt\n' }],
+      truncated: false,
+    };
+    const { calls, fetchFn } = fakeFetch(() => json(body));
+    expect(await clientWith(fetchFn).sessionCommit('s-1', HASH)).toEqual(body);
+    expect(calls[0]?.url).toBe(`http://127.0.0.1:7777/api/sessions/s-1/commits/${HASH}`);
+  });
+
+  it('sessionCommit com hash fora do formato nem chama a rede', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json({}));
+    const error = await errorOf(clientWith(fetchFn).sessionCommit('s-1', 'AF9384E; rm'));
+    expect(error.kind).toBe('invalid_input');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('sessionCommit de commit que não existe vira not_found', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'not_found' }, 404));
+    const error = await errorOf(clientWith(fetchFn).sessionCommit('s-1', 'deadbeef'));
+    expect(error.kind).toBe('not_found');
+  });
+});
+
 describe('createApiClient: dispositivos', () => {
   it('devices faz GET em /api/devices e devolve a lista', async () => {
     const devices = [
-      { id: 'd-1', name: 'iPhone', createdAt: 1, lastSeenAt: 2, current: true },
-      { id: 'd-2', name: 'Notebook', createdAt: 1, lastSeenAt: null, current: false },
+      { id: 'd-1', name: 'iPhone', createdAt: 1, lastSeenAt: 2, current: true, expired: false },
+      { id: 'd-2', name: 'Notebook', createdAt: 1, lastSeenAt: null, current: false, expired: true },
     ];
     const { calls, fetchFn } = fakeFetch(() => json({ devices }));
     expect(await clientWith(fetchFn).devices()).toEqual(devices);

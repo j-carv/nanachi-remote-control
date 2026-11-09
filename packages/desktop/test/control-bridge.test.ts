@@ -74,7 +74,12 @@ describe('control bridge', () => {
       'openUpdate',
       'setAutostart',
       'setLanguage',
+      'setTranscriptionSettings',
+      'transcriptionModels',
+      'transcriptionSettings',
+      'transcriptionStatus',
       'uninstall',
+      'whisper',
     ]);
     expect(bridge.version).toBe('0.2.0');
     expect(bridge.language).toBe('pt-BR');
@@ -114,6 +119,11 @@ describe('control bridge', () => {
     await bridge.settings.checkForUpdate();
     await bridge.settings.openUpdate('https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.0');
     await bridge.settings.uninstall();
+    await bridge.settings.whisper('status');
+    await bridge.settings.transcriptionSettings();
+    await bridge.settings.setTranscriptionSettings({ provider: 'openai', model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000, apiKey: 'write-only' });
+    await bridge.settings.transcriptionStatus();
+    await bridge.settings.transcriptionModels();
 
     const channels = ipc.invoked.map((call) => call.channel);
     expect(channels).toEqual([
@@ -147,6 +157,11 @@ describe('control bridge', () => {
       CONTROL_INVOKE_CHANNELS.settingsCheckForUpdate,
       CONTROL_INVOKE_CHANNELS.settingsOpenUpdate,
       CONTROL_INVOKE_CHANNELS.settingsUninstall,
+      CONTROL_INVOKE_CHANNELS.settingsWhisper,
+      CONTROL_INVOKE_CHANNELS.settingsTranscriptionGet,
+      CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate,
+      CONTROL_INVOKE_CHANNELS.settingsTranscriptionStatus,
+      CONTROL_INVOKE_CHANNELS.settingsTranscriptionModels,
     ]);
     for (const channel of channels) expect(ALLOWED_CONTROL_INVOKE_CHANNELS.has(channel)).toBe(true);
     // Nothing on the allowlist is dead: every channel is reachable from the bridge.
@@ -225,5 +240,23 @@ describe('control bridge', () => {
     expect(() => bridge.tailscale.onStatus(1 as never)).toThrow(TypeError);
     expect(() => bridge.onNavigate(null as never)).toThrow(TypeError);
     expect(() => bridge.onLanguage('es' as never)).toThrow(TypeError);
+  });
+});
+
+describe('transcription preload producer', () => {
+  it('forwards write-only credentials only in the explicit update invocation', async () => {
+    const ipc = fakeIpc();
+    const bridge = createControlBridge(ipc, '0.2.0', 'en');
+    const settings = { provider: 'custom' as const, model: 'own-asr', baseUrl: 'http://127.0.0.1:8000/v1', timeoutMs: 90_000, apiKey: 'write-only' };
+    await bridge.settings.setTranscriptionSettings(settings);
+    await bridge.settings.transcriptionSettings();
+    await bridge.settings.transcriptionStatus();
+    await bridge.settings.transcriptionModels();
+    expect(ipc.invoked).toEqual([
+      { channel: CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate, args: [settings] },
+      { channel: CONTROL_INVOKE_CHANNELS.settingsTranscriptionGet, args: [] },
+      { channel: CONTROL_INVOKE_CHANNELS.settingsTranscriptionStatus, args: [] },
+      { channel: CONTROL_INVOKE_CHANNELS.settingsTranscriptionModels, args: [] },
+    ]);
   });
 });

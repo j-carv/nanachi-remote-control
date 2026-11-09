@@ -13,6 +13,7 @@ import type { NotifyHandler } from '../src/notify.js';
 import { buildServer, type DevicePairedHandler, type WorkspaceDeletedHandler } from '../src/server.js';
 import type { AgentAccountsService } from '../src/agent-accounts.js';
 import type { AccountRuntime } from '../src/accounts/service.js';
+import type { WhisperService } from '../src/whisper.js';
 import { loadOrCreateVapid } from '../src/vapid.js';
 import { removeTempDir } from './temp.js';
 
@@ -28,6 +29,7 @@ export interface TestDaemon {
 }
 
 export interface StartOptions {
+  whisper?: WhisperService;
   /** Conteúdo de config.json (escrito antes de loadConfig). */
   config?: Record<string, unknown>;
   /** Cria `<home>/pwa` com index.html e assets/app.js. Sem isso a pasta não existe. */
@@ -46,6 +48,10 @@ export interface StartOptions {
   usageCacheMs?: number | undefined;
   /** Ociosidade do processo de uso (padrão: 2 min). Testes usam um valor curto. */
   usageIdleMs?: number | undefined;
+  /** MCP question deadline. Defaults to five minutes; expiry tests use a short value. */
+  askUserTimeoutMs?: number | undefined;
+  /** MCP file request deadline; expiry tests use a short value. */
+  requestFileTimeoutMs?: number | undefined;
   /** Contas dos agentes. Padrão: serviço que não verifica nada (testes não rodam claude/codex de verdade). */
   agentAccounts?: AgentAccountsService;
   /** Ajustes das contas extras (pasta do usuário, `run` falso, relógio). Padrão: os reais. */
@@ -87,10 +93,13 @@ export async function startDaemon(home: string, options: StartOptions = {}): Pro
     usageTimeoutMs: options.usageTimeoutMs,
     usageCacheMs: options.usageCacheMs,
     usageIdleMs: options.usageIdleMs,
+    askUserTimeoutMs: options.askUserTimeoutMs,
+    requestFileTimeoutMs: options.requestFileTimeoutMs,
     resumeAfterReload: options.resumeAfterReload,
     agentAccounts: options.agentAccounts ?? { list: () => Promise.resolve([]) },
     accountRuntime: options.accountRuntime,
     onDevicePaired: options.onDevicePaired,
+    whisper: options.whisper,
   });
   return { app, db, config, machine, home, connections };
 }

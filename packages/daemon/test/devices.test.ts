@@ -33,6 +33,95 @@ function openAndWaitClose(base: string, token: string): Promise<{ ws: WebSocket;
   });
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Faz o device parecer sem uso há `days` dias (grava `last_seen_at` direto no banco de teste). */
+function idleFor(daemon: TestDaemon, id: string, days: number): void {
+  daemon.db.prepare<[number, string]>('UPDATE devices SET last_seen_at = ? WHERE id = ?').run(Date.now() - days * DAY_MS, id);
+}
+
+describe('inatividade (deviceInactivityDays, padrão 90 dias)', () => {
+  it('GET /api/devices marca como expirado o device parado além do prazo, e não os outros', async () => {
+    const daemon = await env.start();
+    const mine = await pairDevice(daemon, 'iPhone');
+    const old = await pairDevice(daemon, 'iPad antigo');
+    idleFor(daemon, old.id, 91);
+
+    const res = await daemon.app.inject({ method: 'GET', url: '/api/devices', headers: bearer(mine.token) });
+
+    const body = DevicesResponseSchema.parse(res.json<unknown>());
+    expect(body.devices.map((device) => [device.id, device.expired]).sort()).toEqual(
+      [
+        [mine.id, false],
+        [old.id, true],
+      ].sort(),
+    );
+  });
+
+  it('o token de device expirado dá 401 com device_expired, sem atualizar o uso', async () => {
+    const daemon = await env.start();
+    const old = await pairDevice(daemon, 'iPad antigo');
+    idleFor(daemon, old.id, 91);
+    const lastSeen = (): unknown =>
+      daemon.db.prepare<[string], { last_seen_at: number }>('SELECT last_seen_at FROM devices WHERE id = ?').get(old.id);
+    const before = lastSeen();
+
+    const me = await daemon.app.inject({ method: 'GET', url: '/api/me', headers: bearer(old.token) });
+    const list = await daemon.app.inject({ method: 'GET', url: '/api/devices', headers: bearer(old.token) });
+
+    expect(me.statusCode).toBe(401);
+    expect(me.json<{ error: string }>()).toEqual({ error: 'device_expired' });
+    expect(list.statusCode).toBe(401);
+    expect(list.json<{ error: string }>()).toEqual({ error: 'device_expired' });
+    expect(lastSeen()).toEqual(before);
+  });
+
+  it('device usado dentro do prazo continua válido e volta a contar a partir do último uso', async () => {
+    const daemon = await env.start();
+    const phone = await pairDevice(daemon, 'iPhone');
+    idleFor(daemon, phone.id, 89);
+
+    expect((await daemon.app.inject({ method: 'GET', url: '/api/me', headers: bearer(phone.token) })).statusCode).toBe(200);
+    idleFor(daemon, phone.id, 89);
+    expect((await daemon.app.inject({ method: 'GET', url: '/api/me', headers: bearer(phone.token) })).statusCode).toBe(200);
+  });
+
+  it('um device expirado pode ser revogado pelos outros, e some da lista', async () => {
+    const daemon = await env.start();
+    const mine = await pairDevice(daemon, 'iPhone');
+    const old = await pairDevice(daemon, 'iPad antigo');
+    idleFor(daemon, old.id, 91);
+
+    const res = await daemon.app.inject({ method: 'DELETE', url: `/api/devices/${old.id}`, headers: bearer(mine.token) });
+
+    expect(res.statusCode).toBe(204);
+    const list = await daemon.app.inject({ method: 'GET', url: '/api/devices', headers: bearer(mine.token) });
+    expect(list.json<DevicesResponse>().devices.map((device) => device.id)).toEqual([mine.id]);
+  });
+
+  it('deviceInactivityDays: 0 desliga: device parado por anos continua válido e não aparece expirado', async () => {
+    const daemon = await env.start({ config: { deviceInactivityDays: 0 } });
+    const mine = await pairDevice(daemon, 'iPhone');
+    const old = await pairDevice(daemon, 'iPad antigo');
+    idleFor(daemon, old.id, 3650);
+
+    expect((await daemon.app.inject({ method: 'GET', url: '/api/me', headers: bearer(old.token) })).statusCode).toBe(200);
+    const list = await daemon.app.inject({ method: 'GET', url: '/api/devices', headers: bearer(mine.token) });
+    expect(list.json<DevicesResponse>().devices.every((device) => device.expired === false)).toBe(true);
+  });
+
+  it('o WS aberto com token expirado fecha com 4401', async () => {
+    const daemon = await env.start();
+    const base = (await listen(daemon)).replace(/^http/, 'ws');
+    const old = await pairDevice(daemon, 'iPad antigo');
+    idleFor(daemon, old.id, 91);
+
+    const socket = await openAndWaitClose(base, old.token);
+
+    expect(await socket.closed).toBe(4401);
+  });
+});
+
 describe('GET /api/devices', () => {
   it('lista os devices ativos e marca o que fez a chamada', async () => {
     const daemon = await env.start();

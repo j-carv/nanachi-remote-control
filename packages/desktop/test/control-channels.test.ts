@@ -77,3 +77,13 @@ describe('control channel allowlists', () => {
     expect(Object.values(CONTROL_INVOKE_CHANNELS)).not.toContain('control:open-sessions');
   });
 });
+
+describe('transcription configuration channels', () => {
+  it('exposes four explicit control-only channels, keeping the local installer separate', () => {
+    expect(CONTROL_INVOKE_CHANNELS.settingsWhisper).toBe('control:settings-whisper');
+    expect(CONTROL_INVOKE_CHANNELS.settingsTranscriptionGet).toBe('control:settings-transcription-get');
+    expect(CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate).toBe('control:settings-transcription-update');
+    expect(CONTROL_INVOKE_CHANNELS.settingsTranscriptionStatus).toBe('control:settings-transcription-status');
+    expect(CONTROL_INVOKE_CHANNELS.settingsTranscriptionModels).toBe('control:settings-transcription-models');
+  });
+});

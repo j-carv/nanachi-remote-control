@@ -57,6 +57,51 @@ async function failure(promise: Promise<unknown>): Promise<DaemonApiError> {
 }
 
 describe('daemon api: requests', () => {
+  it('reads and changes the same Whisper installation with the Desktop token', async () => {
+    const { api, calls } = setup(({ method }) => json(method === 'POST'
+      ? { state: 'installing', progress: 15 }
+      : { state: method === 'DELETE' ? 'removing' : 'ready' }));
+    await expect(api.whisper('status')).resolves.toEqual({ state: 'ready' });
+    await expect(api.whisper('install')).resolves.toEqual({ state: 'installing', progress: 15 });
+    await expect(api.whisper('remove')).resolves.toEqual({ state: 'removing' });
+    expect(calls.map(({ url, method }) => [method, url])).toEqual([
+      ['GET', `${BASE}/api/whisper`],
+      ['POST', `${BASE}/api/whisper/install`],
+      ['DELETE', `${BASE}/api/whisper`],
+    ]);
+    expect(calls.every(({ headers }) => headers.authorization === `Bearer ${TOKEN}`)).toBe(true);
+  });
+  it('reads and saves transcription through canonical authenticated endpoints without returning a key', async () => {
+    const settings = { provider: 'openai' as const, model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: true };
+    const { api, calls } = setup(({ url }) => json(url.endsWith('/status')
+      ? { provider: settings.provider, model: settings.model, state: 'ready' }
+      : url.endsWith('/models') ? { models: [{ provider: 'openai', id: 'gpt-transcribe', name: 'GPT Transcribe' }], manual: false } : settings));
+    expect(await api.transcriptionSettings()).toEqual(settings);
+    expect(await api.setTranscriptionSettings({ provider: settings.provider, model: settings.model, baseUrl: '', timeoutMs: 90_000, apiKey: 'write-only' })).toEqual(settings);
+    expect(await api.transcriptionStatus()).toEqual({ provider: 'openai', model: 'gpt-transcribe', state: 'ready' });
+    expect(await api.transcriptionModels()).toMatchObject({ manual: false, models: [{ id: 'gpt-transcribe' }] });
+    expect(calls.map(({ method, url }) => [method, url])).toEqual([
+      ['GET', `${BASE}/api/transcription/settings`], ['PUT', `${BASE}/api/transcription/settings`],
+      ['GET', `${BASE}/api/transcription/status`], ['GET', `${BASE}/api/transcription/models`],
+    ]);
+    expect(JSON.parse(calls[1]?.body ?? '{}')).toEqual({ provider: 'openai', model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000, apiKey: 'write-only' });
+    expect(calls.every(({ headers, hasSignal }) => headers.authorization === `Bearer ${TOKEN}` && hasSignal)).toBe(true);
+  });
+
+  it.each([
+    { provider: 'openai', model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: true, apiKey: 'must-not-cross' },
+    { provider: 'unknown', model: 'x', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: true },
+    { provider: 'whisper', model: 'x', baseUrl: '', timeoutMs: 1, apiKeyConfigured: false },
+  ])('refuses malformed or secret-bearing transcription settings responses', async (body) => {
+    const { api } = setup(() => json(body));
+    expect((await failure(api.transcriptionSettings())).kind).toBe('bad_response');
+  });
+
+  it('validates transcription status and model catalogs instead of forwarding unknown data', async () => {
+    const { api } = setup(() => json({ provider: 'custom', model: 'x', state: 'invented', models: [{ id: 'chat model', name: 'x', provider: 'custom' }], manual: true }));
+    expect((await failure(api.transcriptionStatus())).kind).toBe('bad_response');
+    expect((await failure(api.transcriptionModels())).kind).toBe('bad_response');
+  });
   it('lists devices with the Desktop token, marking the one that made the call', async () => {
     const { api, calls } = setup(() =>
       json({

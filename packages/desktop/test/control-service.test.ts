@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { UpdateTranscriptionSettings } from '@nanachi/shared';
 import type { Language } from '../src/common/i18n/index.js';
 import type { AgentAccountsInfo, DeviceInfo, DriveInfo, LogsInfo } from '../src/common/control-api.js';
 import type { DaemonStatus, TailscaleStatus, UpdateCheckResult } from '../src/common/types.js';
@@ -61,6 +62,11 @@ function fakeHost(initial: Partial<DaemonStatus> = {}, startSettlesAfterMs: numb
 
 function fakeDaemon(overrides: Partial<DaemonApi> = {}) {
   const api = {
+    whisper: async () => ({ state: 'disabled' as const }),
+    transcriptionSettings: vi.fn(async () => ({ provider: 'whisper' as const, model: 'ggml-base-q5_1.bin', baseUrl: '', timeoutMs: 90_000, apiKeyConfigured: false })),
+    setTranscriptionSettings: vi.fn(async (settings: UpdateTranscriptionSettings) => ({ provider: settings.provider, model: settings.model, baseUrl: settings.baseUrl, timeoutMs: settings.timeoutMs, apiKeyConfigured: Boolean(settings.apiKey) })),
+    transcriptionStatus: vi.fn(async () => ({ provider: 'whisper' as const, model: 'ggml-base-q5_1.bin', state: 'not_ready' as const })),
+    transcriptionModels: vi.fn(async () => ({ models: [], manual: false })),
     devices: vi.fn((): Promise<DeviceInfo[]> => Promise.resolve([])),
     revokeDevice: vi.fn((): Promise<void> => Promise.resolve()),
     accounts: vi.fn((): Promise<AgentAccountsInfo[]> => Promise.resolve([])),
@@ -795,5 +801,35 @@ describe('logs, folders in the Explorer, settings', () => {
     const { service, system } = setup();
     await service.settings.uninstall();
     expect(system.startUninstaller).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('transcription settings', () => {
+  it('connects every settings action to the daemon without changing the local installer', async () => {
+    const { service, daemon } = setup();
+    const update: UpdateTranscriptionSettings = { provider: 'custom', model: 'my-asr', baseUrl: 'http://127.0.0.1:8000/v1', timeoutMs: 30_000, apiKey: 'write-only' };
+    expect(await service.settings.transcriptionSettings()).toMatchObject({ ok: true, value: { provider: 'whisper', model: 'ggml-base-q5_1.bin' } });
+    expect(await service.settings.setTranscriptionSettings(update)).toMatchObject({ ok: true, value: { provider: 'custom', apiKeyConfigured: true } });
+    expect(daemon.setTranscriptionSettings).toHaveBeenCalledExactlyOnceWith(update);
+    expect(await service.settings.transcriptionStatus()).toMatchObject({ ok: true, value: { state: 'not_ready' } });
+    expect(await service.settings.transcriptionModels()).toEqual({ ok: true, value: { models: [], manual: false } });
+    expect(await service.settings.whisper('status')).toEqual({ ok: true, value: { state: 'disabled' } });
+  });
+
+  it('does not forward requests when the daemon is down', async () => {
+    const { service, daemon } = setup({ host: fakeHost({ state: 'stopped', mode: 'none' }) });
+    expect(await service.settings.transcriptionSettings()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+    expect(await service.settings.transcriptionStatus()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+    expect(await service.settings.transcriptionModels()).toMatchObject({ ok: false, code: 'daemon_unavailable' });
+    expect(daemon.transcriptionSettings).not.toHaveBeenCalled();
+  });
+
+  it('never logs or returns a write-only key from an unexpected connection failure', async () => {
+    const secret = 'must-not-leak-key';
+    const { service, log } = setup({ daemon: fakeDaemon({ setTranscriptionSettings: async () => { throw new Error(secret); } }) });
+    const result = await service.settings.setTranscriptionSettings({ provider: 'openai', model: 'gpt-transcribe', baseUrl: '', timeoutMs: 90_000, apiKey: secret });
+    expect(result).toMatchObject({ ok: false, code: 'unknown' });
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(log).not.toHaveBeenCalled();
   });
 });

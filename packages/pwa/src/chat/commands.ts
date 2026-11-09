@@ -61,7 +61,7 @@ export interface InsertResult {
  * Insere `/<nome> ` no composer.
  * - `typed`: o menu abriu porque o usuário digitou `/busca` no começo. Esse trecho é trocado pelo comando e o resto
  *   do texto (depois do cursor) continua depois dele.
- * - `prefix`: o menu abriu pelo botão `/`. O comando vai antes do texto que já estava digitado.
+ * - `prefix`: a command sheet inserts the chosen command before the existing draft.
  */
 export function insertCommand(text: string, caret: number, name: string, mode: 'typed' | 'prefix'): InsertResult {
   const command = `/${name} `;

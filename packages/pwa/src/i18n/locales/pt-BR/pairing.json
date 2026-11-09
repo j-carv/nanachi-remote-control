@@ -23,5 +23,14 @@
     "codeLength": "O código tem 6 dígitos.",
     "tailscaleUnavailable": "Entrar com Tailscale não está liberado para esta conta neste PC. Use um código de pareamento.",
     "unexpected": "Erro inesperado ao parear."
+  },
+  "link": {
+    "connecting": "Conectando ao PC…",
+    "installTitle": "Adicione o Nanachi à Tela de Início",
+    "installIntro": "No iPhone e no iPad, o app da Tela de Início tem armazenamento próprio, separado do Safari. Parear no Safari não passa para ele.",
+    "installStep1": "Toque em Compartilhar no Safari.",
+    "installStep2": "Escolha Adicionar à Tela de Início e confirme.",
+    "installStep3": "Abra o Nanachi pelo ícone na Tela de Início. Ele deve entrar sozinho.",
+    "installContinue": "Parear no Safari mesmo"
   }
 }

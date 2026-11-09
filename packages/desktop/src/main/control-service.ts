@@ -12,6 +12,7 @@ import type {
 } from '../common/control-api.js';
 import { t, type Language } from '../common/i18n/index.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from '../common/types.js';
+import { uninstallGuardRemaining } from '../common/uninstall-guard.js';
 import { controlFailure, toControlError } from './control-errors.js';
 import { isAllowedLoginUrl, isAllowedReleaseUrl } from './control-policy.js';
 import { DaemonApiError, type DaemonApi } from './daemon-api.js';
@@ -145,6 +146,8 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
 
   /** The restart requested through `restartDaemon` that has not finished. */
   let restarting: Promise<ControlResult<DaemonStatus>> | null = null;
+  /** When the last uninstall request was accepted (monotonic ms): a request inside its guard window starts nothing. */
+  let uninstallRequestedAt: number | null = null;
   /** Saves and restarts never overlap: each waits for the one before it. */
   let queue: Promise<unknown> = Promise.resolve();
   function exclusive<T>(run: () => Promise<T>): Promise<T> {
@@ -166,6 +169,15 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
       return ok(await run());
     } catch (error) {
       return failureOf(error);
+    }
+  }
+  // Connection requests may contain a write-only key. Never log unexpected exceptions or return their text.
+  async function transcription<T>(run: () => Promise<T>): Promise<ControlResult<T>> {
+    if (!askable(host.status())) return daemonNotAskable();
+    try {
+      return ok(await run());
+    } catch (error) {
+      return toControlError(error instanceof DaemonApiError ? error : new DaemonApiError('bad_response', 'transcription request failed'));
     }
   }
 
@@ -436,6 +448,11 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
     },
 
     settings: {
+      whisper: async (action) => askable(host.status()) ? safely(() => daemon.whisper(action)) : daemonNotAskable(),
+      transcriptionSettings: () => transcription(() => daemon.transcriptionSettings()),
+      setTranscriptionSettings: (settings) => transcription(() => daemon.setTranscriptionSettings(settings)),
+      transcriptionStatus: () => transcription(() => daemon.transcriptionStatus()),
+      transcriptionModels: () => transcription(() => daemon.transcriptionModels()),
       setLanguage: (language) => Promise.resolve(deps.language.set(language)),
       getAutostart: () => Promise.resolve({ value: deps.autostart.get(), supported: deps.autostart.supported }),
       setAutostart: (value) => Promise.resolve({ value: deps.autostart.set(value), supported: deps.autostart.supported }),
@@ -446,6 +463,11 @@ export function createControlService(deps: ControlServiceDeps): ControlActions {
         return system.openExternal(allowed);
       },
       uninstall: () => {
+        // The page holds its button off for the same time, but that guard lives in the page: a page reloaded inside the window
+        // would start with a free button. A request inside the window is refused here and still resolves, as the page expects.
+        const now = performance.now();
+        if (uninstallGuardRemaining(uninstallRequestedAt, now) > 0) return Promise.resolve();
+        uninstallRequestedAt = now;
         system.startUninstaller();
         return Promise.resolve();
       },

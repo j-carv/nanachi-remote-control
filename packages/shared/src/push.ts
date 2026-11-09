@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Conteúdo da notificação Web Push enviada ao device (JSON no corpo do push).
- * Só vai para devices sem nenhuma conexão WS aberta.
+ * Not sent to a device with an open WS that follows the session itself (the app already shows what happened there).
  */
 export const PushPayloadSchema = z.object({
   title: z.string().min(1),
@@ -10,7 +10,7 @@ export const PushPayloadSchema = z.object({
   machineId: z.string().min(1),
   workspaceId: z.string().min(1),
   sessionId: z.string().min(1),
-  kind: z.enum(['turn_end', 'permission_request', 'error', 'file', 'loop_paused']),
+  kind: z.enum(['turn_end', 'permission_request', 'user_question', 'file_request', 'preview', 'error', 'file', 'loop_paused']),
 });
 
 export type PushPayload = z.infer<typeof PushPayloadSchema>;

@@ -52,7 +52,7 @@ export type DrawerSize = 'sm' | 'md' | 'lg';
 const WIDE_PLACEMENT: Record<DrawerPanel, string> = {
   dialog:
     'wide:top-1/2 wide:right-auto wide:bottom-auto wide:left-1/2 wide:max-h-[min(46rem,calc(100dvh-4rem))] wide:-translate-x-1/2 wide:-translate-y-1/2 wide:rounded-xl wide:border wide:data-[state=open]:motion-safe:animate-dialog-in! wide:data-[state=closed]:motion-safe:animate-dialog-out!',
-  side: 'wide:top-0 wide:right-0 wide:bottom-0 wide:left-auto wide:h-dvh wide:w-[min(26rem,100vw)] wide:max-h-none wide:rounded-none wide:border-t-0 wide:border-l wide:data-[state=open]:motion-safe:animate-panel-in! wide:data-[state=closed]:motion-safe:animate-dialog-out!',
+  side: 'wide:top-0 wide:right-0 wide:bottom-0 wide:left-auto wide:h-dvh wide:w-[min(26rem,100vw)] wide:max-h-none wide:rounded-none wide:border-t-0 wide:border-l wide:data-[state=open]:motion-safe:animate-panel-in! wide:data-[state=closed]:motion-safe:animate-panel-out!',
 };
 
 const DIALOG_WIDTH: Record<DrawerSize, string> = {

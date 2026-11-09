@@ -4,8 +4,8 @@ import type { ChatItem } from './reducer.js';
 export type HistoryIds = ReadonlySet<string>;
 
 /**
- * Snapshot of the items present when the history loaded. The reducer only appends items and never removes or moves
- * them (see reducer.ts), so an id missing from the snapshot is an item that arrived live.
+ * Snapshot of the stable item IDs present when history loaded. A late learning review may be inserted beside its
+ * source task, but an ID missing from this snapshot still identifies an event that arrived live.
  */
 export function historyOf(items: readonly ChatItem[]): HistoryIds {
   return new Set(items.map((item) => item.id));

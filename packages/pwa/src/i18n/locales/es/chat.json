@@ -3,7 +3,7 @@
   "header": {
     "usage": "Uso del agente",
     "loop": "Modo Loop",
-    "changes": "Cambios",
+    "history": "Historial de commits",
     "configure": "Configurar sesión",
     "moreActions": "Más acciones de la sesión",
     "removeFromApp": "Quitar de la app",
@@ -22,24 +22,50 @@
   "placeholder": {
     "starting": "Esperando al agente",
     "idle": "Mensaje",
-    "running": "Espera al agente",
+    "running": "Escribe el siguiente mensaje",
     "awaiting_permission": "Revisa el permiso",
     "stopped": "Reanudar y enviar",
     "error": "Reanudar y enviar",
     "resuming": "Reanudando…"
   },
   "timeline": {
+    "newMessages": "Mensajes nuevos",
     "loading": "Cargando conversación…",
     "loadEarlier": "Cargar anteriores",
     "jumpToEnd": "Ir al final"
   },
+  "messageActions": {
+    "title": "Acciones del mensaje",
+    "copy": "Copiar",
+    "quote": "Citar en la respuesta",
+    "reuse": "Editar y reenviar",
+    "appendDetail": "Añade el texto al borrador actual.",
+    "copied": "Mensaje copiado.",
+    "copyFailed": "No se pudo copiar el mensaje."
+  },
+  "transcription": {
+    "start": "Dictar mensaje",
+    "stop": "Detener grabación",
+    "cancel": "Cancelar dictado",
+    "starting": "Abriendo el micrófono…",
+    "recording": "Grabando… {{seconds}} s",
+    "transcribing": "Transcribiendo la grabación…",
+    "blocked": "Permite el acceso al micrófono para usar el dictado.",
+    "microphoneFailed": "No se pudo grabar. Comprueba el micrófono y vuelve a intentarlo.",
+    "network": "Se perdió la conexión durante el dictado. Vuelve a intentarlo.",
+    "noSpeech": "No se reconoció la voz. Intenta grabar de nuevo.",
+    "busy": "Este PC ya está transcribiendo otra grabación. Vuelve a intentarlo.",
+    "unavailable": "El proveedor de transcripción seleccionado no está disponible. Revisa el dictado por voz en Ajustes.",
+    "timeout": "La transcripción tardó demasiado. Prueba con una grabación más corta.",
+    "failed": "No se pudo transcribir la grabación. Vuelve a intentarlo."
+  },
   "composer": {
     "send": "Enviar",
     "sending": "Enviando…",
+    "queue": "Poner en cola",
     "uploading": "Enviando… {{percent}}%",
     "uploadProgress": "Progreso del envío",
     "attach": "Adjuntar archivo",
-    "commands": "Comandos del agente",
     "previous": "Mensaje anterior",
     "next": "Mensaje siguiente",
     "stop": "Detener",
@@ -63,8 +89,6 @@
   },
   "slash": {
     "label": "Comandos del agente",
-    "search": "Buscar comando",
-    "close": "Cerrar comandos",
     "none": "Este agente no anunció comandos.",
     "noMatch": "Ningún comando coincide con “{{query}}”."
   },
@@ -76,8 +100,77 @@
   "permission": {
     "label": "Solicitud de permiso"
   },
+  "fileRequest": {
+    "accept": "Tipos aceptados: {{types}}",
+    "hint": "Elige un archivo y después envíalo al agente. Esto no envía un mensaje nuevo.",
+    "waiting": "Esperando tu archivo",
+    "choose": "Elegir archivo",
+    "send": "Enviar archivo",
+    "cancel": "Cancelar solicitud",
+    "selected": "Seleccionado: {{name}}",
+    "uploading": "Subiendo… {{percent}}%",
+    "saving": "Confirmando tu respuesta…",
+    "invalidType": "Este archivo no coincide con los tipos solicitados. Elige otro archivo.",
+    "uploadFailed": "La subida falló. Reintenta con el archivo seleccionado o elige otro.",
+    "responseFailed": "No se pudo confirmar tu respuesta. Reintenta la misma respuesta; el archivo no se volverá a subir.",
+    "unconfirmed": "Aún sin confirmar: {{name}}",
+    "unconfirmedCancel": "La cancelación aún no está confirmada.",
+    "retry": "Reintentar respuesta",
+    "received": "Archivo recibido por el agente.",
+    "unavailable": "Esta solicitud de archivo ya no está disponible.",
+    "cancelled": {
+      "user_cancelled": "Cancelaste esta solicitud de archivo.",
+      "expired": "Esta solicitud de archivo caducó.",
+      "disconnected": "El agente se desconectó antes de recibir un archivo.",
+      "session_ended": "La sesión terminó antes de recibir un archivo."
+    }
+  },
+  "preview": {
+    "label": "Vista previa de la aplicación",
+    "target": "Puerto {{port}} del PC · {{path}}",
+    "hint": "Abre la aplicación en otra ventana, en un origen de vista previa aislado, sin acceso al almacenamiento ni a los tokens de Nanachi.",
+    "singleActive": "Una vista previa activa por navegador y PC. Abrir otra cambia el destino de todas las ventanas de vista previa en este navegador.",
+    "open": "Abrir vista previa",
+    "opening": "Abriendo…",
+    "close": "Cerrar vista previa",
+    "closing": "Cerrando…",
+    "connecting": "Conectando con la aplicación en tu PC…",
+    "opened": "Abierta en otra ventana. Si abres otra vista previa, vuelve a abrir esta para regresar.",
+    "open_failed": "No se pudo abrir la aplicación. Comprueba que el servidor esté funcionando en el PC y pulsa Abrir vista previa otra vez.",
+    "close_failed": "No se pudo confirmar el cierre. Pulsa Cerrar vista previa otra vez para revocar el acceso.",
+    "popup_blocked": "El navegador bloqueó la nueva ventana. Permite ventanas emergentes para Nanachi y pulsa Abrir vista previa otra vez.",
+    "unavailable": "Esta vista previa ya no está disponible. Pide al agente que cree otra.",
+    "closed": {
+      "closed": "Vista previa cerrada. Se revocó el acceso.",
+      "expired": "Esta vista previa caducó. Pide al agente que cree otra.",
+      "session_ended": "La sesión terminó y se revocó el acceso a la vista previa."
+    }
+  },
+  "question": {
+    "label": "Pregunta del agente",
+    "hint": "Elige una opción para enviar tu respuesta al agente.",
+    "waiting": "Esperando tu respuesta",
+    "cancel": "Cancelar pregunta",
+    "saving": "Confirmando tu respuesta…",
+    "failed": "No se pudo confirmar tu respuesta. Puede que ya haya llegado al PC. Al reintentar se envía la misma respuesta.",
+    "unconfirmed": "Respuesta sin confirmar: {{label}}",
+    "retry": "Reintentar esta respuesta",
+    "change": "Elegir otra respuesta",
+    "answered": "Respuesta confirmada: {{label}}",
+    "unavailable": "Esta pregunta ya no está disponible. No se puede enviar otra respuesta desde esta tarjeta.",
+    "cancelled": {
+      "user_cancelled": "Has cancelado la pregunta.",
+      "expired": "Esta pregunta ha caducado y ya no admite respuestas.",
+      "disconnected": "El agente se desconectó. Esta pregunta se ha cancelado.",
+      "session_ended": "La sesión o el turno terminó. Esta pregunta se ha cancelado."
+    }
+  },
   "plan": {
-    "title": "Plan"
+    "title": "Plan",
+    "show": "Mostrar plan del agente",
+    "hide": "Contraer plan del agente",
+    "progress": "{{completed}} de {{total}} completadas",
+    "done": "Plan completado"
   },
   "status": {
     "pending": "Pendiente",
@@ -88,6 +181,13 @@
   "tool": {
     "fallbackTitle": "Herramienta",
     "noStatus": "Herramienta",
+    "activityActions_one": "{{count}} acción",
+    "activityActions_many": "{{count}} de acciones",
+    "activityActions_other": "{{count}} acciones",
+    "activityCompleted_one": "{{count}} acción completada",
+    "activityCompleted_many": "{{count}} de acciones completadas",
+    "activityCompleted_other": "{{count}} acciones completadas",
+    "activityRunning": "{{title}} · {{summary}}",
     "linesAdded_one": "{{count}} línea agregada",
     "linesAdded_many": "{{count}} de líneas agregadas",
     "linesAdded_other": "{{count}} líneas agregadas",
@@ -116,13 +216,27 @@
       "unknown": "Estado desconocido"
     }
   },
+  "queue": {
+    "title": "Cola de mensajes",
+    "count_one": "{{count}} mensaje en cola",
+    "count_many": "{{count}} de mensajes en cola",
+    "count_other": "{{count}} mensajes en cola",
+    "attachments_one": "{{count}} archivo adjunto",
+    "attachments_many": "{{count}} de archivos adjuntos",
+    "attachments_other": "{{count}} archivos adjuntos",
+    "remove": "Quitar de la cola",
+    "failed": "No se pudo enviar. Quita este mensaje para continuar la cola.",
+    "full": "La cola está llena. Espera a que se envíe un mensaje o quita uno."
+  },
   "item": {
     "loopRound": "Loop #{{number}}",
     "thought": "Pensamiento",
     "thoughtSize_one": "{{count}} carácter",
     "thoughtSize_many": "{{count}} de caracteres",
     "thoughtSize_other": "{{count}} caracteres",
-    "accountChanged": "Cuenta cambiada a {{label}}"
+    "accountChanged": "Cuenta cambiada a {{label}}",
+    "yoloApproved": "Permiso aprobado por YOLO",
+    "yoloApprovedTool": "YOLO aprobó {{title}}"
   },
   "markdown": {
     "image": "imagen",
@@ -134,7 +248,27 @@
   "agentConfig": {
     "mode": "Acceso",
     "model": "Modelo",
-    "thought_level": "Effort"
+    "thought_level": "Effort",
+    "workMode": {
+      "title": "Modo de trabajo",
+      "chipLabel": "Modo de trabajo: {{label}}. Cambiar el modo de trabajo",
+      "readOnly": "Solo lectura",
+      "ask": "Preguntar antes de editar",
+      "acceptEdits": "Aceptar ediciones automáticamente",
+      "plan": "Planificación",
+      "auto": "Modo automático",
+      "dontAsk": "No preguntar",
+      "bypass": "Omitir permisos",
+      "confirmTitle": "¿Activar omitir permisos?",
+      "confirmBody": "El agente ejecutará herramientas y modificará archivos en este PC sin pedirte permiso antes. Puedes cambiar a otro modo en cualquier momento.",
+      "confirmAction": "Activar",
+      "providerModes": "Modos del agente",
+      "yoloDetail": "Aprueba solicitudes reconocidas de bajo riesgo. Toca para activar o desactivar.",
+      "yoloLimited": "Cobertura limitada. El agente puede actuar sin preguntar o enviar solicitudes que requieren revisión. Toca para activar o desactivar.",
+      "yoloConfirmTitle": "¿Activar YOLO en esta sesión?",
+      "yoloConfirmBody": "Nanachi aprueba solicitudes reconocidas de bajo riesgo. Las eliminaciones, las operaciones de bases de datos y los comandos que requieren revisión siguen pidiendo confirmación cuando llegan a la aplicación. Algunas acciones del agente ocurren fuera de este flujo de aprobación.",
+      "yoloConfirmAction": "Activar YOLO"
+    }
   },
   "loop": {
     "started": "Loop iniciado",

@@ -8,7 +8,8 @@
  *   1440x900             list pane with the machine's workspaces and sessions, the empty screen, the chat in the right
  *                        pane: the composer spans the pane, the messages sit in a reading column of at most 1040 px, Enter
  *                        sends and Shift+Enter adds a line, a session picked
- *                        in the list, "new session" in a dialog, settings without a back button, changes / files /
+ *                        in the list, "new session" in a dialog, settings without a back button, the commit history with its
+ *                        working tree (the changes) / files /
  *                        editor / terminal in a third pane that Escape and the X close, sheets as centred dialogs and
  *                        side panels, pointer cursors, no horizontal overflow, in light and dark. Enter with the menu of a
  *                        typed `/ec` open completes the command instead of sending it.
@@ -488,7 +489,7 @@ async function openChatOf(page, index) {
   await page.locator('[data-slot="chat-textarea"]').waitFor();
 }
 
-/** Picks a row of the chat's "..." menu. Uso do agente and Alterações are rows of that menu at every width. */
+/** Picks a row of the chat's "..." menu. Uso do agente and Histórico de commits are rows of that menu at every width. */
 async function pickMenuRow(page, label) {
   await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
   await page.locator('[data-slot="action-sheet-item"]', { hasText: label }).click();
@@ -499,16 +500,19 @@ async function checkSidePane(page) {
   const sideCount = () => count(page.locator('[data-slot="side-pane"]'));
   assert.equal(await sideCount(), 0, 'no third pane until something opens in it');
 
-  // Changes (diff).
-  await pickMenuRow(page, 'Alterações');
+  // Commit history in the pane (its first screen, so it has the X); its Working tree row opens the changes on top of it.
+  await pickMenuRow(page, 'Histórico de commits');
   await page.locator('[data-slot="side-pane"]').waitFor();
+  await page.locator('[data-slot="working-tree-row"]').waitFor({ timeout: 20_000 });
+  assert.ok(await has(page.getByRole('button', { name: 'Fechar', exact: true })), 'the first screen of the pane (the history) has a close button');
+  await page.locator('[data-slot="working-tree-row"]').click();
   await page.locator('[data-slot="change-row"]').first().waitFor({ timeout: 20_000 });
   const side = await box(page.locator('[data-slot="side-pane"]'));
   const viewport = page.viewportSize();
   assert.ok(Math.abs(side.x + side.width - viewport.width) < 2, 'the third pane is flush with the right edge');
   assert.ok(side.width >= 380 && side.width <= 640, `third pane width ${side.width} is within 380-640 px`);
   assert.ok(await has(page.locator('[data-slot="chat-textarea"]')), 'the chat stays beside the changes');
-  assert.ok(await has(page.getByRole('button', { name: 'Fechar', exact: true })), 'the first screen of the pane has a close button');
+  assert.ok(await has(page.getByRole('button', { name: 'Voltar', exact: true })), 'the changes on top of the history have a back button');
   await page.locator('[data-slot="change-toggle"]').first().click();
   await page.waitForTimeout(300);
   assert.equal(await overflowX(page), 0, 'third pane: no horizontal overflow');
@@ -550,9 +554,9 @@ async function checkSidePane(page) {
   assert.ok(await has(page.locator('[data-slot="chat-textarea"]')), 'the conversation stays on screen beside the terminal');
   const term = await box(page.locator('[data-slot="side-pane"] [data-slot="terminal-view"]'));
   assert.ok(term.width <= side.width, 'the terminal fits its pane');
-  // A physical keyboard types straight into the terminal: the phone's key bar and line field are not drawn.
-  assert.equal(await page.locator('[data-slot="terminal-key"]:visible').count(), 0, 'no on-screen key bar for a mouse and keyboard');
-  assert.equal(await page.locator('[data-slot="terminal-line"]:visible').count(), 0, 'no line field for a mouse and keyboard');
+  // The terminal has no special-key bar on any screen. The line field with Send is drawn here too, beside the keyboard.
+  assert.equal(await page.locator('[data-slot="terminal-key"]:visible').count(), 0, 'no on-screen key bar');
+  assert.equal(await page.locator('[data-slot="terminal-line"]:visible').count(), 1, 'line field with Send on the PC too');
   await page.waitForTimeout(1000);
   await page.keyboard.type('echo wide-terminal-ok');
   await page.keyboard.press('Enter');
@@ -564,7 +568,7 @@ async function checkSidePane(page) {
   await until(page, 'the terminal pane closes', async () => (await sideCount()) === 0);
 
   // The pane belongs to the conversation: a pane opened here is gone when another session is picked.
-  await pickMenuRow(page, 'Alterações');
+  await pickMenuRow(page, 'Histórico de commits');
   await page.locator('[data-slot="side-pane"]').waitFor();
   await page.locator('[data-slot="list-workspace"]').nth(1).locator('[data-slot="list-session"]').first().click();
   await until(page, 'the other conversation opens', async () =>
@@ -630,18 +634,23 @@ async function checkBreakpoints(storageState) {
 
   await page.setViewportSize({ width: 1279, height: 800 });
   await page.locator('[data-slot="wide-shell"][data-layout="two-pane"]').waitFor();
-  await pickMenuRow(page, 'Alterações');
+  await pickMenuRow(page, 'Histórico de commits');
+  await page.getByRole('heading', { name: 'Histórico de commits' }).waitFor();
+  await page.locator('[data-slot="working-tree-row"]').click();
   await page.getByRole('heading', { name: 'Alterações' }).waitFor();
   assert.equal(await count(page.locator('[data-slot="side-pane"]')), 0, '1279 px: changes take the right pane, no third pane');
   assert.ok(await has(page.getByRole('button', { name: 'Voltar', exact: true })), '1279 px: changes keeps its back button');
+  // Back from the changes returns to the commit history, and a second Back to the chat.
+  await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+  await page.getByRole('heading', { name: 'Histórico de commits' }).waitFor();
   await page.getByRole('button', { name: 'Voltar', exact: true }).click();
   await page.locator('[data-slot="chat-textarea"]').waitFor();
 
   // A pick in the list while a screen sits on top of the chat (depth 2) leaves no dead history entries behind: the picked
   // session is at depth 1, and one Back goes to the first screen (the empty one), not to the screen that was replaced.
-  await pickMenuRow(page, 'Alterações');
-  await page.getByRole('heading', { name: 'Alterações' }).waitFor();
-  await until(page, 'the changes screen is at history depth 2', async () => (await page.evaluate(() => history.state?.depth)) === 2);
+  await pickMenuRow(page, 'Histórico de commits');
+  await page.getByRole('heading', { name: 'Histórico de commits' }).waitFor();
+  await until(page, 'the commit history is at history depth 2', async () => (await page.evaluate(() => history.state?.depth)) === 2);
   await listSession(page, 1).click();
   await page.locator('[data-slot="chat-textarea"]').waitFor();
   await until(page, 'the pick is at history depth 1', async () => (await page.evaluate(() => history.state?.depth)) === 1);
@@ -654,8 +663,10 @@ async function checkBreakpoints(storageState) {
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.locator('[data-slot="wide-shell"][data-layout="three-pane"]').waitFor();
-  await pickMenuRow(page, 'Alterações');
+  await pickMenuRow(page, 'Histórico de commits');
   await page.locator('[data-slot="side-pane"]').waitFor();
+  await page.locator('[data-slot="working-tree-row"]').click();
+  await page.locator('[data-slot="change-row"]').first().waitFor({ timeout: 20_000 });
   await shot(page, 'wide-12-1280px-changes');
 
   await page.setViewportSize({ width: 1000, height: 800 });

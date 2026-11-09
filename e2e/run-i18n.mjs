@@ -754,7 +754,7 @@ async function stepWorkspaceAreaInEnglish() {
   await page.getByRole('heading', { name: 'Files', level: 1 }).waitFor();
   log('editor in English');
 
-  // Terminal: the shell sheet, the screen, the copy note, the changes list, the closed state.
+  // Terminal: the shell sheet, the screen, the closed state.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('heading', { name: 'proj', level: 1 }).waitFor();
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
@@ -768,38 +768,18 @@ async function stepWorkspaceAreaInEnglish() {
   await page.locator('[data-slot="terminal-view"] .xterm').waitFor();
   const line = page.locator('[data-slot="terminal-line"]');
   await page.waitForFunction(() => document.querySelector('[data-slot="terminal-line"]')?.disabled === false);
-  await page.getByRole('toolbar', { name: 'Special keys' }).waitFor();
-  for (const name of [
-    'Decrease terminal font size',
-    'Increase terminal font size',
-    'Copy selection',
-    'Changes',
-    'Up arrow',
-    'Paste from the clipboard',
-    'Ctrl, the next key becomes a control key',
-    'Send',
-  ]) {
-    await page.getByRole('button', { name, exact: true }).waitFor();
-  }
+  // The screen is the terminal, the line field and Send: no special-key bar, no font, copy or Changes buttons.
+  await page.getByRole('button', { name: 'Send', exact: true }).waitFor();
+  assert.equal(await page.locator('[data-slot="terminal-key"]').count(), 0, 'no special-key bar');
   assert.equal(await line.getAttribute('placeholder'), 'Text for the terminal');
-  await page.getByRole('button', { name: 'Copy selection', exact: true }).click();
-  await page.getByText('Select some terminal text to copy.', { exact: true }).waitFor();
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(shotsDir, 'terminal-en.png') });
-
-  await page.getByRole('button', { name: 'Changes', exact: true }).click();
-  await page.getByRole('heading', { name: 'Changes', level: 1 }).waitFor();
-  await page.getByRole('button', { name: 'Refresh changes', exact: true }).waitFor();
-  const changed = page.getByRole('list', { name: 'Changed files' });
-  await changed.getByText('Modified', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
 
   await line.waitFor();
   await line.fill('exit');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   const closed = page.locator('[data-slot="terminal-closed"]');
   await closed.getByText('Terminal closed (exit code 0)', { exact: true }).waitFor({ timeout: 15_000 });
-  await closed.getByRole('button', { name: 'Open new terminal', exact: true }).waitFor();
   assert.equal(await line.getAttribute('placeholder'), 'Terminal closed');
   log('terminal in English');
 
@@ -968,7 +948,6 @@ async function stepChatInEnglish() {
     const composer = p.locator('[data-slot="chat-textarea"]');
     assert.equal(await composer.getAttribute('placeholder'), 'Message');
     await p.getByRole('button', { name: 'Attach file', exact: true }).waitFor();
-    await p.getByRole('button', { name: 'Agent commands', exact: true }).waitFor();
     await p.getByRole('button', { name: 'Send', exact: true }).waitFor();
     await p.getByRole('button', { name: 'More session actions', exact: true }).click();
     const moreActions = p.getByRole('dialog', { name: /./ });
@@ -982,10 +961,12 @@ async function stepChatInEnglish() {
     await composer.fill('hello');
     await p.getByRole('button', { name: 'Send', exact: true }).click();
     // The echo and the tool title come from the agent and are shown as written (the echo also carries the daemon's
-    // Portuguese phone-send note); the badge and the counts are ours.
+    // Portuguese phone-send note); status icons and action counts are ours.
     await p.getByText(/^Eco: hello/).waitFor({ timeout: 30_000 });
     const card = p.locator('[data-slot="tool-card"]').first();
-    await card.getByText('Completed', { exact: true }).waitFor({ timeout: 30_000 });
+    const activity = p.locator('[data-slot="tool-activity"]', { has: card });
+    await activity.locator(':scope > [data-slot="tool-activity-summary"]').click();
+    await card.locator('[data-slot="background-status"][aria-label="Completed"]').waitFor({ timeout: 30_000 });
     await card.locator('[role="img"][aria-label="1 line added, 1 removed"]').waitFor();
     await p.locator('[data-status="idle"]').first().waitFor({ timeout: 30_000 });
 

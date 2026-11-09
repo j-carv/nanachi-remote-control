@@ -10,9 +10,11 @@ import enDesktop from './locales/en/desktop.json';
 import enDevices from './locales/en/devices.json';
 import enErrors from './locales/en/errors.json';
 import enFiles from './locales/en/files.json';
+import enLearning from './locales/en/learning.json';
 import enMachines from './locales/en/machines.json';
 import enPairing from './locales/en/pairing.json';
 import enSettings from './locales/en/settings.json';
+import enSchedules from './locales/en/schedules.json';
 import enTerminal from './locales/en/terminal.json';
 import enUsage from './locales/en/usage.json';
 import enWide from './locales/en/wide.json';
@@ -24,9 +26,11 @@ import esDesktop from './locales/es/desktop.json';
 import esDevices from './locales/es/devices.json';
 import esErrors from './locales/es/errors.json';
 import esFiles from './locales/es/files.json';
+import esLearning from './locales/es/learning.json';
 import esMachines from './locales/es/machines.json';
 import esPairing from './locales/es/pairing.json';
 import esSettings from './locales/es/settings.json';
+import esSchedules from './locales/es/schedules.json';
 import esTerminal from './locales/es/terminal.json';
 import esUsage from './locales/es/usage.json';
 import esWide from './locales/es/wide.json';
@@ -38,9 +42,11 @@ import ptDesktop from './locales/pt-BR/desktop.json';
 import ptDevices from './locales/pt-BR/devices.json';
 import ptErrors from './locales/pt-BR/errors.json';
 import ptFiles from './locales/pt-BR/files.json';
+import ptLearning from './locales/pt-BR/learning.json';
 import ptMachines from './locales/pt-BR/machines.json';
 import ptPairing from './locales/pt-BR/pairing.json';
 import ptSettings from './locales/pt-BR/settings.json';
+import ptSchedules from './locales/pt-BR/schedules.json';
 import ptTerminal from './locales/pt-BR/terminal.json';
 import ptUsage from './locales/pt-BR/usage.json';
 import ptWide from './locales/pt-BR/wide.json';
@@ -54,8 +60,10 @@ export const NAMESPACES = [
   'devices',
   'errors',
   'files',
+  'learning',
   'machines',
   'pairing',
+  'schedules',
   'settings',
   'terminal',
   'usage',
@@ -77,9 +85,11 @@ export const resources = {
     devices: ptDevices,
     errors: ptErrors,
     files: ptFiles,
+    learning: ptLearning,
     machines: ptMachines,
     pairing: ptPairing,
     settings: ptSettings,
+    schedules: ptSchedules,
     terminal: ptTerminal,
     usage: ptUsage,
     wide: ptWide,
@@ -93,9 +103,11 @@ export const resources = {
     devices: enDevices,
     errors: enErrors,
     files: enFiles,
+    learning: enLearning,
     machines: enMachines,
     pairing: enPairing,
     settings: enSettings,
+    schedules: enSchedules,
     terminal: enTerminal,
     usage: enUsage,
     wide: enWide,
@@ -109,9 +121,11 @@ export const resources = {
     devices: esDevices,
     errors: esErrors,
     files: esFiles,
+    learning: esLearning,
     machines: esMachines,
     pairing: esPairing,
     settings: esSettings,
+    schedules: esSchedules,
     terminal: esTerminal,
     usage: esUsage,
     wide: esWide,

@@ -115,6 +115,35 @@ describe('createApiClient: pastas e agentes', () => {
   });
 });
 
+describe('createApiClient: Nanachi MCP preferences', () => {
+  const agents = [
+    { id: 'claude', label: 'Claude Code', enabled: false },
+    { id: 'codex', label: 'Codex', enabled: false },
+  ];
+
+  it('rejects an empty agent id or non-boolean preference without sending a request', async () => {
+    const { calls, fetchFn } = fakeFetch(() => json({ agents }));
+    const client = clientWith(fetchFn);
+    expect((await errorOf(client.setNanachiMcpAgent('', true))).kind).toBe('invalid_input');
+    expect((await errorOf(client.setNanachiMcpAgent('claude', 'true' as never))).kind).toBe('invalid_input');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rejects responses missing an explicit confirmed enabled value', async () => {
+    const { fetchFn } = fakeFetch(() => json({ agents: [{ id: 'claude', label: 'Claude Code' }] }));
+    const client = clientWith(fetchFn);
+    expect((await errorOf(client.nanachiMcpAgents())).kind).toBe('unexpected');
+    expect((await errorOf(client.setNanachiMcpAgent('claude', true))).kind).toBe('unexpected');
+  });
+
+  it('preserves machine authorization errors', async () => {
+    const { fetchFn } = fakeFetch(() => json({ error: 'unauthorized' }, 401));
+    const client = clientWith(fetchFn);
+    expect((await errorOf(client.nanachiMcpAgents())).kind).toBe('unauthorized');
+    expect((await errorOf(client.setNanachiMcpAgent('claude', false))).kind).toBe('unauthorized');
+  });
+});
+
 describe('createApiClient: workspaces', () => {
   it('listWorkspaces devolve os workspaces validados', async () => {
     const { calls, fetchFn } = fakeFetch(() => json({ workspaces: [WORKSPACE] }));

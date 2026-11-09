@@ -1,55 +1,13 @@
 {
-  "copy": {
-    "copied": "Copiado.",
-    "empty": "Selecione um trecho do terminal para copiar.",
-    "failed": "Não consegui copiar. Tente de novo."
-  },
-  "paste": {
-    "pasted": "Colado.",
-    "empty": "A área de transferência está vazia.",
-    "failed": "Não consegui colar. Toque e segure no campo de texto para colar."
-  },
   "closed": {
     "plain": "Terminal encerrado",
     "reload": "Terminal encerrado pelo recarregamento do Nanachi",
     "noCode": "Terminal encerrado (sem código)",
     "code": "Terminal encerrado (código {{code}})"
   },
-  "changes": "Alterações",
-  "dismiss": "OK",
-  "openNew": "Abrir novo terminal",
-  "opening": "Abrindo…",
   "loading": "Carregando terminal…",
-  "scrollToEnd": "Ir para o fim",
-  "fontSmaller": "Diminuir fonte do terminal",
-  "fontLarger": "Aumentar fonte do terminal",
-  "copySelection": "Copiar seleção",
-  "keysLabel": "Teclas especiais",
   "linePlaceholder": "Texto para o terminal",
   "send": "Enviar",
-  "keys": {
-    "paste": { "label": "Colar" },
-    "ariaLabel": {
-      "esc": "Escape",
-      "tab": "Tab",
-      "ctrl": "Ctrl, a próxima tecla vira controle",
-      "alt": "Alt, a próxima tecla vai com Alt",
-      "up": "Seta para cima",
-      "down": "Seta para baixo",
-      "left": "Seta para a esquerda",
-      "right": "Seta para a direita",
-      "pipe": "Barra vertical",
-      "tilde": "Til",
-      "slash": "Barra",
-      "dash": "Hífen",
-      "home": "Home, início da linha",
-      "end": "End, fim da linha",
-      "pgup": "Page Up",
-      "pgdn": "Page Down",
-      "paste": "Colar da área de transferência",
-      "enter": "Enter"
-    }
-  },
   "shellSheet": {
     "title": "Terminal",
     "hint": "Abre um terminal na pasta de {{name}}.",

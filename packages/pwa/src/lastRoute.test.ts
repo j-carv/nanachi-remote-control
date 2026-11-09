@@ -34,7 +34,7 @@ interface SourceOptions {
   workspaces?: Workspace[];
   sessions?: Session[];
   listWorkspacesError?: unknown;
-  listSessionsError?: unknown;
+  fetchSessionError?: unknown;
 }
 
 /** Fonte fake: listas fixas; erros simulam rede ou 404. */
@@ -47,10 +47,12 @@ function sourceWith(options: SourceOptions): RouteSource & { calls: string[] } {
       if (options.listWorkspacesError !== undefined) throw options.listWorkspacesError;
       return options.workspaces ?? [WORKSPACE];
     },
-    async listSessions(workspaceId) {
-      calls.push(`listSessions:${workspaceId}`);
-      if (options.listSessionsError !== undefined) throw options.listSessionsError;
-      return options.sessions ?? [SESSION];
+    async fetchSession(sessionId) {
+      calls.push(`fetchSession:${sessionId}`);
+      if (options.fetchSessionError !== undefined) throw options.fetchSessionError;
+      const session = (options.sessions ?? [SESSION]).find((item) => item.id === sessionId);
+      if (session === undefined) throw new ApiError('not_found', 404);
+      return session;
     },
   };
 }
@@ -102,6 +104,13 @@ describe('toPersistedRoute', () => {
 
   it('ajustes são transitórios (não são guardados; a última rota real continua salva)', () => {
     expect(toPersistedRoute('m-1', { kind: 'settings' })).toBeNull();
+  });
+
+  it('o histórico de commits e um commit são telas de passagem, como as alterações', () => {
+    expect(toPersistedRoute('m-1', { kind: 'commits', workspace: WORKSPACE, session: SESSION })).toBeNull();
+    expect(
+      toPersistedRoute('m-1', { kind: 'commit', workspace: WORKSPACE, session: SESSION, hash: 'af9384e' }),
+    ).toBeNull();
   });
 });
 
@@ -196,12 +205,12 @@ describe('planRestore', () => {
     expect(stack).toEqual([HOME, WORKSPACES, { kind: 'sessions', workspace: WORKSPACE }]);
   });
 
-  it('404 ao listar sessões (workspace sumiu entre as chamadas) cai para workspaces', async () => {
+  it('404 ao abrir uma sessão removida cai para as sessões do workspace', async () => {
     const stack = await planRestore(
       CHAT,
-      sourceWith({ listSessionsError: new ApiError('not_found', 404) }),
+      sourceWith({ fetchSessionError: new ApiError('not_found', 404) }),
     );
-    expect(stack).toEqual([HOME, WORKSPACES]);
+    expect(stack).toEqual([HOME, WORKSPACES, { kind: 'sessions', workspace: WORKSPACE }]);
   });
 
   it('erro que não é 404 (rede, 401) é propagado para quem decide o que fazer', async () => {

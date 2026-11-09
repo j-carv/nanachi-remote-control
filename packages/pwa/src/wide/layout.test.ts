@@ -129,6 +129,8 @@ describe('back button next to the list pane', () => {
     [{ kind: 'sessions', workspace }, false],
     [{ kind: 'chat', workspace, session }, false],
     [{ kind: 'changes', workspace, session }, true],
+    [{ kind: 'commits', workspace, session }, true],
+    [{ kind: 'commit', workspace, session, hash: 'af9384e' }, true],
     [{ kind: 'files', workspace, path: '' }, true],
     [{ kind: 'editor', workspace, path: 'a.ts' }, true],
     [{ kind: 'devices' }, true],

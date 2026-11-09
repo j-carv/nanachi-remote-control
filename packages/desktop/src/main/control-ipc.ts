@@ -1,6 +1,7 @@
 import { CONTROL_INVOKE_CHANNELS, CONTROL_SYNC_CHANNELS } from '../common/channels.js';
 import type { ControlError, ControlResult, WindowState } from '../common/control-api.js';
 import { isLanguage, t, type Language } from '../common/i18n/index.js';
+import { parseTranscriptionUpdate } from '../common/transcription.js';
 import type { IpcCallerLike } from '../install/sender.js';
 import { controlFailure, toControlError } from './control-errors.js';
 import type { ControlActions } from './control-service.js';
@@ -138,6 +139,18 @@ export function registerControlIpc(deps: ControlIpcDeps): () => void {
     if (!isLanguage(language)) throw new TypeError('setLanguage espera pt-BR, en ou es');
     return actions.settings.setLanguage(language);
   });
+  handleResult(c.settingsWhisper, (action) =>
+    action === 'status' || action === 'install' || action === 'remove'
+      ? actions.settings.whisper(action)
+      : invalid(t('main.control.invalidId')),
+  );
+  handleResult(c.settingsTranscriptionGet, () => actions.settings.transcriptionSettings());
+  handleResult(c.settingsTranscriptionUpdate, (input) => {
+    const settings = parseTranscriptionUpdate(input);
+    return settings === null ? invalid(t('main.control.rejected.refused')) : actions.settings.setTranscriptionSettings(settings);
+  });
+  handleResult(c.settingsTranscriptionStatus, () => actions.settings.transcriptionStatus());
+  handleResult(c.settingsTranscriptionModels, () => actions.settings.transcriptionModels());
   handle(c.settingsGetAutostart, () => actions.settings.getAutostart());
   handle(c.settingsSetAutostart, (value) => {
     if (typeof value !== 'boolean') throw new TypeError('setAutostart espera true ou false');

@@ -65,7 +65,7 @@ function agents(): Record<string, AgentConfig> {
 }
 
 function config(): Record<string, unknown> {
-  return { allowedRoots: [base], agents: agents(), phoneSendHint: false };
+  return { allowedRoots: [base], agents: agents() };
 }
 
 async function start(notices: Notice[] = []): Promise<TestDaemon> {

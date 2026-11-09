@@ -33,21 +33,23 @@ type node interface {
 
 // runOptions are the timings and the listen address; tests shorten them.
 type runOptions struct {
-	listenAddr      string
-	pollInterval    time.Duration
-	retryDelay      time.Duration
-	shutdownTimeout time.Duration
-	logf            func(format string, args ...any)
+	listenAddr        string
+	previewListenAddr string
+	pollInterval      time.Duration
+	retryDelay        time.Duration
+	shutdownTimeout   time.Duration
+	logf              func(format string, args ...any)
 }
 
 func defaultRunOptions(stderr io.Writer) runOptions {
 	logger := log.New(stderr, "", log.LstdFlags)
 	return runOptions{
-		listenAddr:      ":443",
-		pollInterval:    time.Second,
-		retryDelay:      15 * time.Second,
-		shutdownTimeout: 10 * time.Second,
-		logf:            logger.Printf,
+		listenAddr:        ":443",
+		previewListenAddr: ":8443",
+		pollInterval:      time.Second,
+		retryDelay:        15 * time.Second,
+		shutdownTimeout:   10 * time.Second,
+		logf:              logger.Printf,
 	}
 }
 
@@ -89,16 +91,21 @@ func run(ctx context.Context, cfg config, n node, rep *Reporter, opts runOptions
 	}
 
 	handler := newProxy(cfg.Target, n.WhoIs, opts.logf)
+	previewHandler := newProxy(previewTarget(cfg.Target), n.WhoIs, opts.logf)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		statusLoop(ctx, n, rep, opts.pollInterval)
 	}()
 	go func() {
 		defer wg.Done()
-		serveLoop(ctx, n, handler, rep, opts)
+		serveLoop(ctx, n, handler, rep, opts, opts.listenAddr)
+	}()
+	go func() {
+		defer wg.Done()
+		serveLoop(ctx, n, previewHandler, rep, opts, opts.previewListenAddr)
 	}()
 
 	<-ctx.Done()
@@ -161,26 +168,26 @@ func pollStatus(ctx context.Context, n node, rep *Reporter) {
 // listener cannot exist before the node is running and before the tailnet has
 // MagicDNS and HTTPS certificates enabled, so a failure is reported and retried
 // instead of ending the process: the user can fix it in the admin console.
-func serveLoop(ctx context.Context, n node, handler http.Handler, rep *Reporter, opts runOptions) {
+func serveLoop(ctx context.Context, n node, handler http.Handler, rep *Reporter, opts runOptions, addr string) {
 	for ctx.Err() == nil {
-		ln, err := listenCtx(ctx, n, opts.listenAddr)
+		ln, err := listenCtx(ctx, n, addr)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
-			rep.Error("could not serve https on the tailnet: " + err.Error())
+			rep.Error(addr, fmt.Sprintf("could not serve https on the tailnet %s: %v", addr, err))
 			if !sleepCtx(ctx, opts.retryDelay) {
 				return
 			}
 			continue
 		}
-		rep.Recovered()
+		rep.Recovered(addr)
 
 		err = serveOn(ctx, ln, handler)
 		if ctx.Err() != nil {
 			return
 		}
-		rep.Error(fmt.Sprintf("the https server stopped: %v", err))
+		rep.Error(addr, fmt.Sprintf("the https server on %s stopped: %v", addr, err))
 		if !sleepCtx(ctx, opts.retryDelay) {
 			return
 		}
@@ -215,11 +222,16 @@ func listenCtx(ctx context.Context, n node, addr string) (net.Listener, error) {
 
 // serveOn serves handler on ln until ctx is done or the listener fails.
 func serveOn(ctx context.Context, ln net.Listener, handler http.Handler) error {
+	connections := &upgradedConnections{active: make(map[*upgradedConnection]struct{})}
+	defer connections.close()
 	srv := &http.Server{
-		Handler:           handler,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler.ServeHTTP(&upgradeWriter{ResponseWriter: w, connections: connections}, r)
+		}),
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          log.New(io.Discard, "", 0),
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
 	serveEnded := make(chan struct{})
 	shutdownDone := make(chan struct{})
@@ -227,8 +239,8 @@ func serveOn(ctx context.Context, ln net.Listener, handler http.Handler) error {
 		defer close(shutdownDone)
 		select {
 		case <-ctx.Done():
-			// Short grace for in-flight requests; upgraded (WebSocket) connections are
-			// hijacked and untracked, so Close afterwards ends whatever is left.
+			// HTTP shutdown does not own hijacked connections; close those explicitly.
+			connections.close()
 			graceCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(graceCtx); err != nil {
@@ -240,6 +252,7 @@ func serveOn(ctx context.Context, ln net.Listener, handler http.Handler) error {
 	err := srv.Serve(ln)
 	close(serveEnded)
 	<-shutdownDone
+	_ = srv.Close()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

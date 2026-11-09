@@ -2,10 +2,13 @@
   "title": "Dispositivos desta máquina",
   "list": "Dispositivos",
   "current": "este aparelho",
+  "expired": "Expirado",
   "meta": "Criado {{created}} · visto por último {{lastSeen}}",
   "metaNeverSeen": "Criado {{created}} · visto por último nunca",
   "revoke": "Revogar",
   "revokeLabel": "Revogar {{name}}",
-  "confirmCurrent": "Revogar \"{{name}}\"? Este é este aparelho: ele perde o acesso e precisa parear de novo.",
-  "confirmOther": "Revogar \"{{name}}\"? Ele perde o acesso a esta máquina na hora."
+  "confirmTitle": "Revogar \"{{name}}\"?",
+  "confirmText": "Ele perde o acesso a esta máquina na hora e as notificações param. Para usar o app nele de novo, pareie outra vez.",
+  "confirmAction": "Revogar",
+  "revoking": "Revogando…"
 }

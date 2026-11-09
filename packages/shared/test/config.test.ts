@@ -12,23 +12,28 @@ describe('ConfigSchema', () => {
       corsOrigins: [],
       tailscaleAutoPair: false,
       shellSessions: true,
-      phoneSendHint: true,
       reloadQuietMs: 60000,
+      deviceInactivityDays: 90,
       agents: {
         omp: { label: 'Oh My Pi', command: 'omp', args: ['acp'], env: {}, kind: 'acp' },
         claude: { label: 'Claude Code', command: 'claude-agent-acp', args: [], env: {}, kind: 'acp' },
         codex: { label: 'Codex', command: 'codex-acp', args: [], env: {}, kind: 'acp' },
-        agy: { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' },
+        agy: { label: 'Antigravity', command: 'agy', args: ['acp'], env: {}, kind: 'acp' },
       },
     });
   });
 
-  it('phoneSendHint: aceita false e rejeita valor que não é booleano', () => {
-    expect(ConfigSchema.parse({ phoneSendHint: false }).phoneSendHint).toBe(false);
-    expect(ConfigSchema.safeParse({ phoneSendHint: 'não' }).success).toBe(false);
+  it('deviceInactivityDays: padrão 90, aceita 0 (desliga) e inteiros positivos', () => {
+    expect(ConfigSchema.parse({}).deviceInactivityDays).toBe(90);
+    expect(ConfigSchema.parse({ deviceInactivityDays: 0 }).deviceInactivityDays).toBe(0);
+    expect(ConfigSchema.parse({ deviceInactivityDays: 30 }).deviceInactivityDays).toBe(30);
   });
 
-  it('DEFAULT_AGENTS traz codex (ACP) e agy (PTY) além de omp e claude', () => {
+  it.each([-1, 1.5, '90', null])('deviceInactivityDays: rejeita %s', (value) => {
+    expect(ConfigSchema.safeParse({ deviceInactivityDays: value }).success).toBe(false);
+  });
+
+  it('DEFAULT_AGENTS traz codex e agy (ACP, via agy acp) além de omp e claude', () => {
     expect(DEFAULT_AGENTS.codex).toEqual({
       label: 'Codex',
       command: 'codex-acp',
@@ -38,9 +43,9 @@ describe('ConfigSchema', () => {
     });
     expect(DEFAULT_AGENTS.agy).toEqual({
       label: 'Antigravity',
-      kind: 'pty',
+      kind: 'acp',
       command: 'agy',
-      args: [],
+      args: ['acp'],
       env: {},
     });
     expect(DEFAULT_AGENTS.omp?.kind).toBe('acp');

@@ -60,6 +60,11 @@ function fakeActions() {
       openFolder: vi.fn(() => Promise.resolve()),
     },
     settings: {
+      whisper: vi.fn(() => Promise.resolve({ ok: true, value: { state: 'disabled' } } as const)),
+      transcriptionSettings: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
+      setTranscriptionSettings: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
+      transcriptionStatus: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
+      transcriptionModels: vi.fn(() => Promise.resolve({ ok: true, value: {} } as never)),
       setLanguage: vi.fn((language: string) => Promise.resolve(language)),
       getAutostart: vi.fn(() => Promise.resolve({ value: false, supported: true })),
       setAutostart: vi.fn((value: boolean) => Promise.resolve({ value, supported: true })),
@@ -146,6 +151,7 @@ describe('registerControlIpc', () => {
     const view: ControlIpcSender = { sender: { id: 9 }, senderFrame: { url: 'http://127.0.0.1:7780/' } };
     expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.sessionsViewport, view, viewport)).toThrow(UntrustedSenderError);
     expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsSetLanguage, view, 'en')).toThrow(UntrustedSenderError);
+    expect(() => call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsWhisper, view, 'remove')).toThrow(UntrustedSenderError);
     expect(actions.sessions.setViewport).not.toHaveBeenCalled();
     expect(actions.settings.setLanguage).not.toHaveBeenCalled();
     await call(ipcMain, CONTROL_INVOKE_CHANNELS.sessionsViewport, CONTROL, viewport);
@@ -189,6 +195,7 @@ describe('registerControlIpc', () => {
     await own(c.logsGet);
     await own(c.logsOpenFolder);
     expect(await own(c.settingsSetLanguage, 'en')).toBe('en');
+    expect(await own(c.settingsWhisper, 'status')).toEqual({ ok: true, value: { state: 'disabled' } });
     await own(c.settingsGetAutostart);
     expect(await own(c.settingsSetAutostart, true)).toEqual({ value: true, supported: true });
     await own(c.settingsCheckForUpdate);
@@ -199,6 +206,7 @@ describe('registerControlIpc', () => {
     expect(actions.restartDaemon).toHaveBeenCalledTimes(1);
     expect(actions.sessions.setViewport).toHaveBeenCalledWith({ x: 232, y: 40, width: 948, height: 720, active: true, covered: false });
     expect(actions.settings.setLanguage).toHaveBeenCalledWith('en');
+    expect(actions.settings.whisper).toHaveBeenCalledExactlyOnceWith('status');
     expect(actions.openDataFolder).toHaveBeenCalledTimes(1);
     expect(actions.folders.save).toHaveBeenCalledWith(['C:\\A', 'D:\\'], true);
     expect(actions.folders.reveal).toHaveBeenCalledWith('C:\\A');
@@ -313,5 +321,39 @@ describe('registerControlIpc', () => {
     dispose();
     expect(ipcMain.handlers.size).toBe(0);
     expect(ipcMain.syncListeners.size).toBe(0);
+  });
+});
+
+describe('transcription IPC', () => {
+  const update = { provider: 'custom', model: 'faster-whisper-large-v3', baseUrl: 'http://127.0.0.1:8000/v1', timeoutMs: 90_000, apiKey: 'write-only' };
+
+  it('routes settings, status, models and validated updates to their exact actions', async () => {
+    const { ipcMain, actions } = setup();
+    await call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsTranscriptionGet, CONTROL);
+    await call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsTranscriptionStatus, CONTROL);
+    await call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsTranscriptionModels, CONTROL);
+    await call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate, CONTROL, update);
+    expect(actions.settings.transcriptionSettings).toHaveBeenCalledExactlyOnceWith();
+    expect(actions.settings.transcriptionStatus).toHaveBeenCalledExactlyOnceWith();
+    expect(actions.settings.transcriptionModels).toHaveBeenCalledExactlyOnceWith();
+    expect(actions.settings.setTranscriptionSettings).toHaveBeenCalledExactlyOnceWith(update);
+  });
+
+  it.each([null, {}, [], { ...update, provider: 'ollama' }, { ...update, timeoutMs: 1 }, { ...update, timeoutMs: Number.NaN },
+    { ...update, apiKey: 1 }, { ...update, apiKey: 'a'.repeat(8001) }, { ...update, removeApiKey: 'yes' }, { ...update, extra: true }])(
+    'refuses malformed settings before reaching the service', async (input) => {
+      const { ipcMain, actions } = setup();
+      expect(await call(ipcMain, CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate, CONTROL, input)).toMatchObject({ ok: false, code: 'invalid_input' });
+      expect(actions.settings.setTranscriptionSettings).not.toHaveBeenCalled();
+    },
+  );
+
+  it('never lets the sessions renderer invoke transcription configuration channels', () => {
+    const { ipcMain, actions } = setup();
+    for (const channel of [CONTROL_INVOKE_CHANNELS.settingsTranscriptionGet, CONTROL_INVOKE_CHANNELS.settingsTranscriptionUpdate,
+      CONTROL_INVOKE_CHANNELS.settingsTranscriptionStatus, CONTROL_INVOKE_CHANNELS.settingsTranscriptionModels]) {
+      expect(() => call(ipcMain, channel, PANEL, update)).toThrow(UntrustedSenderError);
+    }
+    expect(actions.settings.setTranscriptionSettings).not.toHaveBeenCalled();
   });
 });

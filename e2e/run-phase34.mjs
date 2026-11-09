@@ -402,7 +402,7 @@ async function stepPhoneSend() {
   await page.locator('[data-slot="chat-timeline"]').waitFor();
 }
 
-/** Passo 3: terminal PTY (powershell.exe). Entrada, teclas, Ctrl+C, exit, reload sem duplicar. */
+/** Passo 3: terminal PTY (powershell.exe). Entrada, Ctrl+C, exit, reload sem duplicar. */
 async function stepTerminal() {
   await newSession('Shell');
   await page.locator('[data-slot="terminal-view"] .xterm').waitFor({ timeout: 20_000 });
@@ -416,20 +416,13 @@ async function stepTerminal() {
   await until('saída do echo', async () => occurrences(await terminalText(), 'nanachi-ok') >= 2, 20_000);
   await shot('07-terminal-echo');
 
-  await page.getByRole('button', { name: 'Seta para cima', exact: true }).click();
-  await page.waitForTimeout(300);
-  await page.getByRole('button', { name: 'Enter', exact: true }).click();
-  await until('↑ + Enter repete o comando', async () => occurrences(await terminalText(), 'nanachi-ok') >= 4, 20_000);
-  await shot('08-terminal-seta-enter');
-
   await line.fill('Start-Sleep -Seconds 60');
   await button('Enviar').click();
   await page.waitForTimeout(1500);
   const promptsBefore = occurrences(await terminalText(), 'PS ');
-  // A barra não tem mais Ctrl+C fixo: a trava Ctrl vale para a próxima tecla (como em run-terminal.mjs).
-  await page.getByRole('button', { name: 'Ctrl, a próxima tecla vira controle', exact: true }).click();
+  // The phone has no Ctrl key on screen now, so the interrupt goes from a physical keyboard through xterm.
   await page.locator('[data-slot="terminal-view"]').click();
-  await page.keyboard.press('c');
+  await page.keyboard.press('Control+c');
   // Espera o prompt voltar: digitar antes disso perde a linha (o PowerShell descarta a entrada ao interromper).
   await until('prompt volta após Ctrl+C', async () => occurrences(await terminalText(), 'PS ') > promptsBefore, 20_000);
   await line.fill('echo depois-ctrlc');

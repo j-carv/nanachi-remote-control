@@ -127,6 +127,18 @@ func validateTarget(value string) (*url.URL, error) {
 	return &url.URL{Scheme: "http", Host: host + ":" + strconv.Itoa(n)}, nil
 }
 
+// previewTarget is the IPv4-only gateway next to the validated daemon target.
+// The highest daemon port uses its lower neighbor instead of overflowing.
+func previewTarget(target *url.URL) *url.URL {
+	port, _ := strconv.Atoi(target.Port())
+	if port == 65535 {
+		port--
+	} else {
+		port++
+	}
+	return &url.URL{Scheme: "http", Host: "127.0.0.1:" + strconv.Itoa(port)}
+}
+
 // versionLine is what --version prints: the sidecar, the tailscale.com module
 // it was built with, and the Go toolchain.
 func versionLine() string {

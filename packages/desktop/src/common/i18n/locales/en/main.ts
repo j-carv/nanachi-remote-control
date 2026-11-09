@@ -34,6 +34,8 @@ export const main: Strings<typeof ptBR> = {
     pageTitle: 'Pairing code',
     codeLabel: 'Code {{code}}',
     qrAlt: 'QR code for {{code}}',
+    qrHint: 'Scan with your phone camera to open Nanachi and pair.',
+    qrSetupHint: 'Connect Tailscale in the Nanachi control panel to generate a QR code that opens on your phone.',
     expiresIn: 'Expires in {{time}}',
     expired: 'Code expired. Generate another from the Nanachi icon.',
     hint: 'On the other device, open Nanachi, add a machine and type the code. Single use.',

@@ -1,5 +1,6 @@
 import type { Session, SessionStatus } from '@nanachi/shared';
 import { t } from './i18n/index.js';
+import { compareSessionAttention } from './machineOverview.js';
 
 /**
  * Texto da confirmação de "Remover do app". O histórico continua no agente: só some da tela do app.
@@ -25,7 +26,7 @@ export function removalInterruptNotice(status: SessionStatus): string | null {
 
 /**
  * Lista que a tela mostra: a do servidor com os broadcasts `session` por cima (o broadcast é mais novo),
- * sem as sessões removidas do app, mais recente primeiro.
+ * with removed sessions and automation runs filtered out and sessions needing attention first.
  */
 export function visibleSessions(
   loaded: readonly Session[],
@@ -33,7 +34,10 @@ export function visibleSessions(
   removedIds: ReadonlySet<string>,
 ): Session[] {
   const byId = new Map(loaded.map((session) => [session.id, session]));
-  for (const session of Object.values(live)) byId.set(session.id, session);
+  for (const session of Object.values(live)) {
+    // Run ownership is immutable: an older ordinary snapshot cannot make a known automation run visible.
+    if (byId.get(session.id)?.automationRunId === undefined) byId.set(session.id, session);
+  }
   for (const id of removedIds) byId.delete(id);
-  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...byId.values()].filter((session) => session.automationRunId === undefined).sort(compareSessionAttention);
 }

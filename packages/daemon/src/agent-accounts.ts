@@ -203,7 +203,9 @@ async function verifyOmp(context: ProbeContext): Promise<AccountCheck> {
  * de status e ler o cofre exige tocar no segredo: sem verificação segura.
  */
 function verifyAgy(): Promise<AccountCheck> {
-  return Promise.reject(new CheckFailure('Login no cofre do Windows: sem verificação segura'));
+  return Promise.reject(
+    new CheckFailure('Login no cofre do Windows: sem verificação segura. Entre com agy acp --login no terminal do PC.'),
+  );
 }
 
 /** Traduz falhas conhecidas em `unknown` com o texto controlado; qualquer outra vira "Falha ao verificar". */

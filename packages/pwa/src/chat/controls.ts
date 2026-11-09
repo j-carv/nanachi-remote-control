@@ -5,9 +5,13 @@ export function isResumable(status: SessionStatus): boolean {
   return status === 'stopped' || status === 'error';
 }
 
-/** Input só em `idle` (pronto) e `running` (dá para digitar a próxima enquanto o agente trabalha). */
+export function queuesPrompt(status: SessionStatus): boolean {
+  return status === 'running' || status === 'awaiting_permission';
+}
+
+/** The composer is available during active work and permission requests. */
 export function isInputEnabled(status: SessionStatus): boolean {
-  return status === 'idle' || status === 'running';
+  return status === 'idle' || queuesPrompt(status);
 }
 
 /**
@@ -16,4 +20,12 @@ export function isInputEnabled(status: SessionStatus): boolean {
  */
 export function acceptsPrompt(status: SessionStatus): boolean {
   return status === 'idle' || isResumable(status);
+}
+
+/**
+ * Whether a config option can be changed now (`set_config`). The daemon applies the change to a live agent that has
+ * opened its session: a stopped or failed session, or one still starting, is refused. A running turn is not.
+ */
+export function acceptsConfigChange(status: SessionStatus): boolean {
+  return status === 'idle' || status === 'running' || status === 'awaiting_permission';
 }

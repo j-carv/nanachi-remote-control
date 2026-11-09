@@ -83,15 +83,45 @@ export function pairDeviceViaTailscale(
   return createDevice(db, { ...input, pairMethod: 'tailscale' });
 }
 
-/** Devolve o dispositivo ativo dono do token e atualiza last_seen_at. Nunca lança. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Prazo de inatividade em ms para `deviceInactivityDays`. `null` = sem prazo (0 desliga). */
+export function inactivityLimitMs(days: number): number | null {
+  return days === 0 ? null : days * DAY_MS;
+}
+
+/**
+ * Device parado além do prazo. Conta de `lastSeenAt` ou, se nunca usou, da criação. Exatamente no prazo ainda vale;
+ * passou dele, não. Com `inactivityMs` null nunca expira.
+ */
+export function isDeviceExpired(
+  device: Pick<DeviceRow, 'createdAt' | 'lastSeenAt'>,
+  now: number,
+  inactivityMs: number | null,
+): boolean {
+  if (inactivityMs === null) return false;
+  return now - (device.lastSeenAt ?? device.createdAt) > inactivityMs;
+}
+
+/** Por que o token foi recusado: revogado ou desconhecido (`unauthorized`), ou parado além do prazo (`device_expired`). */
+export type AuthRefusal = 'unauthorized' | 'device_expired';
+
+export type AuthResult = { ok: true; device: DeviceRow } | { ok: false; error: AuthRefusal };
+
+/**
+ * Checa o token. Aceito: devolve o device e grava `last_seen_at` (o uso renova o prazo). Recusado: não grava nada.
+ * Revogado vence expirado. Nunca lança.
+ */
 export function authenticateToken(
   db: Database.Database,
   token: string | undefined,
   now: number,
-): DeviceRow | undefined {
-  if (token === undefined || token.length === 0) return undefined;
+  inactivityMs: number | null,
+): AuthResult {
+  if (token === undefined || token.length === 0) return { ok: false, error: 'unauthorized' };
   const device = findDeviceByTokenHash(db, hashToken(token));
-  if (device === undefined || device.revokedAt !== null) return undefined;
+  if (device === undefined || device.revokedAt !== null) return { ok: false, error: 'unauthorized' };
+  if (isDeviceExpired(device, now, inactivityMs)) return { ok: false, error: 'device_expired' };
   touchDevice(db, device.id, now);
-  return { ...device, lastSeenAt: now };
+  return { ok: true, device: { ...device, lastSeenAt: now } };
 }

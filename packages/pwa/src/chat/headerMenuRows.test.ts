@@ -1,5 +1,5 @@
 import type { Loop } from '@nanachi/shared';
-import { Gauge, GitCompare, Layers, Repeat } from 'lucide-react';
+import { Gauge, GitCommitVertical, Layers, Repeat } from 'lucide-react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLanguage } from '../i18n/index.js';
 import { planHeaderActions, type HeaderActionsInput } from './headerActions.js';
@@ -43,7 +43,7 @@ function spies(): HeaderMenuActions {
     openUsage: vi.fn(),
     openLoop: vi.fn(),
     openBackground: vi.fn(),
-    openChanges: vi.fn(),
+    openHistory: vi.fn(),
     remove: vi.fn(),
   };
 }
@@ -55,22 +55,22 @@ beforeEach(() => setLanguage('pt-BR'));
 afterEach(() => setLanguage('pt-BR'));
 
 describe('headerMenuRows: labels and order', () => {
-  it('lists usage, loop, changes and remove for a chat with no loop and no background work', () => {
+  it('lists usage, loop, commit history and remove for a chat with no loop and no background work', () => {
     const rows = rowsFor(null);
-    expect(labels(rows)).toEqual(['Uso do agente', 'Modo Loop', 'Alterações', 'Remover do app']);
+    expect(labels(rows)).toEqual(['Uso do agente', 'Modo Loop', 'Histórico de commits', 'Remover do app']);
   });
 
-  it('puts background work between the loop and the changes, with its label', () => {
+  it('puts background work between the loop and the commit history, with its label', () => {
     const rows = rowsFor(null, { backgroundTotal: 3, backgroundActive: 0 });
-    expect(labels(rows)).toEqual(['Uso do agente', 'Modo Loop', 'Segundo plano', 'Alterações', 'Remover do app']);
+    expect(labels(rows)).toEqual(['Uso do agente', 'Modo Loop', 'Segundo plano', 'Histórico de commits', 'Remover do app']);
   });
 
   it('leaves background work out when there are no items', () => {
     expect(labels(rowsFor(null))).not.toContain('Segundo plano');
   });
 
-  it('shows only changes and remove for a terminal session', () => {
-    expect(labels(rowsFor(loopIn('active'), { kind: 'pty' }))).toEqual(['Alterações', 'Remover do app']);
+  it('shows only the commit history and remove for a terminal session', () => {
+    expect(labels(rowsFor(loopIn('active'), { kind: 'pty' }))).toEqual(['Histórico de commits', 'Remover do app']);
   });
 
   it('marks the remove row as destructive and keeps it last', () => {
@@ -121,19 +121,19 @@ describe('headerMenuRows: background detail', () => {
   });
 });
 
-describe('headerMenuRows: changes row', () => {
+describe('headerMenuRows: commit history row', () => {
   it('has no detail, and keeps its icon and label', () => {
-    const changes = rowsFor(null)[2];
-    expect(changes?.label).toBe('Alterações');
-    expect(changes?.detail).toBeUndefined();
-    expect(changes?.icon).toBe(GitCompare);
+    const history = rowsFor(null)[2];
+    expect(history?.label).toBe('Histórico de commits');
+    expect(history?.detail).toBeUndefined();
+    expect(history?.icon).toBe(GitCommitVertical);
   });
 });
 
 describe('headerMenuRows: icons', () => {
   it('gives each row its icon, and the remove row none', () => {
     const rows = rowsFor(loopIn('active'), { backgroundTotal: 1, backgroundActive: 0 });
-    expect(rows.map((row) => row.icon)).toEqual([Gauge, Repeat, Layers, GitCompare, undefined]);
+    expect(rows.map((row) => row.icon)).toEqual([Gauge, Repeat, Layers, GitCommitVertical, undefined]);
   });
 });
 
@@ -146,7 +146,7 @@ describe('headerMenuRows: what a row does', () => {
     expect(actions.openUsage).toHaveBeenCalledTimes(1);
     expect(actions.openLoop).toHaveBeenCalledTimes(1);
     expect(actions.openBackground).toHaveBeenCalledTimes(1);
-    expect(actions.openChanges).toHaveBeenCalledTimes(1);
+    expect(actions.openHistory).toHaveBeenCalledTimes(1);
     expect(actions.remove).toHaveBeenCalledTimes(1);
   });
 

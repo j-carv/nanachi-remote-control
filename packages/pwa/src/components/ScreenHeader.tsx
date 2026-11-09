@@ -32,7 +32,7 @@ export function ScreenHeader({ title, subtitle, subtitleTruncation, meta, onBack
           <ChevronLeft className="size-6" aria-hidden="true" />
         </Button>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1 motion-safe:animate-enter">
         <h1 className="truncate text-xl leading-7 font-semibold tracking-tight">{title}</h1>
         {subtitle !== undefined &&
           (subtitleTruncation === 'middle' ? (

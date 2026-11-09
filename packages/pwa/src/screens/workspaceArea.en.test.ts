@@ -13,7 +13,10 @@ import { WorkspaceInfoBar } from '../components/WorkspaceInfoBar.js';
 import { setLanguage } from '../i18n/index.js';
 import type { StorageLike } from '../machines.js';
 import { notificationsRow } from '../workspace/workspaceMenuRows.js';
+import type { WorkingTreeState } from '../workingTree.js';
 import { ChangesScreen } from './ChangesScreen.js';
+import { CommitScreen } from './CommitScreen.js';
+import { CommitsScreen, WorkingTreeRow } from './CommitsScreen.js';
 import { EditorScreen } from './EditorScreen.js';
 import { FilesScreen } from './FilesScreen.js';
 import { FolderPickerScreen } from './FolderPickerScreen.js';
@@ -244,6 +247,70 @@ describe('ChangesScreen', () => {
   });
 });
 
+describe('CommitsScreen and CommitScreen', () => {
+  const hash = 'af9384ef96648594f13a8bd80ae53aa3e830a8ae';
+  const list = createElement(CommitsScreen, { machineName: 'OFFICE-PC', workspace, session, api, nav, onRepair: noop });
+  const detail = createElement(CommitScreen, { machineName: 'OFFICE-PC', workspace, session, hash, api, nav, onRepair: noop });
+
+  it('are in Portuguese by default', () => {
+    expect(html(list)).toContain('aria-label="Atualizar commits"');
+    expect(html(detail)).toContain('>Carregando…</p>');
+  });
+
+  it('are in English after the switch', () => {
+    setLanguage('en');
+    const listMarkup = html(list);
+    expect(listMarkup).toContain('>Commit history</h1>');
+    expect(listMarkup).toContain('aria-label="Refresh commits"');
+    // The detail shows the short hash until the commit loads, so the title never waits on the network.
+    expect(html(detail)).toContain('>af9384e</h1>');
+  });
+
+  it('start with the working tree row in its loading state, beside the list skeleton', () => {
+    setLanguage('pt-BR');
+    expect(html(list)).toContain('data-slot="working-tree-row"');
+    expect(html(list)).toContain('Árvore de trabalho');
+    setLanguage('en');
+    expect(html(list)).toContain('Working tree');
+    expect(html(list)).toContain('data-slot="list-skeleton"');
+  });
+});
+
+describe('WorkingTreeRow (the first row of the commit history)', () => {
+  const row = (state: WorkingTreeState): string => html(createElement(WorkingTreeRow, { state, workspace, session, nav }));
+
+  it('counts the changed files in Portuguese, singular and plural, and says when there are none', () => {
+    setLanguage('pt-BR');
+    expect(row({ kind: 'counted', changedFiles: 1 })).toContain('1 arquivo alterado');
+    expect(row({ kind: 'counted', changedFiles: 3 })).toContain('3 arquivos alterados');
+    expect(row({ kind: 'counted', changedFiles: 0 })).toContain('Nenhuma alteração sem commit');
+  });
+
+  it('counts the changed files in English, singular and plural, and says when there are none', () => {
+    setLanguage('en');
+    expect(row({ kind: 'counted', changedFiles: 1 })).toContain('1 changed file<');
+    expect(row({ kind: 'counted', changedFiles: 3 })).toContain('3 changed files<');
+    expect(row({ kind: 'counted', changedFiles: 0 })).toContain('No uncommitted changes');
+    expect(row({ kind: 'counted', changedFiles: 0 })).toContain('>Working tree<');
+  });
+
+  it('shows the loading text as its detail while the count loads', () => {
+    setLanguage('pt-BR');
+    expect(row({ kind: 'loading' })).toContain('Carregando…');
+    setLanguage('en');
+    expect(row({ kind: 'loading' })).toContain('Loading…');
+  });
+
+  it('shows no detail line when the count failed, and renders nothing when hidden', () => {
+    setLanguage('en');
+    const failed = row({ kind: 'counted', changedFiles: null });
+    expect(failed).toContain('>Working tree<');
+    expect(failed).not.toContain('Loading');
+    expect(failed).not.toContain('changed file');
+    expect(row({ kind: 'hidden' })).toBe('');
+  });
+});
+
 describe('TerminalScreen', () => {
   const element = createElement(TerminalScreen, {
     machineName: 'OFFICE-PC',
@@ -252,36 +319,22 @@ describe('TerminalScreen', () => {
     api,
     connection: undefined,
     nav,
-    onRepair: noop,
   });
 
-  it('names its controls in Portuguese', () => {
-    const markup = html(element);
-    for (const text of ['aria-label="Alterações"', 'aria-label="Teclas especiais"', 'aria-label="Diminuir fonte do terminal"', 'Copiar seleção', 'Colar']) {
-      expect(markup).toContain(text);
-    }
-  });
-
-  it('names its controls in English, keeping the keycaps', () => {
+  it('shows the terminal and the line field with Send, and no other button but Back', () => {
     setLanguage('en');
     const markup = html(element);
-    for (const text of [
-      'aria-label="Changes"',
-      'aria-label="Special keys"',
-      'aria-label="Decrease terminal font size"',
-      'aria-label="Increase terminal font size"',
-      'aria-label="Paste from the clipboard"',
-      'aria-label="Up arrow"',
-      'Copy selection',
-      'Loading terminal…',
-      'placeholder="Text for the terminal"',
-      '>Send</button>',
-      '>Esc</button>',
-    ]) {
-      expect(markup).toContain(text);
-    }
-    expect(markup).not.toContain('Colar');
-    expect(markup).not.toContain('Enviar');
+    expect(markup).toContain('data-slot="terminal-view"');
+    expect(markup).toContain('data-slot="terminal-line"');
+    expect(markup).toContain('placeholder="Text for the terminal"');
+    expect(markup).toContain('>Send</button>');
+    // The header's Back chevron and the Send button are the only buttons on the screen.
+    expect(markup.match(/<button\b/g)).toHaveLength(2);
+  });
+
+  it('keeps the line field on wide screens with a mouse and keyboard', () => {
+    setLanguage('en');
+    expect(html(element)).not.toContain('pointer-fine:hidden');
   });
 });
 

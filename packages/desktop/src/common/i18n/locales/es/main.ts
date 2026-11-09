@@ -34,6 +34,8 @@ export const main: Strings<typeof ptBR> = {
     pageTitle: 'Código de emparejamiento',
     codeLabel: 'Código {{code}}',
     qrAlt: 'QR del código {{code}}',
+    qrHint: 'Escanea con la cámara de tu teléfono para abrir Nanachi y vincularlo.',
+    qrSetupHint: 'Conecta Tailscale en el panel de Nanachi para generar un QR que se abra en tu teléfono.',
     expiresIn: 'Expira en {{time}}',
     expired: 'Código expirado. Genera otro desde el ícono de Nanachi.',
     hint: 'En el otro dispositivo, abre Nanachi, agrega una máquina y escribe el código. De un solo uso.',

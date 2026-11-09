@@ -24,7 +24,7 @@ export const DEFAULT_AGENTS: Readonly<Record<string, AgentConfig>> = {
   omp: { label: 'Oh My Pi', command: 'omp', args: ['acp'], env: {}, kind: 'acp' },
   claude: { label: 'Claude Code', command: 'claude-agent-acp', args: [], env: {}, kind: 'acp' },
   codex: { label: 'Codex', command: 'codex-acp', args: [], env: {}, kind: 'acp' },
-  agy: { label: 'Antigravity', command: 'agy', args: [], env: {}, kind: 'pty' },
+  agy: { label: 'Antigravity', command: 'agy', args: ['acp'], env: {}, kind: 'acp' },
 };
 
 /** Config do daemon em `<NANACHI_HOME>/config.json`. `machineName` é preenchido pelo daemon com o hostname. */
@@ -46,10 +46,13 @@ export const ConfigSchema = z.object({
    * `false` desliga a criação e esvazia `GET /api/shells`.
    */
   shellSessions: z.boolean().default(true),
-  /** Aviso ao agente, no primeiro prompt de sessão criada pelo app, de como mandar arquivo ao celular (phone-send). */
-  phoneSendHint: z.boolean().default(true),
   /** Período sem mudanças nas pastas de build antes de recarregar o daemon (só com --reload-on-build). Padrão: 60 s. */
   reloadQuietMs: z.number().int().min(0).default(60_000),
+  /**
+   * Dias sem uso após os quais o token de um device deixa de valer (401 `device_expired`). Conta de `lastSeenAt` (ou da
+   * criação, se nunca usou). `0` desliga. Padrão: 90.
+   */
+  deviceInactivityDays: z.number().int().min(0).default(90),
   agents: z
     .record(z.string(), AgentConfigSchema)
     .default(() => ({ ...DEFAULT_AGENTS })),

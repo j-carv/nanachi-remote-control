@@ -1,7 +1,7 @@
 /*
  * E2E da fase 5 do Nanachi Remote: contexto do workspace (branch, alterações, CLAUDE.md), tela Alterações,
  * worktree separado, dispositivos (pareamento pelo CLI + API, revogar outro e revogar o próprio), terminal
- * (teclas e pill "Em execução"), lazy chunks, CORS/WS por Origin e vários PCs (dois daemons, seletor de máquinas).
+ * (terminal sem barra de teclas e pill "Em execução"), lazy chunks, CORS/WS por Origin e vários PCs (dois daemons, seletor de máquinas).
  * Dirige o PWA buildado num Edge headless com viewport de iPhone 14 (390x844). Nenhum agente real: o agente é o
  * fake (packages/daemon/test/fixtures/fake-agent.ts) e o terminal é o powershell.exe.
  *
@@ -367,9 +367,12 @@ async function stepWorkspaceInfo() {
 async function stepChanges() {
   await newSession('Fake', 'proj');
   await until('sessão fake ociosa', () => statusIs('idle'), 60_000);
-  // Phone header: "Alterações" is a row of "Mais ações da sessão". The row has no detail line, so its exact name is stable.
+  // Phone header: "Histórico de commits" is a row of "Mais ações da sessão". The row has no detail line, so its exact name is
+  // stable. Its first row, "Árvore de trabalho" (the working tree), opens the session's uncommitted changes.
   await page.getByRole('button', { name: 'Mais ações da sessão', exact: true }).click();
-  await page.getByRole('button', { name: 'Alterações', exact: true }).click();
+  await page.getByRole('button', { name: 'Histórico de commits', exact: true }).click();
+  await headerTitle('Histórico de commits').waitFor();
+  await page.locator('[data-slot="working-tree-row"]').click();
   await headerTitle('Alterações').waitFor();
   await until('duas alterações listadas', async () => (await page.locator('[data-slot="change-row"]').count()) === 2);
   await shot('01-alteracoes-lista');
@@ -442,27 +445,12 @@ async function stepTerminal() {
   await page.locator('[data-slot="terminal-view"] .xterm').waitFor({ timeout: 20_000 });
   await until('pill "Em execução" no terminal', () => hasCount(page.locator('[data-status="running"]', { hasText: 'Em execução' })), 20_000);
 
-  const keys = page.locator('[data-slot="terminal-key"]');
-  const count = await keys.count();
-  assert.equal(count, 18, 'dezoito teclas na barra (as de TERMINAL_KEYS)');
-  // A barra é uma linha só que rola na horizontal (ChatScreen/TerminalScreen: overflow-x-auto, teclas shrink-0).
-  const bar = page.locator('[role="toolbar"][aria-label="Teclas especiais"]');
-  assert.ok(await bar.evaluate((el) => el.scrollWidth > el.clientWidth), 'barra rola na horizontal (teclas fora da tela ficam acessíveis)');
-  const boxes = [];
-  for (let i = 0; i < count; i += 1) {
-    const box = await keys.nth(i).boundingBox();
-    assert.ok(box, `tecla ${i} tem caixa`);
-    assert.ok(box.y >= 0 && box.y + box.height <= 844, `tecla ${i} cabe na altura da tela`);
-    boxes.push(box);
-  }
-  const first = boxes[0];
-  assert.ok(first && first.x >= 0 && first.x + first.width <= 390, 'primeira tecla visível inteira na largura do iPhone sem rolar');
-  assert.equal(new Set(boxes.map((box) => Math.round(box.y))).size, 1, 'teclas numa linha só');
-  await shot('05-terminal-teclas');
-  for (let i = 0; i < count; i += 1) await keys.nth(i).click();
-  await page.waitForTimeout(300);
-  await until('terminal segue rodando após as teclas', () => statusIs('running'), 10_000);
-  log('terminal: 18 teclas numa barra que rola, todas clicáveis; pill "Em execução"');
+  // The screen has no special-key bar: only the terminal, the line field and Send.
+  assert.equal(await page.locator('[data-slot="terminal-key"]').count(), 0, 'sem barra de teclas');
+  assert.equal(await page.locator('[data-slot="terminal-line"]').count(), 1, 'linha de texto com Enviar');
+  await shot('05-terminal');
+  await until('terminal segue rodando', () => statusIs('running'), 10_000);
+  log('terminal: sem barra de teclas; linha de texto e pill "Em execução"');
 }
 
 async function stepDevices() {

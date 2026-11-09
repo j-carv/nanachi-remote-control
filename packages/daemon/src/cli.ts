@@ -11,9 +11,9 @@ import {
   type AutostartEnv,
   type AutostartResult,
 } from './autostart.js';
-import { resolveNanachiHome } from './config.js';
+import { loadConfig, resolveNanachiHome } from './config.js';
 import { openDatabase } from './db.js';
-import { createDevice, createPairCode, PAIR_CODE_TTL_MS } from './pairing.js';
+import { createDevice, createPairCode, inactivityLimitMs, isDeviceExpired, PAIR_CODE_TTL_MS } from './pairing.js';
 import { listDevices, revokeDevice } from './repository.js';
 import { loadOrCreateVapid } from './vapid.js';
 
@@ -156,9 +156,13 @@ export async function runCli(argv: readonly string[], env: NodeJS.ProcessEnv, io
           io.out('Nenhum dispositivo pareado.');
           return 0;
         }
+        // Mesmo prazo do daemon (deviceInactivityDays): quem passou dele já não tem acesso.
+        const inactivityMs = inactivityLimitMs(loadConfig(home).deviceInactivityDays);
+        const now = Date.now();
         for (const device of devices) {
           const lastSeen = device.lastSeenAt === null ? 'nunca' : new Date(device.lastSeenAt).toISOString();
-          const status = device.revokedAt === null ? 'ativo' : 'revogado';
+          const status =
+            device.revokedAt !== null ? 'revogado' : isDeviceExpired(device, now, inactivityMs) ? 'expirado' : 'ativo';
           io.out(
             `${device.id}  ${device.name}  criado ${new Date(device.createdAt).toISOString()}  último uso ${lastSeen}  ${status}`,
           );

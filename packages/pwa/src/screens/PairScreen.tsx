@@ -6,6 +6,7 @@ import type { PairResponse } from '@nanachi/shared';
 import { ApiError, pair, pairTailscale, pairTailscaleStatus } from '../api.js';
 import { describeError as describeApiError } from '../errorMessages.js';
 import { isSafePairingBaseUrl, normalizeBaseUrl } from '../machines.js';
+import { PAIR_CODE_PATTERN } from '../pairLink.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,9 +17,12 @@ interface PairScreenProps {
   canCancel: boolean;
   onCancel(): void;
   onPaired(result: PairResponse, baseUrl: string): void;
+  /** Code to fill in, when a pair link could not pair with it (see App.tsx). */
+  initialCode?: string | undefined;
+  /** Error of that attempt. It is described in the current language, so it is kept as the error, not as text. */
+  initialError?: unknown;
 }
 
-const CODE_PATTERN = /^[0-9]{6}$/;
 /** Espera o usuário terminar de digitar o endereço antes de perguntar ao PC pelo Tailscale. */
 const TAILSCALE_CHECK_DELAY_MS = 300;
 
@@ -55,13 +59,15 @@ function useTailscaleLogin(baseUrl: string): string | null {
   return login;
 }
 
-export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: PairScreenProps) {
+export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired, initialCode, initialError }: PairScreenProps) {
   const { t } = useTranslation('pairing');
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(initialCode ?? '');
   const [deviceName, setDeviceName] = useState(() => t('defaultDeviceName'));
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    initialError === undefined ? null : describeError(initialError, t),
+  );
   const tailscaleLogin = useTailscaleLogin(baseUrl);
   const urlId = useId();
   const codeId = useId();
@@ -104,7 +110,7 @@ export function PairScreen({ initialBaseUrl, canCancel, onCancel, onPaired }: Pa
 
     const normalized = checkedBaseUrl();
     if (normalized === null) return;
-    if (!CODE_PATTERN.test(code)) {
+    if (!PAIR_CODE_PATTERN.test(code)) {
       setError(t('errors.codeLength'));
       return;
     }

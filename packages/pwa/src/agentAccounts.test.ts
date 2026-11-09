@@ -28,9 +28,9 @@ describe('accountView', () => {
     expect(accountView({ status: 'logged_out' })).toEqual({
       statusLabel: 'Deslogado',
       tone: 'warn',
-      help: 'Faça login no terminal do PC (ex.: claude, codex login, agy).',
+      help: 'Faça login no terminal do PC (ex.: claude, codex login, agy acp --login).',
     });
-    expect(loginHelp()).toBe('Faça login no terminal do PC (ex.: claude, codex login, agy).');
+    expect(loginHelp()).toBe('Faça login no terminal do PC (ex.: claude, codex login, agy acp --login).');
   });
 
   it('não verificado: cinza, sem ajuda (o detalhe da conta explica o motivo)', () => {
@@ -287,7 +287,7 @@ describe('account texts in English', () => {
     expect(accountView({ status: 'logged_out' })).toEqual({
       statusLabel: 'Signed out',
       tone: 'warn',
-      help: "Sign in from the PC's terminal (e.g. claude, codex login, agy).",
+      help: "Sign in from the PC's terminal (e.g. claude, codex login, agy acp --login).",
     });
     expect(accountView({ status: 'unknown' })).toEqual({ statusLabel: 'Not checked', tone: 'muted', help: null });
   });

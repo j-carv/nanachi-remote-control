@@ -1,5 +1,5 @@
 import type { Loop } from '@nanachi/shared';
-import { Gauge, GitCompare, Layers, Repeat } from 'lucide-react';
+import { Gauge, GitCommitVertical, Layers, Repeat } from 'lucide-react';
 import type { ActionSheetItem } from '../components/ActionSheet.js';
 import { t } from '../i18n/index.js';
 import type { SheetRow } from './headerActions.js';
@@ -10,7 +10,7 @@ export interface HeaderMenuActions {
   openUsage(): void;
   openLoop(): void;
   openBackground(): void;
-  openChanges(): void;
+  openHistory(): void;
   remove(): void;
 }
 
@@ -42,8 +42,8 @@ export function headerMenuRows(sheet: readonly SheetRow[], loop: Loop | null, ac
           haspopup: 'dialog',
           onSelect: actions.openBackground,
         };
-      case 'changes':
-        return { label: t('chat:header.changes'), icon: GitCompare, onSelect: actions.openChanges };
+      case 'history':
+        return { label: t('chat:header.history'), icon: GitCommitVertical, onSelect: actions.openHistory };
       case 'remove':
         return { label: t('chat:header.removeFromApp'), tone: 'danger', haspopup: 'dialog', onSelect: actions.remove };
     }

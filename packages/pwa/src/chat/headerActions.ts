@@ -16,7 +16,7 @@ export type SheetRow =
   | { readonly entry: 'usage' }
   | { readonly entry: 'loop' }
   | { readonly entry: 'background'; readonly active: number; readonly total: number }
-  | { readonly entry: 'changes' }
+  | { readonly entry: 'history' }
   | { readonly entry: 'remove' };
 
 export interface HeaderActionsInput {
@@ -58,7 +58,7 @@ export function planHeaderActions(input: HeaderActionsInput): HeaderActionsPlan 
   if (input.backgroundTotal > 0) {
     sheet.push({ entry: 'background', active: input.backgroundActive, total: input.backgroundTotal });
   }
-  sheet.push({ entry: 'changes' }, { entry: 'remove' });
+  sheet.push({ entry: 'history' }, { entry: 'remove' });
 
   return {
     row,

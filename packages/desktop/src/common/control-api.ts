@@ -7,15 +7,24 @@
  * User-visible strings produced by the main process (messages, errors) are already in Desktop's current language
  * (pt-BR, English or Spanish); the renderer shows them as they come.
  */
+import type { TranscriptionModelsResponse, TranscriptionSettingsResponse, TranscriptionStatus, UpdateTranscriptionSettings, WhisperStatus } from '@nanachi/shared';
 import type { Language } from './i18n/languages.js';
 import type { DaemonStatus, PairingCode, TailscaleStatus, UpdateCheckResult } from './types.js';
 
 /**
- * Sections of the control center, in sidebar order. Ctrl+1..8 select them. `sessions` is the PWA (the same app as on the
- * phone), drawn by main in a view over the content area while this section is on screen.
+ * Sections of the control center, in sidebar order. `sessions` is the PWA (the same app as on the phone), drawn by main in a
+ * view over the content area while this section is on screen.
+ */
+export const SIDEBAR_SECTIONS = ['overview', 'folders', 'devices', 'accounts', 'tailscale', 'diagnostics', 'logs', 'settings', 'sessions'] as const;
+export type ControlSection = (typeof SIDEBAR_SECTIONS)[number];
+export type WhisperAction = 'status' | 'install' | 'remove';
+
+/**
+ * The sections that Ctrl+1..8 select, by position, in the order those numbers have always had. Diagnostics is in the sidebar
+ * between Tailscale and Logs but has no number: giving it one would move the numbers of Logs, Settings and Sessions.
  */
 export const CONTROL_SECTIONS = ['overview', 'folders', 'devices', 'accounts', 'tailscale', 'logs', 'settings', 'sessions'] as const;
-export type ControlSection = (typeof CONTROL_SECTIONS)[number];
+export type ShortcutSection = (typeof CONTROL_SECTIONS)[number];
 
 /**
  * A failure the renderer can show as is: `message` is already in Desktop's language and safe to display. The one exception is
@@ -209,6 +218,11 @@ export interface ControlApi {
     openFolder(): Promise<void>;
   };
   settings: {
+    whisper(action: WhisperAction): Promise<ControlResult<WhisperStatus>>;
+    transcriptionSettings(): Promise<ControlResult<TranscriptionSettingsResponse>>;
+    setTranscriptionSettings(settings: UpdateTranscriptionSettings): Promise<ControlResult<TranscriptionSettingsResponse>>;
+    transcriptionStatus(): Promise<ControlResult<TranscriptionStatus>>;
+    transcriptionModels(): Promise<ControlResult<TranscriptionModelsResponse>>;
     /** Switches Desktop's language: the tray, the messages of main, this page and the embedded PWA follow. Resolves with the language in effect. */
     setLanguage(language: Language): Promise<Language>;
     getAutostart(): Promise<{ value: boolean; supported: boolean }>;

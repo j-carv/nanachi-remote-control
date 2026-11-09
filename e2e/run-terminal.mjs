@@ -1,14 +1,14 @@
 /*
- * E2E do terminal no workspace: abre o Terminal pela folha de shells, digita e roda um comando, usa a trava Ctrl
- * (Ctrl + c para parar um ping), ajusta a fonte, encerra a sessão e confere o estado encerrado com "Abrir novo terminal".
+ * E2E do terminal no workspace: abre o Terminal pela folha de shells, digita e roda um comando pela linha de texto,
+ * rola o histórico por toque, encerra a sessão e confere o estado encerrado.
  * Sobe o daemon buildado numa pasta temporária, pareia pela API e cria o workspace; dirige o PWA buildado num Edge
  * headless com viewport de iPhone (390x844). A máquina entra no localStorage por addInitScript, para o teste começar
  * no workspace. (O pareamento por código na tela já é coberto por run-workspace.mjs.)
- * Confere: shell padrão marcado primeiro; o texto do comando aparece no xterm; Ctrl trava uma tecla e solta depois;
- * A+ grava a fonte no aparelho; o chat não aparece para o terminal (sem Uso do agente, sem Configurar sessão);
- * rolagem por toque: 120 linhas de saída, arrasto vertical com CDP rola o histórico (aparece "Ir para o fim"), arrasto
- * horizontal não rola, toque sem movimento foca o terminal, "Ir para o fim" volta ao fim; estado encerrado com
- * "Abrir novo terminal"; CSP e console sem erros. Screenshots nos dois temas em e2e/screenshots/terminal/.
+ * Confere: shell padrão marcado primeiro; o texto do comando aparece no xterm; o chat não aparece para o terminal (sem
+ * Uso do agente, sem Configurar sessão); a tela não tem barra de teclas nem botões além da linha de texto e de Enviar;
+ * rolagem por toque: 120 linhas de saída, arrasto vertical com CDP rola o histórico, arrasto horizontal não rola, toque
+ * sem movimento foca o terminal, e Enviar leva a resposta de volta ao fim da saída; estado encerrado sem botão para
+ * abrir outro. CSP e console sem erros. Screenshots nos dois temas em e2e/screenshots/terminal/.
  * O teclado do iOS não é testado aqui: o foco é conferido pelo elemento ativo.
  *
  * Como rodar (a partir da raiz, depois do supervisor ter buildado daemon e pwa):
@@ -50,7 +50,6 @@ let daemon = null;
 let browser = null;
 let page;
 let machine = null;
-const wsInputs = [];
 const consoleErrors = [];
 const cspViolations = [];
 
@@ -163,7 +162,6 @@ const button = (name) => page.getByRole('button', { name, exact: true });
 const hasCount = (locator) => locator.count().then((n) => n > 0);
 const rowsText = () => page.locator('[data-slot="terminal-view"] .xterm-rows').innerText();
 const occurrences = (text, word) => text.split(word).length - 1;
-const ctrlKey = () => button('Ctrl, a próxima tecla vira controle');
 const terminalLine = () => page.locator('[data-slot="terminal-line"]');
 const sessionRows = () => page.locator('ul[aria-label="Sessões"] > li', { hasText: SHELL_TITLE });
 
@@ -194,10 +192,10 @@ async function openCmdTerminal() {
   await page.waitForTimeout(300);
 }
 
+/** Digita na linha de texto e manda com Enviar: a tela não tem outro jeito de enviar uma linha. */
 async function typeCommand(text) {
-  await page.locator('[data-slot="terminal-view"]').click();
-  await page.keyboard.type(text);
-  await button('Enter').click();
+  await terminalLine().fill(text);
+  await button('Enviar').click();
 }
 
 async function stepEcho() {
@@ -209,32 +207,8 @@ async function stepEcho() {
   await shotBothThemes('02-terminal-com-barra-de-teclas');
 }
 
-async function stepCtrlC() {
-  await typeCommand('ping -t 127.0.0.1');
-  await until('ping está rodando', async () => (await rowsText()).includes('Pinging'));
-
-  await ctrlKey().click();
-  assert.equal(await ctrlKey().getAttribute('aria-pressed'), 'true', 'Ctrl fica travado depois do toque');
-  await page.locator('[data-slot="terminal-view"]').click();
-  await page.keyboard.press('c');
-  log(`terminal_input enviados: ${JSON.stringify(wsInputs.slice(-3))}`);
-  await until('Ctrl solta depois da tecla', async () => (await ctrlKey().getAttribute('aria-pressed')) === 'false');
-
-  await typeCommand('echo after-ctrl-c');
-  await until('o shell voltou e rodou o echo', async () => occurrences(await rowsText(), 'after-ctrl-c') >= 2);
-}
-
-async function stepFont() {
-  const before = Number((await page.evaluate(() => localStorage.getItem('nanachi.terminalFontSize'))) ?? 13);
-  await button('Aumentar fonte do terminal').click();
-  const after = await page.evaluate(() => localStorage.getItem('nanachi.terminalFontSize'));
-  assert.equal(after, String(before + 1), 'A+ grava o tamanho no aparelho');
-  await button('Diminuir fonte do terminal').click();
-}
-
 /** Texto da primeira linha visível do xterm (muda quando a rolagem muda a área visível). */
 const firstRowText = () => page.locator('[data-slot="terminal-view"] .xterm-rows > div').first().innerText();
-const scrollEndButton = () => page.locator('[data-slot="terminal-scroll-end"]');
 
 /** Arrasto com o dedo do CDP: `touchStart`, passos de `touchMove`, `touchEnd`. */
 async function touchDrag(cdp, from, to, steps = 12) {
@@ -252,7 +226,6 @@ async function stepTouchScroll(cdp) {
   await typeCommand('for /L %i in (1,1,120) do @echo touch-%i');
   await until('saída de 120 linhas chegou ao fim', async () => (await rowsText()).includes('touch-120'));
   const bottomRow = await firstRowText();
-  assert.equal(await scrollEndButton().count(), 0, 'sem "Ir para o fim" com a saída no fim');
 
   const box = await page.locator('[data-slot="terminal-view"]').boundingBox();
   assert.ok(box !== null, 'terminal tem caixa');
@@ -261,7 +234,6 @@ async function stepTouchScroll(cdp) {
   // Dedo descendo: o conteúdo acompanha o dedo e a saída mais antiga aparece.
   await touchDrag(cdp, center, { x: center.x, y: center.y + 220 });
   await until('arrasto para baixo rolou o histórico', async () => (await firstRowText()) !== bottomRow);
-  assert.ok(await hasCount(scrollEndButton()), '"Ir para o fim" aparece rolado para cima');
 
   // Arrasto na horizontal não rola (espera a desaceleração do arrasto anterior terminar).
   await page.waitForTimeout(1200);
@@ -276,9 +248,9 @@ async function stepTouchScroll(cdp) {
     page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') === true),
   );
 
-  await scrollEndButton().click();
-  await until('"Ir para o fim" voltou ao fim da saída', async () => (await scrollEndButton().count()) === 0);
-  assert.ok((await rowsText()).includes('touch-120'), 'o fim da saída está visível de novo');
+  // Enviar uma linha com o histórico rolado para cima leva a tela ao fim: a resposta aparece sem botão extra.
+  await typeCommand('echo touch-end');
+  await until('a resposta aparece no fim da saída', async () => occurrences(await rowsText(), 'touch-end') >= 2);
   await shotBothThemes('05-rolagem-por-toque');
 }
 
@@ -297,14 +269,10 @@ async function stepStop() {
   const closed = page.locator('[data-slot="terminal-closed"]');
   await closed.waitFor();
   await closed.getByText(/Terminal encerrado/).waitFor();
-  assert.equal(await closed.getByRole('button', { name: 'Abrir novo terminal', exact: true }).count(), 1, 'Abrir novo terminal');
+  assert.equal(await closed.getByRole('button').count(), 0, 'encerrado sem botão além da navegação');
   assert.equal(await terminalLine().isDisabled(), true, 'linha de texto desligada no encerrado');
   await shotBothThemes('04-terminal-encerrado');
-
-  await closed.getByRole('button', { name: 'Abrir novo terminal', exact: true }).click();
-  await until('novo terminal aberto e liberado', () => terminalLine().isEnabled());
-  assert.equal(await page.locator('[data-slot="terminal-closed"]').count(), 0, 'o novo terminal não nasce encerrado');
-  log('terminal encerrado e reaberto OK');
+  log('terminal encerrado OK');
 }
 
 async function main() {
@@ -345,12 +313,6 @@ async function main() {
     }
   });
   page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
-  page.on('websocket', (socket) => {
-    socket.on('framesent', (frame) => {
-      const text = String(frame.payload);
-      if (text.includes('terminal_input')) wsInputs.push(text);
-    });
-  });
 
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   const size = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
@@ -358,8 +320,6 @@ async function main() {
 
   await goToWorkspace();
   await stepEcho();
-  await stepCtrlC();
-  await stepFont();
   await stepTouchScroll(await context.newCDPSession(page));
   await stepStop();
 

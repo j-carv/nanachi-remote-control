@@ -5,6 +5,9 @@ import {
   applyEvents,
   createChatState,
   withStatus,
+  withUserQuestionResult,
+  withFileRequestResult,
+  withPreviewClosed,
   type ChatItem,
 } from './reducer.js';
 
@@ -291,6 +294,193 @@ describe('permissões', () => {
   it('guarda opções e conteúdo para o cartão', () => {
     const state = run([request('r-1', 1)]);
     expect(state.permissions[0]?.options.map((o) => o.optionId)).toEqual(['allow', 'reject']);
+  });
+});
+
+describe('user questions', () => {
+  const options = [{ id: 'a', label: 'First option' }, { id: 'b', label: 'Second option' }];
+  const answered = { status: 'answered', option: options[0]! } as const;
+  const question = (requestId: string, seq: number) => ev(seq, {
+    kind: 'user_question', requestId, question: 'Which approach?', options, expiresAt: 1_800_000_300_000,
+  });
+  const pending = () => applyEvent(createChatState('running'), question('q-1', 1));
+
+  it('preserves the original question and every option when the confirmed choice arrives', () => {
+    const state = applyEvent(pending(), ev(2, { kind: 'user_question_resolved', requestId: 'q-1', result: answered }));
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({
+      kind: 'user_question', requestId: 'q-1', question: 'Which approach?', options, result: answered,
+    });
+    expect(state.status).toBe('running');
+    expect(state.permissions).toEqual([]);
+  });
+
+  it('never resolves a security permission or changes its waiting status when a question is answered', () => {
+    const state = applyEvents(pending(), [
+      ev(2, {
+        kind: 'permission_request', requestId: 'permission-1', title: 'Execute command', content: [],
+        options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
+      }),
+      ev(3, { kind: 'status', status: 'awaiting_permission' }),
+      ev(4, { kind: 'user_question_resolved', requestId: 'q-1', result: answered }),
+    ]);
+    expect(state.status).toBe('awaiting_permission');
+    expect(state.permissions.map((permission) => permission.requestId)).toEqual(['permission-1']);
+    expect(state.items[0]).toMatchObject({ result: answered });
+  });
+
+  it('resolves only the exact question and keeps explicit cancellation distinct from a choice', () => {
+    const state = applyEvents(pending(), [
+      question('q-2', 2),
+      ev(3, { kind: 'user_question_resolved', requestId: 'q-1', result: { status: 'cancelled', reason: 'user_cancelled' } }),
+      ev(4, { kind: 'user_question_resolved', requestId: 'unknown', result: answered }),
+    ]);
+    expect(state.items[0]).toMatchObject({ result: { status: 'cancelled', reason: 'user_cancelled' } });
+    expect(state.items[1]).toMatchObject({ requestId: 'q-2', result: null, unavailable: false });
+    expect(state.items).toHaveLength(2);
+  });
+
+  it('never revives or replaces a question on replay, even with a new event sequence', () => {
+    const events = [
+      question('q-1', 1),
+      ev(2, { kind: 'user_question_resolved', requestId: 'q-1', result: answered }),
+      ev(3, { kind: 'user_question', requestId: 'q-1', question: 'Replacement?', options: [...options].reverse(), expiresAt: 9 }),
+    ];
+    const once = run(events);
+    expect(once.items).toHaveLength(1);
+    expect(once.items[0]).toMatchObject({ question: 'Which approach?', options, result: answered });
+    expect(applyEvents(once, events)).toBe(once);
+  });
+
+  it.each<Body>([
+    { kind: 'turn_end', stopReason: 'end_turn' },
+    { kind: 'status', status: 'stopped' },
+    { kind: 'status', status: 'error' },
+    { kind: 'status', status: 'idle' },
+    { kind: 'error', message: 'Agent lost' },
+  ])('makes a pending question unavailable on $kind without inventing a result', (body) => {
+    const state = applyEvent(pending(), ev(2, body));
+    expect(state.items[0]).toMatchObject({ unavailable: true, result: null });
+  });
+
+  it('also closes questions on a session broadcast, including an unchanged stopped status', () => {
+    const state = withStatus(pending(), 'stopped');
+    expect(state.items[0]).toMatchObject({ unavailable: true, result: null });
+    expect(withStatus(state, 'stopped')).toBe(state);
+    expect(applyEvent(state, question('q-2', 2)).items[1]).toMatchObject({ unavailable: true, result: null });
+  });
+
+  it('keeps a question pending across permission auto-approval and unrelated streamed history', () => {
+    const state = applyEvents(pending(), [
+      ev(2, { kind: 'permission_auto_approved', toolCallId: 'read-1', title: 'Read file', optionId: 'allow-once' }),
+      ...Array.from({ length: 300 }, (_, index) => ev(index + 3, { kind: 'user_message', text: `Message ${index}` })),
+    ]);
+    expect(state.items[0]).toMatchObject({ requestId: 'q-1', result: null, unavailable: false });
+    expect(state.items.slice(-200).some((item) => item.kind === 'user_question')).toBe(false);
+  });
+
+  it('applies HTTP confirmation without advancing replay and ignores duplicate or contradictory confirmations', () => {
+    const state = pending();
+    expect(withUserQuestionResult(state, 'unknown', answered)).toBe(state);
+    const confirmed = withUserQuestionResult(state, 'q-1', answered);
+    expect(confirmed.lastSeq).toBe(state.lastSeq);
+    expect(withUserQuestionResult(confirmed, 'q-1', { status: 'cancelled', reason: 'expired' })).toBe(confirmed);
+    const replayed = applyEvents(confirmed, [
+      ev(2, { kind: 'user_question_resolved', requestId: 'q-1', result: answered }),
+      ev(3, { kind: 'agent_message_chunk', text: 'Continuing the same turn' }),
+    ]);
+    expect(replayed.items[0]).toMatchObject({ result: answered });
+    expect(replayed.items[1]).toMatchObject({ kind: 'agent_message', text: 'Continuing the same turn' });
+    expect(replayed.status).toBe('running');
+  });
+
+  it('accepts the authoritative resolution after a stale response or lifecycle boundary made the card unavailable', () => {
+    const unavailable = withUserQuestionResult(pending(), 'q-1', null);
+    expect(unavailable.items[0]).toMatchObject({ unavailable: true, result: null });
+    const resolved = applyEvent(unavailable, ev(2, { kind: 'user_question_resolved', requestId: 'q-1', result: answered }));
+    expect(resolved.items[0]).toMatchObject({ result: answered });
+  });
+});
+
+describe('requested files', () => {
+  const file = { fileId: 'f-request', name: 'report.pdf', mime: 'application/pdf', size: 42 };
+  const received = { status: 'received', file } as const;
+  const request = (seq = 1) => ev(seq, {
+    kind: 'file_request', requestId: 'r-1', prompt: 'Choose the report', accept: ['.pdf'], expiresAt: 1_800_000_300_000,
+  });
+  const pending = () => applyEvent(createChatState('running'), request());
+
+  it('does not answer from upload events, unrelated attachments, auto-approval or long streamed history', () => {
+    const state = applyEvents(pending(), [
+      ev(2, { kind: 'file', ...file, direction: 'from_phone' }),
+      ev(3, { kind: 'user_message', text: 'Other prompt', attachments: [file] }),
+      ev(4, { kind: 'permission_auto_approved', toolCallId: 'tool-1', title: 'Read', optionId: 'allow' }),
+      ...Array.from({ length: 300 }, (_, index) => ev(index + 5, { kind: 'agent_message_chunk', text: 'chunk' })),
+    ]);
+    expect(state.items[0]).toMatchObject({ result: null, unavailable: false, prompt: 'Choose the report' });
+    expect(state.status).toBe('running');
+  });
+
+  it('replays pending and resolved history without reviving requests or enqueuing a prompt', () => {
+    const state = applyEvents(pending(), [
+      ev(2, { kind: 'file_request_resolved', requestId: 'r-1', result: received }),
+      request(3),
+      ev(4, { kind: 'file_request_resolved', requestId: 'r-1', result: { status: 'cancelled', reason: 'expired' } }),
+    ]);
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({ result: received, unavailable: true });
+    expect(state.status).toBe('running');
+    expect(state.permissions).toEqual([]);
+  });
+
+  it.each<Body>([
+    { kind: 'turn_end', stopReason: 'end_turn' },
+    { kind: 'status', status: 'idle' },
+    { kind: 'status', status: 'stopped' },
+    { kind: 'error', message: 'Disconnected' },
+  ])('settles lifecycle boundaries without inventing received or cancelled on $kind', (body) => {
+    const state = applyEvent(pending(), ev(2, body));
+    expect(state.items[0]).toMatchObject({ result: null, unavailable: true });
+    const resolved = applyEvent(state, ev(3, { kind: 'file_request_resolved', requestId: 'r-1', result: { status: 'cancelled', reason: 'disconnected' } }));
+    expect(resolved.items[0]).toMatchObject({ result: { status: 'cancelled', reason: 'disconnected' } });
+  });
+
+  it('applies exact HTTP confirmation without advancing the cursor and accepts later authoritative events after stale errors', () => {
+    const state = pending();
+    const unavailable = withFileRequestResult(state, 'r-1', null);
+    expect(unavailable.lastSeq).toBe(state.lastSeq);
+    const resolved = applyEvent(unavailable, ev(2, { kind: 'file_request_resolved', requestId: 'r-1', result: received }));
+    expect(resolved.items[0]).toMatchObject({ result: received });
+    expect(withFileRequestResult(resolved, 'r-1', { status: 'cancelled', reason: 'user_cancelled' })).toBe(resolved);
+    expect(withFileRequestResult(state, 'unknown', received)).toBe(state);
+    expect(withStatus(state, 'stopped').items[0]).toMatchObject({ result: null, unavailable: true });
+  });
+});
+
+describe('preview history', () => {
+  const preview = (seq = 1) => ev(seq, {
+    kind: 'preview', previewId: 'p-1', title: 'Local app', port: 3000, path: '/demo?q=1', expiresAt: 1_800_001_800_000,
+  });
+
+  it('keeps the dev app available after turn end and idle, without modifying the plan or questions', () => {
+    const state = applyEvents(createChatState('running'), [
+      preview(), ev(2, { kind: 'turn_end', stopReason: 'end_turn' }), ev(3, { kind: 'status', status: 'idle' }),
+    ]);
+    expect(state.items[0]).toMatchObject({ closedReason: null, unavailable: false });
+    expect(withStatus(state, 'idle')).toBe(state);
+  });
+
+  it('retains revoked history, ignores duplicate creation and accepts server closure after stale restart state', () => {
+    const pending = applyEvent(createChatState('running'), preview());
+    const stale = withPreviewClosed(pending, 'p-1', null);
+    expect(stale.lastSeq).toBe(pending.lastSeq);
+    const closed = applyEvents(stale, [
+      ev(2, { kind: 'preview_closed', previewId: 'p-1', reason: 'expired' }), preview(3),
+    ]);
+    expect(closed.items).toHaveLength(1);
+    expect(closed.items[0]).toMatchObject({ closedReason: 'expired', unavailable: true });
+    expect(withPreviewClosed(closed, 'p-1', 'closed')).toBe(closed);
+    expect(withStatus(pending, 'stopped').items[0]).toMatchObject({ closedReason: null, unavailable: true });
   });
 });
 

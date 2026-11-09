@@ -1,9 +1,15 @@
 import { ApiError } from './api.js';
 import { t } from './i18n/index.js';
 
-/** Text for an API error, in the current language: one per `ApiErrorKind`. Anything else is the generic text. */
+/**
+ * Text for an API error, in the current language: one per `ApiErrorKind`. A 401 whose body says `device_expired` (the
+ * device sat unused past the daemon's limit) has its own text. Anything else is the generic text.
+ */
 export function describeError(error: unknown): string {
-  if (error instanceof ApiError) return t(`errors:api.${error.kind}`);
+  if (error instanceof ApiError) {
+    if (error.code === 'device_expired') return t('errors:device.expired');
+    return t(`errors:api.${error.kind}`);
+  }
   return t('errors:generic');
 }
 

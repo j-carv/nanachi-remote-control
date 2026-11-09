@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import type { ControlApi, ControlSection, SessionsViewState } from '../common/control-api.js';
-import type { DaemonStatus, TailscaleStatus } from '../common/types.js';
+import type { DaemonStatus, TailscaleStatus, UpdateCheckResult } from '../common/types.js';
 import { createControlI18n } from './i18n.js';
 import { initialSection, sessionsState, sessionsViewWanted } from './lib/sessions.js';
 import { isSidebarToggle, sectionForShortcut } from './lib/shortcuts.js';
 import { AccountsSection } from './sections/AccountsSection.js';
 import { DevicesSection } from './sections/DevicesSection.js';
+import { DiagnosticsSection } from './sections/DiagnosticsSection.js';
 import { FoldersSection } from './sections/FoldersSection.js';
-import { LogsSection } from './sections/LogsSection.js';
+import { LogsSection, type LogTab } from './sections/LogsSection.js';
 import { OverviewSection } from './sections/OverviewSection.js';
 import { SessionsStage, SessionsUnavailable } from './sections/SessionsSection.js';
 import { SettingsSection } from './sections/SettingsSection.js';
@@ -18,11 +19,14 @@ import { TitleBar } from './shell/TitleBar.js';
 import { ApiProvider, useApi } from './state/api.js';
 import { FoldersProvider, useFoldersStore } from './state/folders-store.js';
 import { createLiveValue } from './state/live.js';
+import { createLogViewStore } from './state/log-view.js';
 import { useOverlayActive } from './state/overlay.js';
-import { useResource } from './state/resource.js';
+import { usePairingSession, usePairingSessionStore } from './state/pairing-session.js';
+import { plain, useResource } from './state/resource.js';
 import { ShellContext, type ShellValue } from './state/shell.js';
 import { useSessionsViewport } from './state/sessions-viewport.js';
 import { useHoldToasts } from './state/toast-hold.js';
+import { useUninstallGuard, useUninstallGuardStore } from './state/uninstall-guard.js';
 import { cx } from './ui/cx.js';
 import { ToastProvider } from './ui/Toast.js';
 
@@ -58,6 +62,8 @@ function renderSection(section: ControlSection, daemon: DaemonStatus | null, vie
       return <AccountsSection />;
     case 'tailscale':
       return <TailscaleSection />;
+    case 'diagnostics':
+      return <DiagnosticsSection />;
     case 'logs':
       return <LogsSection />;
     case 'settings':
@@ -74,7 +80,15 @@ function Shell() {
   const [section, setSection] = useState<ControlSection>(() => initialSection(window.location.search));
   const [visited, setVisited] = useState<ReadonlySet<ControlSection>>(() => new Set<ControlSection>([initialSection(window.location.search)]));
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const pairingRequest = useRef(false);
+  // State that belongs to a section but must survive switching away from it: the section remounts on every switch.
+  const pairingStore = usePairingSessionStore(api);
+  const pairing = usePairingSession(pairingStore);
+  const [logsTab, setLogsTab] = useState<LogTab>('daemon');
+  const [logView] = useState(() => createLogViewStore());
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null);
+  // The uninstall button's guard: a switch of section remounts Settings, and the remount must neither re-enable it nor restart it.
+  const uninstallStore = useUninstallGuardStore();
+  const uninstallGuard = useUninstallGuard(uninstallStore);
   const focusTitle = useRef(false);
   const main = useRef<HTMLElement>(null);
 
@@ -97,6 +111,15 @@ function Shell() {
     return result;
   });
   const { reload: reloadOverview } = overview;
+  // When the overview and the daemon status last arrived: the Diagnostics section shows both, so a stale page is visible.
+  const [overviewSyncedAt, setOverviewSyncedAt] = useState<number | null>(null);
+  const [daemonEventAt, setDaemonEventAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (overview.state.status === 'ready') setOverviewSyncedAt(Date.now());
+  }, [overview.state]);
+  // The logs are read when the Diagnostics section opens (its own call reloads them): `enabled: false` postpones the first load.
+  const logs = useResource(() => plain(() => api.logs.get()), { enabled: false });
+  const { reload: reloadLogs } = logs;
   const folders = useFoldersStore(visited.has('folders'));
   const { reload: reloadFolders } = folders.resource;
   const foldersVisited = useRef(false);
@@ -119,6 +142,7 @@ function Shell() {
       api.onDaemonStatus((status) => {
         daemonLive.event(status);
         setDaemon(status);
+        setDaemonEventAt(Date.now());
         const key = `${status.state}:${status.port}:${String(status.restricted)}`;
         if (daemonKey.current === key) return;
         daemonKey.current = key;
@@ -130,12 +154,15 @@ function Shell() {
   useEffect(() => api.tailscale.onStatus(setTailscale), [api, setTailscale]);
   useEffect(() => api.sessions.onState(setViewState), [api]);
 
-  const navigate = useCallback((next: ControlSection, options?: { pairing?: boolean }): void => {
-    if (options?.pairing) pairingRequest.current = true;
-    focusTitle.current = true;
-    setSection(next);
-    setVisited((current) => (current.has(next) ? current : new Set(current).add(next)));
-  }, []);
+  const navigate = useCallback(
+    (next: ControlSection, options?: { pairing?: boolean }): void => {
+      if (options?.pairing) pairingStore.open();
+      focusTitle.current = true;
+      setSection(next);
+      setVisited((current) => (current.has(next) ? current : new Set(current).add(next)));
+    },
+    [pairingStore],
+  );
 
   // After a section change the title takes the focus, so keyboard and screen reader users start at the top of the page.
   useEffect(() => {
@@ -175,26 +202,49 @@ function Shell() {
 
   const openSessions = useCallback((): void => navigate('sessions'), [navigate]);
   const openOverview = useCallback((): void => navigate('overview'), [navigate]);
-  const takePairingRequest = useCallback((): boolean => {
-    const requested = pairingRequest.current;
-    pairingRequest.current = false;
-    return requested;
-  }, []);
 
   const shell = useMemo<ShellValue>(
     () => ({
       section,
       navigate,
-      takePairingRequest,
+      pairing,
+      logsTab,
+      setLogsTab,
+      logView,
+      updateCheck,
+      setUpdateCheck,
+      uninstallGuard,
       overview: overview.state,
       reloadOverview,
       daemon,
       tailscale,
       setTailscale,
+      overviewSyncedAt,
+      daemonEventAt,
+      logs: logs.state,
+      reloadLogs,
       openSessions,
       foldersDirty: folders.dirty,
     }),
-    [section, navigate, takePairingRequest, overview.state, reloadOverview, daemon, tailscale, openSessions, folders.dirty],
+    [
+      section,
+      navigate,
+      pairing,
+      logsTab,
+      logView,
+      updateCheck,
+      uninstallGuard,
+      overview.state,
+      reloadOverview,
+      daemon,
+      tailscale,
+      overviewSyncedAt,
+      daemonEventAt,
+      logs.state,
+      reloadLogs,
+      openSessions,
+      folders.dirty,
+    ],
   );
 
   const version = overview.state.status === 'ready' ? overview.state.data.appVersion : api.version;

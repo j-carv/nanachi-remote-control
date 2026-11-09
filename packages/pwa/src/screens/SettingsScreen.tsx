@@ -6,18 +6,27 @@ import { createApiClient, ApiError, type ApiClient } from '../api.js';
 import { describeError } from '../errorMessages.js';
 import { AgentAccountsSection } from '../components/AgentAccountsSection.js';
 import { LanguageSection } from '../components/LanguageSection.js';
+import { NanachiMcpSection } from '../components/NanachiMcpSection.js';
+import { LearningSection } from '../components/LearningSection.js';
 import { ListGroup, listMainClass, listRowClass, listRowPressClass, SectionHeading } from '../components/ListGroup.js';
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { DesktopSection } from '../desktop/DesktopSection.js';
+import { currentLanguage, type Language } from '../i18n/index.js';
 import type { Machine } from '../machines.js';
 import type { Navigator } from '../navigation.js';
-import { groupMachinesByKey, sameApplicationKey } from '../push/pushSetup.js';
+import { groupMachinesByKey, sameApplicationKey, type MachinePublicKey } from '../push/pushSetup.js';
 import { isPushSupported } from '../push/support.js';
-import { toSubscriptionRequest } from '../push/subscription.js';
+import {
+  resendSubscriptionLanguage,
+  subscriptionInLanguage,
+  toSubscriptionRequest,
+} from '../push/subscription.js';
 import { urlBase64ToUint8Array } from '../push/vapid.js';
+import { WhisperSettings } from '../whisper/WhisperSettings.js';
+import { TranscriptionSettings } from '../whisper/TranscriptionSettings.js';
 
 interface SettingsScreenProps {
   machines: readonly Machine[];
@@ -36,6 +45,19 @@ function readSupport(): boolean {
 
 function clientFor(machine: Machine): ApiClient {
   return createApiClient({ baseUrl: machine.baseUrl, token: machine.token });
+}
+
+/** VAPID public key of each other paired machine (publicKey is null when it did not answer). */
+async function keysOfOtherMachines(machines: readonly Machine[], selected: Machine): Promise<MachinePublicKey[]> {
+  return Promise.all(
+    machines
+      .filter((machine) => machine.id !== selected.id)
+      .map(async (machine) => ({
+        machineId: machine.id,
+        name: machine.name,
+        publicKey: await clientFor(machine).getPushKey().catch(() => null),
+      })),
+  );
 }
 
 /** Erro da API tem texto próprio; falha do navegador (ex.: recusou a inscrição) tem outro. */
@@ -103,24 +125,17 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
         applicationServerKey: keyBytes,
       });
 
-      const request = toSubscriptionRequest(subscription.toJSON());
-      if (request === null) {
+      const parsed = toSubscriptionRequest(subscription.toJSON());
+      if (parsed === null) {
         setFailure(t('notifications.noSubscription'));
         return;
       }
+      // The language goes with the subscription: the daemon writes this phone's push texts in it.
+      const request = subscriptionInLanguage(parsed, currentLanguage());
       await chosen.subscribePush(request);
       setSubscribed(true);
 
-      const others = await Promise.all(
-        machines
-          .filter((machine) => machine.id !== selected.id)
-          .map(async (machine) => ({
-            machineId: machine.id,
-            name: machine.name,
-            publicKey: await clientFor(machine).getPushKey().catch(() => null),
-          })),
-      );
-      const groups = groupMachinesByKey(selectedKey, others);
+      const groups = groupMachinesByKey(selectedKey, await keysOfOtherMachines(machines, selected));
       const lines: string[] = [];
       // Mesma chave = mesma inscrição vale nelas também.
       for (const group of groups.sameKey) {
@@ -165,6 +180,29 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
     }
   }
 
+  /**
+   * Language changed while push is on: sends the subscription again, with the new language, to the machines that hold
+   * it (the selected one and those with the same key). Without this phone's subscription for the selected key it does
+   * nothing; activation handles that case.
+   */
+  async function resendLanguage(language: Language) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription === null) return;
+      const chosen = clientFor(selected);
+      const selectedKey = await chosen.getPushKey();
+      if (!sameApplicationKey(subscription.options.applicationServerKey, urlBase64ToUint8Array(selectedKey))) return;
+      const sameKeyIds = new Set(
+        groupMachinesByKey(selectedKey, await keysOfOtherMachines(machines, selected)).sameKey.map((group) => group.machineId),
+      );
+      const targets = [chosen, ...machines.filter((machine) => sameKeyIds.has(machine.id)).map((machine) => clientFor(machine))];
+      await resendSubscriptionLanguage({ subscription: subscription.toJSON(), language, targets });
+    } catch {
+      // Best effort: without network or a service worker, the daemon keeps the old language until the next change.
+    }
+  }
+
   const pushDescription = busy
     ? subscribed
       ? t('notifications.disabling')
@@ -178,6 +216,8 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
       <ScreenHeader title={t('title')} onBack={() => nav.back()} />
 
       <AgentAccountsSection key={selected.id} machine={selected} nav={nav} />
+      <NanachiMcpSection key={selected.id} machine={selected} />
+      <LearningSection key={selected.id} machine={selected} />
 
       <section aria-labelledby="devices-title" className="flex flex-col gap-2">
         <SectionHeading icon={Smartphone} id="devices-title">
@@ -241,7 +281,9 @@ export function SettingsScreen({ machines, selected, nav }: SettingsScreenProps)
         )}
       </section>
 
-      <LanguageSection />
+      <TranscriptionSettings key={`transcription-${selected.id}`} machine={selected} />
+      <WhisperSettings key={selected.id} machine={selected} />
+      <LanguageSection onChange={(language) => void resendLanguage(language)} />
 
       <DesktopSection />
     </Screen>

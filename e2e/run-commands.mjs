@@ -8,7 +8,7 @@
  * /mcp abre a folha de subcomandos ("reconnect" envia "/mcp reconnect"; "enable" só põe o texto no campo); /usage
  * mostra a resposta sem escapes ANSI.
  * Confere: "/" no começo do composer abre o menu acima do campo (sem cobrir o campo), a busca filtra, o toque
- * insere "/<nome> " e o campo mantém o foco; o botão "/" abre o menu com busca e insere antes do texto; o comando
+ * insere "/<nome> " e o campo mantém o foco; um comando também pode ser inserido antes de um rascunho; o comando
  * enviado vira prompt de texto e o fake responde ao /eco; a mensagem com comando aparece destacada; agente sem
  * comandos mostra "Este agente não anunciou comandos"; alvos de toque com 44px ou mais.
  * Screenshots nos dois temas (claro e escuro) em e2e/screenshots/commands/.
@@ -165,7 +165,6 @@ const composer = () => page.locator('[data-slot="chat-textarea"]');
 const composerValue = () => composer().inputValue();
 const menu = () => page.locator('[data-slot="slash-menu"]');
 const menuItems = () => page.locator('[data-slot="slash-item"]');
-const commandButton = () => page.getByRole('button', { name: 'Comandos do agente', exact: true });
 
 async function goToWorkspaces() {
   for (let step = 0; step < 6; step += 1) {
@@ -324,42 +323,28 @@ async function stepTypedMenu() {
   await themeShots('dark');
 }
 
-async function stepButtonMenu() {
-  // Texto digitado antes: o botão põe o comando na frente do texto.
+async function stepCommandBeforeDraft() {
   await composer().fill('revisa o parser');
-  await commandButton().tap();
-  await page.locator('input[aria-label="Buscar comando"]').waitFor();
-  assert.ok(
-    await page.locator('input[aria-label="Buscar comando"]').evaluate((el) => document.activeElement === el),
-    'busca do menu recebe o foco',
-  );
-  await menuAboveComposer();
-  await page.locator('input[aria-label="Buscar comando"]').pressSequentially('eco');
+  await composer().press('Home');
+  await composer().pressSequentially('/ec');
   assert.deepEqual(await menuItems().locator('[data-slot="slash-name"]').allInnerTexts(), ['/eco']);
-  await shot('05-menu-botao-busca-escuro');
-  await themeShots('light');
-  await shot('06-menu-botao-busca-claro');
-  await themeShots('dark');
   await page.locator('[data-slot="slash-item"]', { hasText: '/eco' }).tap();
-  await until('botão põe "/eco " antes do texto', async () => (await composerValue()) === '/eco revisa o parser');
-  assert.equal(await menu().count(), 0, 'menu fecha depois de escolher');
-  assert.ok(await composerFocused(), 'depois de escolher, o foco volta ao campo');
-
-  // Fechar sem escolher: o "×" fecha e o texto não muda.
-  await commandButton().tap();
-  await page.locator('input[aria-label="Buscar comando"]').waitFor();
-  await page.getByRole('button', { name: 'Fechar comandos', exact: true }).tap();
-  assert.equal(await menu().count(), 0, 'o botão de fechar esconde o menu');
-  assert.equal(await composerValue(), '/eco revisa o parser', 'fechar não mexe no texto');
+  await until('the command is inserted before the draft', async () => (await composerValue()) === '/eco revisa o parser');
+  assert.equal(await menu().count(), 0, 'the menu closes after picking a command');
+  assert.ok(await composerFocused(), 'the composer keeps focus');
   await composer().fill('');
-  log('botão / com busca e inserção antes do texto OK');
+  log('typing / preserves the draft when picking a command');
 }
 
 async function stepTouchTargets() {
-  await commandButton().tap();
-  await page.locator('[data-slot="slash-item"]').first().waitFor();
+  await composer().fill('/');
+  await menuItems().first().waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Comandos do agente', exact: true }).count(), 0);
+  const send = button('Enviar');
+  assert.equal(await send.innerText(), '');
+  assert.equal(await send.locator('svg').count(), 1);
   const sizes = await page.evaluate(() => {
-    const boxes = [...document.querySelectorAll('[data-slot="slash-item"], button[aria-label="Fechar comandos"], [data-slot="command-button"], [data-slot="attach-button"]')];
+    const boxes = [...document.querySelectorAll('[data-slot="slash-item"], [data-slot="attach-button"], [data-slot="chat-input"] button[type="submit"]')];
     return boxes.map((el) => {
       const rect = el.getBoundingClientRect();
       return { name: el.getAttribute('aria-label') ?? el.className, h: rect.height, w: rect.width };
@@ -369,7 +354,7 @@ async function stepTouchTargets() {
     assert.ok(size.h >= 44 && size.w >= 44, `alvo de toque ${size.name} com ${size.w}x${size.h}`);
   }
   log(`alvos de toque ≥ 44px: ${sizes.length}`);
-  await commandButton().tap();
+  await composer().fill('');
   await menu().waitFor({ state: 'detached' });
 }
 
@@ -576,13 +561,13 @@ async function stepUsageDrawer() {
 async function stepNoCommands() {
   await newSession('Sem comandos');
   await until('sessão sem comandos ociosa', () => statusIs('idle'), 60_000);
-  await commandButton().tap();
+  await composer().fill('/');
   await page.locator('[data-slot="slash-empty"]', { hasText: 'Este agente não anunciou comandos.' }).waitFor();
   await shot('07-sem-comandos-escuro');
   await themeShots('light');
   await shot('08-sem-comandos-claro');
   await themeShots('dark');
-  await page.getByRole('button', { name: 'Fechar comandos', exact: true }).tap();
+  await composer().fill('');
   assert.equal(await menu().count(), 0, 'fecha o menu sem comandos');
   log('agente sem comandos OK');
 }
@@ -619,7 +604,7 @@ async function main() {
 
   await pairAndWorkspace();
   await stepTypedMenu();
-  await stepButtonMenu();
+  await stepCommandBeforeDraft();
   await stepTouchTargets();
   await stepNativePicker();
   await stepSubcommandSheet();

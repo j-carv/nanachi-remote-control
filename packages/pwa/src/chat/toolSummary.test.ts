@@ -50,7 +50,7 @@ describe('summarizeTool', () => {
   it('mostra o arquivo quando o título não o contém', () => {
     const summary = summarizeTool(tool({ title: 'Ler arquivo', locations: ['src/x.ts'] }));
 
-    expect(summary.file).toBe('src/x.ts');
+    expect(summary.file).toBe('x.ts');
   });
 
   it('não repete o arquivo quando o título já o traz', () => {
@@ -62,13 +62,20 @@ describe('summarizeTool', () => {
   it('sem título usa o arquivo como título', () => {
     const summary = summarizeTool(tool({ title: '', locations: ['src/x.ts'] }));
 
-    expect(summary.title).toBe('src/x.ts');
+    expect(summary.title).toBe('x.ts');
   });
 
   it('rótulo de status: sem status vira Ferramenta', () => {
     expect(summarizeTool(tool({ status: null })).statusText).toBe('Ferramenta');
     expect(summarizeTool(tool({ status: 'in_progress' })).statusText).toBe('Em andamento');
     expect(summarizeTool(tool({ status: 'failed' })).statusText).toBe('Falhou');
+  });
+
+  it('shortens Windows locations in titles without changing the received data', () => {
+    const item = tool({ title: 'Read C:\\project\\src\\parser.ts', locations: ['C:\\project\\src\\parser.ts'] });
+    expect(summarizeTool(item).title).toBe('Read parser.ts');
+    expect(summarizeTool(item).file).toBeNull();
+    expect(item.locations).toEqual(['C:\\project\\src\\parser.ts']);
   });
 });
 

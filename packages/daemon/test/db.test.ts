@@ -1,6 +1,7 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db.js';
@@ -37,7 +38,7 @@ function tableNames(database: Database.Database): string[] {
 }
 
 describe('openDatabase', () => {
-  it('cria as tabelas das migrações 1 a 9 e fixa user_version em 9', () => {
+  it('creates migrations 1 through 13 and records user_version 13', () => {
     db = openDatabase(join(dir, 'data.db'));
     expect(tableNames(db)).toEqual([
       'agent_accounts',
@@ -45,14 +46,81 @@ describe('openDatabase', () => {
       'devices',
       'events',
       'files',
+      'learning_entries',
+      'learning_history',
+      'learning_review_applied',
+      'learning_review_changes',
+      'learning_reviews',
+      'learning_search',
+      'learning_search_config',
+      'learning_search_content',
+      'learning_search_data',
+      'learning_search_docsize',
+      'learning_search_idx',
+      'learning_tombstones',
       'loops',
       'machine',
+      'message_search',
+      'message_search_config',
+      'message_search_content',
+      'message_search_data',
+      'message_search_docsize',
+      'message_search_idx',
       'pair_codes',
       'push_subscriptions',
+      'schedule_runs',
+      'schedules',
       'sessions',
       'workspaces',
     ]);
-    expect(db.pragma('user_version', { simple: true })).toBe(9);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
+  });
+
+  it('migration 11: push_subscriptions.language is a nullable TEXT (no language = NULL, pt-BR)', () => {
+    db = openDatabase(join(dir, 'data.db'));
+    const column = db
+      .prepare<[], { name: string; type: string; notnull: number }>('PRAGMA table_info(push_subscriptions)')
+      .all()
+      .find((row) => row.name === 'language');
+    expect(column).toMatchObject({ type: 'TEXT', notnull: 0, dflt_value: null });
+  });
+
+  it('migration 11 on a database already at version 10: gains the column and old subscriptions have no language', () => {
+    const file = join(dir, 'data.db');
+    const legacy = new BetterSqlite3(file);
+    legacy.exec(`
+      CREATE TABLE sessions (id TEXT PRIMARY KEY);
+      CREATE TABLE push_subscriptions (
+        endpoint   TEXT PRIMARY KEY,
+        device_id  TEXT NOT NULL,
+        keys       TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO push_subscriptions VALUES ('https://push.example.test/old', 'd1', '{"p256dh":"p","auth":"a"}', 1);
+    `);
+    legacy.pragma('user_version = 10');
+    legacy.close();
+
+    db = openDatabase(file);
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(db.prepare<[], { endpoint: string; language: string | null }>('SELECT endpoint, language FROM push_subscriptions').all()).toEqual([
+      { endpoint: 'https://push.example.test/old', language: null },
+    ]);
+  });
+
+  it('migration 13 preserves existing sessions and adds nullable automation ownership', () => {
+    const file = join(dir, 'data.db');
+    const legacy = new BetterSqlite3(file);
+    legacy.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY); INSERT INTO sessions VALUES ('ordinary');");
+    legacy.pragma('user_version = 12');
+    legacy.close();
+
+    db = openDatabase(file);
+    expect(db.prepare('SELECT id, automation_run_id FROM sessions').all()).toEqual([
+      { id: 'ordinary', automation_run_id: null },
+    ]);
+    expect(tableNames(db)).toEqual(expect.arrayContaining(['schedules', 'schedule_runs']));
+    expect(db.pragma('user_version', { simple: true })).toBe(13);
   });
 
   it('migração 9: sessions.account_id é TEXT anulável (sem conta = NULL, a principal), e as contas de agente são únicas por id', () => {
@@ -106,7 +174,7 @@ describe('openDatabase', () => {
       db!.prepare<[], { name: string }>(`PRAGMA table_info(${table})`).all().map((row) => row.name);
 
     expect(columns('files')).toEqual(['id', 'session_id', 'name', 'mime', 'size', 'direction', 'path', 'created_at']);
-    expect(columns('push_subscriptions')).toEqual(['endpoint', 'device_id', 'keys', 'created_at']);
+    expect(columns('push_subscriptions')).toEqual(['endpoint', 'device_id', 'keys', 'created_at', 'language']);
     expect(() =>
       db!.prepare('INSERT INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('f1', 's1', 'a', 'a/b', 1, 'outro', 'p', 0),
     ).toThrow(/CHECK/);
@@ -177,10 +245,11 @@ describe('openDatabase', () => {
   it('reabrir um banco já migrado mantém a versão e os dados', () => {
     db = openDatabase(join(dir, 'data.db'));
     ensureMachine(db, 'PC');
+    const version = db.pragma('user_version', { simple: true });
     db.close();
 
     db = openDatabase(join(dir, 'data.db'));
-    expect(db.pragma('user_version', { simple: true })).toBe(9);
+    expect(db.pragma('user_version', { simple: true })).toBe(version);
     expect(ensureMachine(db, 'PC').name).toBe('PC');
   });
 

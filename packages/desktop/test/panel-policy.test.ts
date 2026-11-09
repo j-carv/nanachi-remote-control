@@ -4,6 +4,7 @@ import {
   daemonOrigin,
   decideWindowOpen,
   isPermissionAllowed,
+  isSessionMicrophoneAllowed,
   isSameOrigin,
   panelWebPreferences,
   shouldAllowNavigation,
@@ -65,6 +66,14 @@ describe('window.open and target=_blank', () => {
 });
 
 describe('permissions', () => {
+  it('allows audio capture only in the main frame of the local sessions view', () => {
+    expect(isSessionMicrophoneAllowed(true, true, ['audio'], `${ORIGIN}/`, ORIGIN)).toBe(true);
+    expect(isSessionMicrophoneAllowed(false, true, ['audio'], ORIGIN, ORIGIN)).toBe(false);
+    expect(isSessionMicrophoneAllowed(true, false, ['audio'], ORIGIN, ORIGIN)).toBe(false);
+    expect(isSessionMicrophoneAllowed(true, true, ['video'], ORIGIN, ORIGIN)).toBe(false);
+    expect(isSessionMicrophoneAllowed(true, true, ['audio', 'video'], ORIGIN, ORIGIN)).toBe(false);
+    expect(isSessionMicrophoneAllowed(true, true, ['audio'], 'https://other.example/', ORIGIN)).toBe(false);
+  });
   it('allows clipboard write and fullscreen for the daemon origin only', () => {
     expect(isPermissionAllowed('clipboard-sanitized-write', `${ORIGIN}/`, ORIGIN)).toBe(true);
     expect(isPermissionAllowed('fullscreen', `${ORIGIN}/`, ORIGIN)).toBe(true);

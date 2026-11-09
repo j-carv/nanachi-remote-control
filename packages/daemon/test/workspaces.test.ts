@@ -199,7 +199,7 @@ describe('GET /api/agents', () => {
         { id: 'omp', label: 'Oh My Pi', kind: 'acp' },
         { id: 'claude', label: 'Claude Code', kind: 'acp' },
         { id: 'codex', label: 'Codex', kind: 'acp' },
-        { id: 'agy', label: 'Antigravity', kind: 'pty' },
+        { id: 'agy', label: 'Antigravity', kind: 'acp' },
       ],
     });
   });
@@ -214,7 +214,7 @@ describe('GET /api/agents', () => {
         { id: 'omp', label: 'Oh My Pi', kind: 'acp' },
         { id: 'claude', label: 'Claude Code', kind: 'acp' },
         { id: 'codex', label: 'Codex', kind: 'acp' },
-        { id: 'agy', label: 'Antigravity', kind: 'pty' },
+        { id: 'agy', label: 'Antigravity', kind: 'acp' },
         { id: 'x', label: 'Outro', kind: 'acp' },
       ],
     });

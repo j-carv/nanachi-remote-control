@@ -1,19 +1,32 @@
+/// <reference lib="es2024.promise" />
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import * as acp from '@agentclientprotocol/sdk';
 import {
+  MAX_QUEUED_PROMPTS,
   SHELL_AGENT_ID,
   SessionEventSchema,
   type AgentConfig,
   type AgentSessionsResponse,
   type AvailableCommand,
+  type AskUserRequest,
+  type AskUserResult,
   type ConfigValue,
   type CreateSessionRequest,
   type FileInfo,
   type Loop,
+  type LearningNotice,
   type LoopRequest,
+  type QueuedPrompt,
   type ResetRedeemResponse,
   type ResetsResponse,
+  type PreviewCloseReason,
+  type PreviewInfo,
+  type RequestFileAgentResult,
+  type RequestFileRequest,
+  type RequestFileResult,
+  type ScheduleModelsResponse,
+  type ScheduleRun,
   type ServerMessage,
   type Session,
   type SessionConfigOption,
@@ -37,7 +50,6 @@ import {
   MODE_OPTION_ID,
   modeConfigOption,
   newestFirst,
-  PHONE_SEND_HINT,
   promptBlocks,
   restoreMethodOf,
   sameWorkingDirectory,
@@ -48,6 +60,8 @@ import {
   type PromptAttachment,
   type RestoreMethod,
 } from './acp-mapping.js';
+import { isModeAllowed, offeredConfigOptions } from './agent-modes.js';
+import { yoloApproval } from './yolo.js';
 import type { ToolCallMemory } from './tool-background.js';
 import { AccountSelectionError, type AccountLauncher } from './accounts/launch.js';
 import { mergeEnv } from './agent-env.js';
@@ -55,6 +69,7 @@ import { AgentImages } from './agent-images.js';
 import { agentBinDirs, phoneSendBinDir, withPathPrepended } from './agent-path.js';
 import { USAGE_CACHE_MS, USAGE_CANCEL_GRACE_MS, USAGE_IDLE_MS, USAGE_TIMEOUT_MS, usageCommandOf, usageTimeoutOf } from './agent-usage.js';
 import { AgentTokens } from './agent-tokens.js';
+import { nanachiMcpDescriptor } from './nanachi-mcp.js';
 import { resolveAgentCommand, type AgentCommand } from './agent-command.js';
 import { PathError, resolveInsideRoots } from './roots.js';
 import { chooseShell, localShells, shellEnvironment, type ShellOption } from './shells.js';
@@ -86,6 +101,9 @@ import { OutputBatcher, TERMINAL_RETENTION_BYTES } from './terminal-output.js';
 import { UsageProbe, UsageProbeError } from './usage-probe.js';
 import { ResetError, ResetService, type ResetTarget } from './reset-service.js';
 import { resetSourceOf } from './usage-resets.js';
+import { UserQuestions } from './user-questions.js';
+import { FileRequests } from './file-requests.js';
+import type { LearningTurnSource } from './learning-service.js';
 
 export const DEFAULT_TITLE = 'Nova sessão';
 
@@ -145,6 +163,7 @@ const LIST_TIMEOUT_MS = 30_000;
 const LIST_MAX_PAGES = 5;
 
 export type SessionErrorCode =
+  | 'prompt_queue_full'
   | 'not_found'
   | 'unknown_agent'
   | 'invalid_request'
@@ -196,6 +215,7 @@ export interface SessionListener {
   event(event: SessionEvent): void;
   commands(commands: AvailableCommand[]): void;
   configOptions(configOptions: SessionConfigOption[]): void;
+  promptQueue(queue: QueuedPrompt[]): void;
   /** Loop da sessão mudou (null = sem loop). Ver PLAN.md, modo Loop. */
   loop(loop: Loop | null): void;
 }
@@ -208,7 +228,9 @@ export interface SessionManagerOptions {
   broadcast(message: ServerMessage): void;
   /** Base HTTP que o agente usa para falar com o daemon (`NANACHI_URL`, ex.: http://127.0.0.1:7777). */
   agentApiUrl(): string;
-  /** Aviso para turn_end, permission_request, error e file (o Web Push entra aqui depois). */
+  /** Opt-in for the selected ACP agent, sampled only when its session process opens. Absent means disabled. */
+  nanachiMcpEnabled?: ((agentId: string) => boolean) | undefined;
+  /** Attention notices, including explicit questions, file requests and preview cards. */
   onNotify?: NotifyHandler | undefined;
   /** `<NANACHI_HOME>/worktrees`: cada worktree vai em `<raiz>/<workspaceId>/<8 chars do id da sessão>`. */
   worktreesRoot: string;
@@ -222,6 +244,16 @@ export interface SessionManagerOptions {
   usageCacheMs?: number | undefined;
   /** Ociosidade até o processo de uso morrer. Padrão: 2 min. Testes usam valor curto. */
   usageIdleMs?: number | undefined;
+  /** Question deadline. Defaults to the shared five-minute MCP timeout; tests can use a short deadline. */
+  askUserTimeoutMs?: number | undefined;
+  /** File request deadline. Defaults to five minutes; tests can use a short deadline. */
+  requestFileTimeoutMs?: number | undefined;
+  /** Revoke session-owned ephemeral resources after pending requests are cancelled and the process detaches. */
+  onSessionDetached?: ((sessionId: string) => void) | undefined;
+  /** Successful real turns only, after their streamed events and turn_end have been persisted and broadcast. */
+  onTurnCompleted?: ((sessionId: string, sourceTurnSeq: number) => void) | undefined;
+  /** Cancels background reviews before source cancellation, including a source that currently has no process. */
+  onSessionRevoked?: ((sessionId: string) => void) | undefined;
   /** `<NANACHI_HOME>/usage-probe`: pasta de trabalho dos processos de uso, fora dos projetos. */
   usageProbeRoot: string;
   /** Versão do daemon (clientInfo do app-server do codex, resets). */
@@ -260,13 +292,24 @@ interface LiveTerminal {
 
 interface PendingPermission {
   requestId: string;
+  /** Tool call que pede a permissão: um novo pedido do mesmo tool call enquanto esta espera não avisa de novo. */
+  toolCallId: string;
   optionIds: readonly string[];
   resolve(optionId: string | null): void;
 }
 
 /** Estado em memória de uma sessão com processo vivo. O banco é a fonte para o resto. */
+interface PendingPrompt {
+  id: string;
+  text: string;
+  attachmentIds: readonly string[];
+  failed: boolean;
+}
+
 interface LiveSession {
   readonly id: string;
+  /** The agent this process runs (the session's `agent`). Picks the modes Nanachi offers (agent-modes.ts). */
+  readonly agentId: string;
   readonly child: AgentChild;
   readonly connection: acp.ClientConnection;
   /** Resolve quando o processo sai (ou falha ao subir). Usado para esperar o kill. */
@@ -275,10 +318,16 @@ interface LiveSession {
   readonly claim: AccountClaim;
   acpSessionId: string | undefined;
   configOptions: SessionConfigOption[];
+  /** Exact account and advertised model captured before the foreground turn starts. */
+  turnSource: LearningTurnSource | undefined;
   /** Agente anunciou só `modes`: a opção "mode" foi sintetizada e troca por session/set_mode. */
   usesSetMode: boolean;
   status: SessionStatus;
   promptInFlight: boolean;
+  cancelRequested: boolean;
+  promptQueue: PendingPrompt[];
+  drainingPromptQueue: boolean;
+  yolo: boolean;
   pending: PendingPermission | undefined;
   /** Entre session/load e a resposta dele: os updates reenviados são descartados (o banco já tem o histórico). */
   replaying: boolean;
@@ -288,8 +337,8 @@ interface LiveSession {
   restorable: boolean | undefined;
   /** Só na importação: o replay do load vira eventos em vez de ser descartado. */
   history: HistoryRecord | undefined;
-  /** Sessão criada pelo app e ainda sem primeiro prompt: esse prompt leva o aviso do phone-send. */
-  phoneHintPending: boolean;
+  /** MCP definitions and credentials are fixed for this process and refreshed by the normal restart path. */
+  readonly mcpServers: acp.McpServer[];
   /** Tool calls com background já vistos nesta sessão (PLAN.md, subagentes e segundo plano). Some ao recarregar o daemon. */
   toolCalls: ToolCallMemory;
 }
@@ -304,6 +353,19 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     timer = setTimeout(() => reject(new Error(`timeout (${ms} ms) em ${label}`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Bounds startup/profile work without allowing a cancelled continuation to launch a process later. */
+function scheduledWait<T>(promise: Promise<T>, signal: AbortSignal, ms = START_TIMEOUT_MS): Promise<T> {
+  signal.throwIfAborted();
+  const interrupted = Promise.withResolvers<never>();
+  const abort = (): void => interrupted.reject(signal.reason ?? new Error('schedule cancelled'));
+  signal.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => interrupted.reject(new SessionError('agent_timeout', 'scheduled agent startup timed out')), ms);
+  return Promise.race([promise, interrupted.promise]).finally(() => {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+  });
 }
 
 /** Chave dos resets de uma conta extra do codex (cache e resgate em curso): `<agente>:<conta>`. */
@@ -335,10 +397,15 @@ export class SessionManager {
    * mas já contam para o teto de sessões.
    */
   private readonly reserved = new Map<string, AccountClaim | undefined>();
+  /** Scheduled rows occupy a live slot, while profile preparation still needs an account claim. */
+  private readonly scheduledClaims = new Map<string, AccountClaim>();
+  private readonly scheduledProcesses = new Map<string, LiveSession>();
   /** Retomadas em curso, por sessão: quem chega enquanto uma roda espera a mesma (ver resumeOnce). */
   private readonly resumes = new Map<string, Promise<ResumeOutcome>>();
   /** Sessões no meio de uma troca de conta (parar o agente e retomar): outra troca espera. A conta de antes e a de depois. */
   private readonly switching = new Map<string, readonly AccountClaim[]>();
+  /** Excludes resumes and account changes while owned attachments and history are removed. */
+  private readonly forgetting = new Set<string>();
   private readonly agentTokens = new AgentTokens();
   /** Agentes com uma listagem em andamento (no máximo uma por agente). */
   private readonly listing = new Set<string>();
@@ -347,6 +414,8 @@ export class SessionManager {
   private readonly resets: ResetService;
   private readonly agentImages: AgentImages;
   private readonly loops: LoopRunner;
+  private readonly userQuestions: UserQuestions;
+  private readonly fileRequests: FileRequests;
 
   constructor(private readonly options: SessionManagerOptions) {
     this.agentListTimeoutMs = options.agentListTimeoutMs ?? LIST_TIMEOUT_MS;
@@ -402,6 +471,14 @@ export class SessionManager {
       allowedRoots: options.config.allowedRoots,
       log: options.log,
     });
+    this.userQuestions = new UserQuestions(options.db, (sessionId, event) => {
+      const recorded = this.appendEvent(sessionId, event, { notify: event.kind === 'user_question' });
+      if (recorded === undefined) throw new Error('failed to persist user question');
+    }, options.askUserTimeoutMs);
+    this.fileRequests = new FileRequests(options.db, (sessionId, event) => {
+      const recorded = this.appendEvent(sessionId, event, { notify: event.kind === 'file_request' });
+      if (recorded === undefined) throw new Error('failed to persist file request');
+    }, options.requestFileTimeoutMs);
   }
 
   async create(input: CreateSessionRequest): Promise<Session> {
@@ -445,6 +522,151 @@ export class SessionManager {
     if (agent.kind === 'pty') this.startTerminal(id, cwd, agent);
     else await this.start(id, cwd, agent, input.config ?? {});
     return this.load(id);
+  }
+
+  /** Validation only: explicit accounts never inherit the foreground agent's active account. */
+  validateScheduledAgent(workspaceId: string, agentId: string, accountId: string): void {
+    const workspace = findWorkspaceById(this.options.db, workspaceId);
+    if (workspace === undefined) throw new SessionError('not_found', 'workspace não encontrado');
+    try {
+      resolveInsideRoots(workspace.path, this.options.config.allowedRoots);
+    } catch (error) {
+      if (error instanceof PathError) throw new SessionError(error.code === 'outside_roots' ? 'outside_roots' : 'invalid_request', error.message);
+      throw error;
+    }
+    if (this.agentOf(agentId).kind !== 'acp') throw new SessionError('not_acp', 'agendamento exige agente ACP');
+    this.chooseAccount(agentId, accountId);
+  }
+
+  /** Fresh automation ownership and subscription are installed before the first broadcast or asynchronous startup. */
+  async createScheduled(run: ScheduleRun, signal: AbortSignal, created: (sessionId: string) => void): Promise<Session> {
+    if (run.task.kind !== 'agent') throw new SessionError('invalid_request', 'agendamento não é de agente');
+    const task = run.task;
+    signal.throwIfAborted();
+    this.validateScheduledAgent(run.workspaceId, task.agentId, task.accountId);
+    this.requireFreeSlot();
+    const workspace = findWorkspaceById(this.options.db, run.workspaceId);
+    if (workspace === undefined) throw new SessionError('not_found', 'workspace não encontrado');
+    const cwd = resolveInsideRoots(workspace.path, this.options.config.allowedRoots);
+    const agent = this.agentOf(task.agentId);
+    const accountId = this.chooseAccount(task.agentId, task.accountId);
+    const id = randomUUID();
+    insertSession(this.options.db, {
+      id, workspaceId: run.workspaceId, agent: task.agentId, kind: 'acp',
+      title: run.scheduleName, status: 'starting', createdAt: Date.now(),
+      accountId, automationRunId: run.id,
+    });
+    const abort = (): void => { void this.stopScheduled(id).catch(() => undefined); };
+    signal.addEventListener('abort', abort, { once: true });
+    this.scheduledClaims.set(id, { agent: task.agentId, accountId });
+    try {
+      created(id);
+      signal.throwIfAborted();
+      this.announceStatus(id, 'starting');
+      await scheduledWait(this.options.accounts.prepare(task.agentId, accountId), signal);
+      signal.throwIfAborted();
+      if (this.load(id).status !== 'starting') throw new SessionError('agent_failed', 'scheduled startup was stopped');
+      resolveInsideRoots(cwd, this.options.config.allowedRoots);
+      // The explicit account is reselected after preparation; deletion may not silently switch it to principal.
+      this.chooseAccount(task.agentId, task.accountId);
+      const live = this.spawnLive(id, cwd, agent, {
+        claim: { agent: task.agentId, accountId },
+        env: this.options.accounts.env(task.agentId, accountId),
+      });
+      this.scheduledProcesses.set(id, live);
+      const startup = async (): Promise<void> => {
+        const initialized = await live.connection.agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {},
+        });
+        signal.throwIfAborted();
+        if (!this.isCurrent(live)) throw new SessionError('agent_failed', 'scheduled agent stopped during startup');
+        live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
+        live.restorable = restoreMethodOf(initialized.agentCapabilities) !== undefined;
+        const opened = await live.connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: live.mcpServers });
+        signal.throwIfAborted();
+        if (!this.isCurrent(live)) throw new SessionError('agent_failed', 'scheduled agent stopped during startup');
+        live.acpSessionId = opened.sessionId;
+        updateSession(this.options.db, id, { acpSessionId: opened.sessionId }, Date.now());
+        this.applyAgentConfig(live, opened);
+        this.persistConfig(live);
+        if (task.model !== '') {
+          const model = live.configOptions.find((option) => option.type === 'select' && (option.category === 'model' || option.id === 'model'));
+          if (model === undefined) throw new SessionError('invalid_request', 'agente não oferece seleção de modelo');
+          const response = await live.connection.agent.request(acp.methods.agent.session.setConfigOption, {
+            sessionId: opened.sessionId, configId: model.id, value: task.model,
+          });
+          signal.throwIfAborted();
+          if (!this.isCurrent(live)) throw new SessionError('agent_failed', 'scheduled agent stopped during model selection');
+          live.configOptions = flattenConfigOptions(response.configOptions);
+          const applied = live.configOptions.find((option) => option.id === model.id);
+          if (applied?.type !== 'select' || applied.currentValue !== task.model) {
+            throw new SessionError('invalid_request', 'modelo solicitado indisponível; nenhum prompt foi enviado');
+          }
+          this.persistConfig(live);
+        }
+        this.setStatus(id, 'idle');
+      };
+      await scheduledWait(Promise.race([
+        startup(),
+        live.exited.then(() => { throw new SessionError('agent_failed', 'agente encerrou durante inicialização'); }),
+      ]), signal);
+      signal.throwIfAborted();
+      return this.load(id);
+    } catch (error) {
+      if (!signal.aborted) this.fail(id, messageOf(error));
+      await this.stopScheduled(id);
+      throw error;
+    } finally {
+      this.scheduledClaims.delete(id);
+      signal.removeEventListener('abort', abort);
+    }
+  }
+
+  /** Joins the owned process even when an ACP failure has already detached it from the ordinary live map. */
+  async stopScheduled(sessionId: string): Promise<void> {
+    const process = this.scheduledProcesses.get(sessionId);
+    try {
+      await this.stop(sessionId);
+      if (process !== undefined) {
+        killAgent(process.child);
+        await withTimeout(process.exited, KILL_TIMEOUT_MS, 'encerrar agente agendado');
+      }
+    } finally {
+      this.scheduledProcesses.delete(sessionId);
+    }
+  }
+
+  /** Temporary initialize/newSession only: no prompt, permission grants, persisted session or settings mutation. */
+  async scheduleModels(workspaceId: string, agentId: string, requestedAccount: string, signal: AbortSignal): Promise<ScheduleModelsResponse> {
+    signal.throwIfAborted();
+    this.validateScheduledAgent(workspaceId, agentId, requestedAccount);
+    this.requireFreeSlot();
+    if (this.listing.has(agentId)) throw new SessionError('busy', 'já há uma consulta em andamento para este agente');
+    const workspace = findWorkspaceById(this.options.db, workspaceId);
+    if (workspace === undefined) throw new SessionError('not_found', 'workspace não encontrado');
+    const cwd = resolveInsideRoots(workspace.path, this.options.config.allowedRoots);
+    const accountId = this.chooseAccount(agentId, requestedAccount);
+    const claimId = randomUUID();
+    this.reserved.set(claimId, { agent: agentId, accountId });
+    this.listing.add(agentId);
+    try {
+      await scheduledWait(this.options.accounts.prepare(agentId, accountId), signal, this.agentListTimeoutMs);
+      signal.throwIfAborted();
+      this.chooseAccount(agentId, requestedAccount);
+      return await this.probeAgent(this.agentOf(agentId), cwd, this.agentListTimeoutMs, async (connection) => {
+        await connection.agent.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} });
+        signal.throwIfAborted();
+        const opened = await connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: [] });
+        signal.throwIfAborted();
+        const option = flattenConfigOptions(opened.configOptions ?? []).find((item) =>
+          item.type === 'select' && (item.category === 'model' || item.id === 'model'));
+        if (option?.type !== 'select') return { models: [], currentModel: null, supported: false };
+        return { models: option.options.map((item) => ({ id: item.value, name: item.name })), currentModel: option.currentValue, supported: true };
+      }, this.options.accounts.env(agentId, accountId), signal);
+    } finally {
+      this.reserved.delete(claimId);
+      this.listing.delete(agentId);
+    }
   }
 
   /**
@@ -578,6 +800,7 @@ export class SessionManager {
    * mesmo resultado, então nunca sobe dois agentes para a mesma sessão. As opções da segunda chamada são ignoradas.
    */
   private resumeOnce(sessionId: string, options: ResumeOptions): Promise<ResumeOutcome> {
+    if (this.forgetting.has(sessionId)) throw new SessionError('session_busy', 'Session history cleanup is in progress.');
     const running = this.resumes.get(sessionId);
     if (running !== undefined) return running;
     const attempt = this.startResume(sessionId, options);
@@ -674,14 +897,20 @@ export class SessionManager {
    * sobe agente), retomada, leitura dos anexos (imagem inline depende do agente já subido), conferência de estado.
    * Depois da conferência de estado não há await.
    */
-  async prompt(sessionId: string, text: string, attachmentIds: readonly string[] = [], turn?: LoopTurn): Promise<void> {
+  async prompt(
+    sessionId: string,
+    text: string,
+    attachmentIds: readonly string[] = [],
+    turn?: LoopTurn,
+    queued?: PendingPrompt,
+  ): Promise<void> {
     const records = this.attachmentRecords(sessionId, attachmentIds);
     await this.ensureLive(sessionId);
     this.requireAcp(sessionId);
     const attachments = await this.loadAttachments(this.requireLive(sessionId), records);
 
     const live = this.requireLive(sessionId);
-    if (live.status !== 'idle' || live.acpSessionId === undefined) {
+    if (live.status !== 'idle' || live.acpSessionId === undefined || live.promptQueue[0] !== queued) {
       throw new SessionError('session_busy', `sessão não está ociosa (status: ${live.status})`);
     }
     const acpSessionId = live.acpSessionId;
@@ -695,36 +924,49 @@ export class SessionManager {
       ...(infos.length > 0 ? { attachments: infos } : {}),
       ...(turn !== undefined ? { loop: true as const, loopIteration: turn.iteration } : {}),
     });
+    if (queued !== undefined) {
+      live.promptQueue.shift();
+      this.broadcastPromptQueue(sessionId);
+    }
     const session = this.load(sessionId);
     if (session.title === DEFAULT_TITLE && title !== undefined) {
       updateSession(this.options.db, sessionId, { title }, Date.now());
       this.broadcastSession(sessionId);
     }
 
-    // O aviso do phone-send vai só no primeiro prompt de sessão criada pelo app, e só se o config deixar.
-    // Prompt de comando (`/loop ...`) não leva o aviso e não o consome: o agente lê o comando no começo do texto.
-    // A instrução do loop dinâmico também não vai para comando: ela viraria argumento dele.
-    const command = isSlashCommand(text);
-    const hint = live.phoneHintPending && !command && this.options.config.phoneSendHint ? PHONE_SEND_HINT : undefined;
-    if (!command) live.phoneHintPending = false;
-    const extra = [hint, turn?.selfPaced === true ? LOOP_SELF_PACE_INSTRUCTION : undefined].filter(
-      (part): part is string => part !== undefined,
-    );
+    // The dynamic loop instruction stays out of slash commands, where it would become an argument.
+    const extra = turn?.selfPaced === true && !isSlashCommand(text) ? LOOP_SELF_PACE_INSTRUCTION : undefined;
+    live.cancelRequested = false;
+    const sourceModel = live.configOptions.find((option) => option.type === 'select' && (option.category === 'model' || option.id === 'model'));
+    live.turnSource = {
+      agentId: live.agentId,
+      accountId: live.claim.accountId,
+      model: sourceModel?.type === 'select' ? sourceModel.currentValue : '',
+    };
     live.promptInFlight = true;
     this.setStatus(sessionId, 'running');
     live.connection.agent
       .request(acp.methods.agent.session.prompt, {
         sessionId: acpSessionId,
-        prompt: promptBlocks(text, attachments, extra.length > 0 ? extra.join('\n\n') : undefined),
+        prompt: promptBlocks(text, attachments, extra),
       })
       .then(
         (response) => {
           if (!this.isCurrent(live)) return;
           live.promptInFlight = false;
+          this.userQuestions.cancelSession(sessionId);
+          this.fileRequests.cancelSession(sessionId);
           // `error` não existe em ACP v1 (o tipo do SDK não o tem); quando vier, vira erro visível (e push).
-          const stopReason: string = response.stopReason;
+          const stopReason: string = live.cancelRequested ? 'cancelled' : response.stopReason;
           if (stopReason === 'error') this.appendEvent(sessionId, { kind: 'error', message: 'turno terminou com erro' });
-          this.appendEvent(sessionId, { kind: 'turn_end', stopReason });
+          const ended = this.appendEvent(sessionId, { kind: 'turn_end', stopReason });
+          if (stopReason === 'end_turn' && !live.cancelRequested && ended !== undefined && this.load(sessionId).automationRunId === undefined) {
+            try {
+              this.options.onTurnCompleted?.(sessionId, ended.seq);
+            } catch {
+              this.options.log.warn({ sessionId }, 'automatic learning completion callback failed');
+            }
+          }
           this.loops.turnEnded(sessionId, { stopReason });
           this.setStatus(sessionId, 'idle');
         },
@@ -734,12 +976,79 @@ export class SessionManager {
           // O loop precisa saber mesmo assim, para pausar.
           if (this.isCurrent(live)) {
             live.promptInFlight = false;
+            this.userQuestions.cancelSession(sessionId);
+            this.fileRequests.cancelSession(sessionId);
             this.appendEvent(sessionId, { kind: 'error', message });
           }
           this.loops.turnEnded(sessionId, { error: message });
           if (this.isCurrent(live)) this.setStatus(sessionId, 'idle');
         },
       );
+  }
+
+  async submitPrompt(sessionId: string, text: string, attachmentIds: readonly string[]): Promise<void> {
+    const live = this.live.get(sessionId);
+    if (live === undefined) {
+      await this.prompt(sessionId, text, attachmentIds);
+      return;
+    }
+    if (live.status === 'starting' || live.acpSessionId === undefined) {
+      throw new SessionError('session_busy', 'agente ainda não abriu a sessão');
+    }
+    if (live.promptQueue.length >= MAX_QUEUED_PROMPTS) {
+      throw new SessionError('prompt_queue_full', 'fila de mensagens cheia');
+    }
+    this.attachmentRecords(sessionId, attachmentIds);
+    live.promptQueue.push({ id: randomUUID(), text, attachmentIds, failed: false });
+    this.broadcastPromptQueue(sessionId);
+    this.drainPromptQueue(live);
+  }
+
+  promptQueueOf(sessionId: string): QueuedPrompt[] {
+    return this.live.get(sessionId)?.promptQueue.map(({ id, text, attachmentIds, failed }) => ({
+      id,
+      preview: text.slice(0, 200),
+      attachments: attachmentIds.length,
+      failed,
+    })) ?? [];
+  }
+
+  removeQueuedPrompt(sessionId: string, id: string): void {
+    this.requireAcp(sessionId);
+    const live = this.live.get(sessionId);
+    const index = live?.promptQueue.findIndex((item) => item.id === id) ?? -1;
+    if (live === undefined || index < 0) return;
+    live.promptQueue.splice(index, 1);
+    this.broadcastPromptQueue(sessionId);
+    this.drainPromptQueue(live);
+  }
+
+  private broadcastPromptQueue(sessionId: string): void {
+    const queue = this.promptQueueOf(sessionId);
+    for (const listener of this.listeners.get(sessionId) ?? []) {
+      try {
+        listener.promptQueue(queue);
+      } catch (error) {
+        this.options.log.warn({ err: error, sessionId }, 'prompt queue listener failed');
+      }
+    }
+  }
+
+  private drainPromptQueue(live: LiveSession): void {
+    const next = live.promptQueue[0];
+    if (!this.isCurrent(live) || live.status !== 'idle' || live.drainingPromptQueue || next === undefined || next.failed) return;
+    live.drainingPromptQueue = true;
+    void this.prompt(live.id, next.text, next.attachmentIds, undefined, next)
+      .catch((error: unknown) => {
+        if (!this.isCurrent(live) || live.promptQueue[0] !== next) return;
+        this.options.log.warn({ err: error, sessionId: live.id }, 'queued message failed to start');
+        next.failed = true;
+        this.broadcastPromptQueue(live.id);
+      })
+      .finally(() => {
+        live.drainingPromptQueue = false;
+        this.drainPromptQueue(live);
+      });
   }
 
   /** Loop da sessão, ou null. Sessão inexistente → not_found. */
@@ -812,6 +1121,63 @@ export class SessionManager {
     });
   }
 
+  askUser(sessionId: string, request: AskUserRequest, signal: AbortSignal): Promise<AskUserResult> {
+    const live = this.requireLive(sessionId);
+    if (!live.promptInFlight || live.cancelRequested) {
+      throw new SessionError('session_not_active', 'perguntas exigem um turno ativo');
+    }
+    return this.userQuestions.ask(sessionId, request, signal);
+  }
+
+  respondUserQuestion(sessionId: string, requestId: string, optionId: string | null): AskUserResult {
+    return this.userQuestions.respond(sessionId, requestId, optionId);
+  }
+
+  requestFile(sessionId: string, request: RequestFileRequest, signal: AbortSignal): Promise<RequestFileAgentResult> {
+    const live = this.requireLive(sessionId);
+    if (!live.promptInFlight || live.cancelRequested) {
+      throw new SessionError('session_not_active', 'pedidos de arquivo exigem um turno ativo');
+    }
+    return this.fileRequests.request(sessionId, request, signal);
+  }
+
+  respondFileRequest(sessionId: string, requestId: string, fileId: string | null): RequestFileResult {
+    return this.fileRequests.respond(sessionId, requestId, fileId);
+  }
+
+  recordPreview(sessionId: string, info: PreviewInfo): SessionEvent {
+    const live = this.requireLive(sessionId);
+    if (!live.promptInFlight || live.cancelRequested) {
+      throw new SessionError('session_not_active', 'pré-visualizações exigem um turno ativo');
+    }
+    const event = this.appendEvent(sessionId, { ...info, kind: 'preview' });
+    if (event === undefined) throw new Error('failed to persist preview');
+    return event;
+  }
+
+  /** A detached process may still need its persisted preview card marked closed. */
+  recordPreviewClosed(sessionId: string, previewId: string, reason: PreviewCloseReason): SessionEvent {
+    const event = this.appendEvent(sessionId, { kind: 'preview_closed', previewId, reason }, { notify: false });
+    if (event === undefined) throw new Error('failed to persist preview closure');
+    return event;
+  }
+
+  learningSource(sessionId: string): LearningTurnSource | undefined {
+    return this.live.get(sessionId)?.turnSource;
+  }
+
+  /** Learning is quiet: no attention push, status, unread counter, or primary conversation turn. */
+  recordLearning(sessionId: string, notice: LearningNotice): void {
+    const event = this.appendEvent(sessionId, { kind: 'learning', ...notice }, { notify: false });
+    if (event === undefined) throw new Error('failed to persist learning notice');
+  }
+
+  /** Resolve long HTTP waiters before Fastify starts draining connections. */
+  closePendingRequests(): void {
+    this.userQuestions.close();
+    this.fileRequests.close();
+  }
+
   respondPermission(sessionId: string, requestId: string, optionId: string | null): void {
     this.requireAcp(sessionId);
     const live = this.requireLive(sessionId);
@@ -827,8 +1193,12 @@ export class SessionManager {
 
   /** Notifica session/cancel e responde cancelled a uma permissão pendente. */
   cancel(sessionId: string): void {
+    this.options.onSessionRevoked?.(sessionId);
     this.requireAcp(sessionId);
     const live = this.requireLive(sessionId);
+    live.cancelRequested = true;
+    this.userQuestions.cancelSession(sessionId);
+    this.fileRequests.cancelSession(sessionId);
     if (live.acpSessionId !== undefined) {
       live.connection.agent
         .notify(acp.methods.agent.session.cancel, { sessionId: live.acpSessionId })
@@ -914,6 +1284,20 @@ export class SessionManager {
     await this.applyConfig(live, configId, value);
   }
 
+  yoloOf(sessionId: string): boolean {
+    return this.live.get(sessionId)?.yolo ?? false;
+  }
+
+  setYolo(sessionId: string, enabled: boolean): void {
+    this.requireAcp(sessionId);
+    const live = this.requireLive(sessionId);
+    if (live.acpSessionId === undefined || live.status === 'starting') {
+      throw new SessionError('session_busy', 'agente ainda não abriu a sessão');
+    }
+    live.yolo = enabled;
+    this.options.broadcast({ type: 'yolo', sessionId, enabled });
+  }
+
   /** Bytes digitados no terminal (sessão pty viva). Terminal que já morreu vira error, sem derrubar nada. */
   terminalInput(sessionId: string, data: string): void {
     const terminal = this.requireTerminal(sessionId);
@@ -935,6 +1319,7 @@ export class SessionManager {
 
   /** Para o processo e marca a sessão como stopped. Sessão sem processo só troca o status. */
   async stop(sessionId: string): Promise<void> {
+    this.options.onSessionRevoked?.(sessionId);
     // Sessão que o usuário parou: o loop dela para também (senão o disparo a retomaria sozinho).
     this.loops.stop(sessionId);
     const terminal = this.terminals.get(sessionId);
@@ -978,7 +1363,8 @@ export class SessionManager {
       ACCOUNT_BUSY_STATUSES.includes(session.status) ||
       this.switching.has(sessionId) ||
       this.resumes.has(sessionId) ||
-      this.reserved.has(sessionId)
+      this.reserved.has(sessionId) ||
+      this.forgetting.has(sessionId)
     ) {
       throw new SessionError('session_busy', `sessão está ocupada (status: ${session.status}): troque a conta quando o agente terminar`);
     }
@@ -1030,6 +1416,12 @@ export class SessionManager {
     for (const claim of this.reserved.values()) {
       if (uses(claim)) return true;
     }
+    for (const claim of this.scheduledClaims.values()) {
+      if (uses(claim)) return true;
+    }
+    for (const process of this.scheduledProcesses.values()) {
+      if (uses(process.claim)) return true;
+    }
     for (const claims of this.switching.values()) {
       if (claims.some(uses)) return true;
     }
@@ -1045,15 +1437,41 @@ export class SessionManager {
     await this.usageProbe.drop(agentId, accountId);
   }
 
+  async forgetStopped(sessionId: string, cleanup: () => Promise<void>): Promise<void> {
+    const session = this.load(sessionId);
+    if (!TERMINAL_STATUSES.includes(session.status) ||
+        this.live.has(sessionId) || this.terminals.has(sessionId) ||
+        this.reserved.has(sessionId) || this.resumes.has(sessionId) ||
+        this.switching.has(sessionId) || this.scheduledClaims.has(sessionId) ||
+        this.scheduledProcesses.has(sessionId) || this.forgetting.has(sessionId)) {
+      throw new SessionError('session_busy', 'Session must finish its current operation before history cleanup.');
+    }
+    this.forgetting.add(sessionId);
+    try {
+      await cleanup();
+      this.options.onSessionRevoked?.(sessionId);
+      this.forgetSessionRecords(sessionId);
+    } finally {
+      this.forgetting.delete(sessionId);
+    }
+  }
+
   /**
    * Tira a sessão do app: linha, eventos e registros de arquivos. Não fala com o agente (o histórico dele continua).
    * Quem chama para o processo antes (`stop`) e remove o worktree, se pedido. Sessão com operação em curso → 409.
    */
   forget(sessionId: string): void {
+    this.options.onSessionRevoked?.(sessionId);
     this.load(sessionId);
-    if (this.live.has(sessionId) || this.terminals.has(sessionId) || this.reserved.has(sessionId)) {
+    if (this.live.has(sessionId) || this.terminals.has(sessionId) || this.reserved.has(sessionId) ||
+        this.resumes.has(sessionId) || this.switching.has(sessionId) || this.forgetting.has(sessionId) ||
+        this.scheduledClaims.has(sessionId) || this.scheduledProcesses.has(sessionId)) {
       throw new SessionError('session_busy', 'sessão ainda está ativa: pare antes de remover');
     }
+    this.forgetSessionRecords(sessionId);
+  }
+
+  private forgetSessionRecords(sessionId: string): void {
     this.listeners.delete(sessionId);
     this.agentImages.forget(sessionId);
     this.loops.drop(sessionId);
@@ -1067,8 +1485,9 @@ export class SessionManager {
     }
   }
 
-  /** Mata todos os agentes (inclusive os que falharam e ainda vivem) e espera saírem. Não grava nada no banco. */
+  /** Mata todos os agentes e espera saírem. Perguntas pendentes são canceladas no histórico antes do detach. */
   async shutdown(): Promise<void> {
+    this.closePendingRequests();
     // Processos de uso são temporários e ficam em `running`: o laço abaixo também os mata e espera.
     this.usageProbe.close();
     // O app-server do codex dos resets não passa por `running`: o serviço mata o que estiver em andamento.
@@ -1147,12 +1566,15 @@ export class SessionManager {
     const { log } = this.options;
     try {
       const { command, env } = this.agentLaunch(id, agent, account.env);
+      const mcpServers = this.options.nanachiMcpEnabled?.(account.claim.agent) === true
+        ? [nanachiMcpDescriptor(env, cwd)]
+        : [];
       const child = spawnAgent(command, {
         cwd,
         env,
         onDiagnostic: (line) => log.debug({ sessionId: id, agent: agent.label }, line),
       });
-      return this.attach(id, child, account.claim);
+      return this.attach(id, child, account.claim, mcpServers);
     } catch (error) {
       this.agentTokens.revoke(id);
       throw error;
@@ -1286,7 +1708,7 @@ export class SessionManager {
       live.promptImage = initialized.agentCapabilities?.promptCapabilities?.image === true;
       live.restorable = restoreMethodOf(initialized.agentCapabilities) !== undefined;
       const created = await withTimeout(
-        connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: [] }),
+        connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: live.mcpServers }),
         START_TIMEOUT_MS,
         'session/new',
       );
@@ -1295,7 +1717,6 @@ export class SessionManager {
       updateSession(this.options.db, id, { acpSessionId: created.sessionId }, Date.now());
       this.applyAgentConfig(live, created);
       this.persistConfig(live);
-      live.phoneHintPending = true;
 
       await this.applyRequestedConfig(live, requested);
 
@@ -1374,7 +1795,7 @@ export class SessionManager {
     if (markStarting) this.setStatus(id, 'starting');
     live.replaying = true;
     try {
-      const params = { sessionId: acpSessionId, cwd, mcpServers: [] };
+      const params = { sessionId: acpSessionId, cwd, mcpServers: live.mcpServers };
       const pending: Promise<acp.LoadSessionResponse | acp.ResumeSessionResponse> =
         method === 'load'
           ? live.connection.agent.request(acp.methods.agent.session.load, params)
@@ -1412,7 +1833,7 @@ export class SessionManager {
   }
 
   /** Cria a conexão ACP sobre o processo e registra a sessão como viva. */
-  private attach(id: string, child: AgentChild, claim: AccountClaim): LiveSession {
+  private attach(id: string, child: AgentChild, claim: AccountClaim, mcpServers: acp.McpServer[]): LiveSession {
     const exited = new Promise<void>((resolve) => {
       child.once('exit', () => resolve());
       child.once('error', () => resolve());
@@ -1427,9 +1848,10 @@ export class SessionManager {
     child.once('error', forget);
     const connection = connectAcp(child, {
       onSessionUpdate: (notification) => this.handleUpdate(id, notification),
-      onPermissionRequest: (request, signal) => this.requestPermission(id, request, signal),
+      onPermissionRequest: (request, signal) => this.requestPermission(live, request, signal),
     });
     const live: LiveSession = {
+      agentId: claim.agent,
       id,
       child,
       connection,
@@ -1437,15 +1859,20 @@ export class SessionManager {
       claim,
       acpSessionId: undefined,
       configOptions: [],
+      turnSource: undefined,
       usesSetMode: false,
       status: 'starting',
       promptInFlight: false,
+      cancelRequested: false,
+      promptQueue: [],
+      drainingPromptQueue: false,
+      yolo: false,
       pending: undefined,
       replaying: false,
       promptImage: false,
       restorable: undefined,
       history: undefined,
-      phoneHintPending: false,
+      mcpServers,
       toolCalls: new Map(),
     };
     this.live.set(id, live);
@@ -1596,7 +2023,7 @@ export class SessionManager {
     live.history = { recorded: 0, truncated: false, pendingUser: undefined };
     live.replaying = true;
     try {
-      const params = { sessionId: acpSessionId, cwd, mcpServers: [] };
+      const params = { sessionId: acpSessionId, cwd, mcpServers: live.mcpServers };
       const pending: Promise<acp.LoadSessionResponse | acp.ResumeSessionResponse> =
         method === 'load'
           ? live.connection.agent.request(acp.methods.agent.session.load, params)
@@ -1733,11 +2160,14 @@ export class SessionManager {
     cwd: string,
     timeoutMs: number,
     run: (connection: acp.ClientConnection) => Promise<T>,
+    accountEnv: NodeJS.ProcessEnv = {},
+    signal?: AbortSignal,
   ): Promise<T> {
+    signal?.throwIfAborted();
     const temp = this.spawnTemporary(agent, cwd, {
       onSessionUpdate: () => undefined,
       onPermissionRequest: () => Promise.resolve({ outcome: { outcome: 'cancelled' } }),
-    });
+    }, accountEnv);
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
@@ -1749,7 +2179,8 @@ export class SessionManager {
       throw new SessionError('agent_failed', 'agente encerrou antes de responder');
     });
     try {
-      return await Promise.race([run(temp.connection), timeout, died]);
+      const result = Promise.race([run(temp.connection), timeout, died]);
+      return await (signal === undefined ? result : scheduledWait(result, signal, timeoutMs));
     } catch (error) {
       if (error instanceof SessionError) throw error;
       throw new SessionError('agent_failed', messageOf(error));
@@ -1800,33 +2231,58 @@ export class SessionManager {
     return { connection: connectAcp(child, handlers), exited, kill: () => killAgent(child) };
   }
 
-  /** Grava o cartão de permissão e fica pendente até respondermos (WS) ou a requisição ser abortada. */
+  /** Approves a verified YOLO request or waits for the ordinary permission card to be answered. */
   private requestPermission(
-    id: string,
+    live: LiveSession,
     request: acp.RequestPermissionRequest,
     signal: AbortSignal,
   ): Promise<acp.RequestPermissionResponse> {
     const cancelled: acp.RequestPermissionResponse = { outcome: { outcome: 'cancelled' } };
-    const live = this.live.get(id);
-    if (live === undefined) return Promise.resolve(cancelled);
+    if (!this.isCurrent(live) || signal.aborted || (live.promptInFlight && live.cancelRequested)) {
+      return Promise.resolve(cancelled);
+    }
 
+    const { id } = live;
+    const { toolCall } = request;
+    if (live.yolo && live.promptInFlight && live.pending === undefined && request.sessionId === live.acpSessionId) {
+      const optionId = yoloApproval(this.workingDirectory(id), request);
+      if (optionId !== undefined) {
+        const recorded = this.appendEvent(id, {
+          kind: 'permission_auto_approved',
+          toolCallId: toolCall.toolCallId,
+          title: toolCall.title ?? toolCall.name ?? '',
+          optionId,
+        }, { notify: false });
+        if (recorded !== undefined) return Promise.resolve({ outcome: { outcome: 'selected', optionId } });
+      }
+    }
+    // Mesmo tool call pedido de novo com a permissão anterior ainda sem resposta: o aviso dela já saiu. Grava, sem push.
+    const reannounced = live.pending?.toolCallId === toolCall.toolCallId;
     // Um agente que pede outra permissão antes de responder a anterior não pode deixar a anterior pendurada.
     this.resolvePermission(live, null);
     const requestId = randomUUID();
-    const { toolCall } = request;
-    const recorded = this.appendEvent(id, {
-      kind: 'permission_request',
-      requestId,
-      title: toolCall.title ?? '',
-      ...(toolCall.kind ? { toolKind: toolCall.kind } : {}),
-      ...(toolCall.rawInput !== undefined ? { rawInput: toolCall.rawInput } : {}),
-      content: toolContentOf(toolCall.content, this.imageSink(id)),
-      options: request.options.map((option) => ({ optionId: option.optionId, name: option.name, kind: option.kind })),
-    });
+    const recorded = this.appendEvent(
+      id,
+      {
+        kind: 'permission_request',
+        requestId,
+        title: toolCall.title ?? '',
+        ...(toolCall.kind ? { toolKind: toolCall.kind } : {}),
+        ...(toolCall.rawInput !== undefined ? { rawInput: toolCall.rawInput } : {}),
+        content: toolContentOf(toolCall.content, this.imageSink(id)),
+        options: request.options.map((option) => ({ optionId: option.optionId, name: option.name, kind: option.kind })),
+      },
+      { notify: !reannounced },
+    );
     if (recorded === undefined) return Promise.resolve(cancelled);
 
     const decision = new Promise<string | null>((resolve) => {
-      live.pending = { requestId, optionIds: request.options.map((option) => option.optionId), resolve };
+      live.pending = {
+        requestId,
+        toolCallId: toolCall.toolCallId,
+        optionIds: request.options.map((option) => option.optionId),
+        resolve,
+      };
     });
     this.setStatus(id, 'awaiting_permission');
     signal.addEventListener(
@@ -1856,6 +2312,11 @@ export class SessionManager {
   private async applyConfig(live: LiveSession, configId: string, value: ConfigValue): Promise<void> {
     const option = live.configOptions.find((item) => item.id === configId);
     if (option === undefined) throw new SessionError('invalid_request', `opção desconhecida: ${configId}`);
+    // A mode the agent announces but Nanachi does not offer for it (omp's plan) is refused before the agent hears of it.
+    const isMode = option.type === 'select' && option.category === 'mode';
+    if (isMode && typeof value === 'string' && !isModeAllowed(live.agentId, value)) {
+      throw new SessionError('invalid_request', `modo indisponível para este agente: ${value}`);
+    }
     const sessionId = live.acpSessionId;
     if (sessionId === undefined) throw new SessionError('session_busy', 'agente ainda não abriu a sessão');
 
@@ -1891,9 +2352,10 @@ export class SessionManager {
    * regrava a linha nem é reenviada.
    */
   private persistConfig(live: LiveSession): void {
-    if (isDeepStrictEqual(findSessionConfigOptions(this.options.db, live.id), live.configOptions)) return;
-    updateSession(this.options.db, live.id, { configOptions: live.configOptions }, Date.now());
-    this.emitConfigOptions(live.id, live.configOptions);
+    const offered = offeredConfigOptions(live.agentId, live.configOptions);
+    if (isDeepStrictEqual(findSessionConfigOptions(this.options.db, live.id), offered)) return;
+    updateSession(this.options.db, live.id, { configOptions: offered }, Date.now());
+    this.emitConfigOptions(live.id, offered);
   }
 
   /**
@@ -2003,6 +2465,7 @@ export class SessionManager {
     const live = this.live.get(sessionId);
     if (live !== undefined) live.status = status;
     this.announceStatus(sessionId, status);
+    if (live !== undefined) this.drainPromptQueue(live);
     this.loops.onStatus(sessionId, status);
   }
 
@@ -2047,11 +2510,17 @@ export class SessionManager {
 
   /** Tira a sessão do mapa e libera quem espera permissão (sem resposta ao agente: a conexão já vai embora). */
   private detach(live: LiveSession): void {
+    this.options.onSessionRevoked?.(live.id);
+    this.userQuestions.cancelSession(live.id);
+    this.fileRequests.cancelSession(live.id);
     this.live.delete(live.id);
+    if (live.promptQueue.length > 0) this.broadcastPromptQueue(live.id);
+    if (live.yolo) this.options.broadcast({ type: 'yolo', sessionId: live.id, enabled: false });
     this.agentTokens.revoke(live.id);
     const pending = live.pending;
     live.pending = undefined;
     pending?.resolve(null);
+    this.options.onSessionDetached?.(live.id);
   }
 
   private isCurrent(live: LiveSession): boolean {

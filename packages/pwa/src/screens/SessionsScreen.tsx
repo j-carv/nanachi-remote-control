@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
+import { CalendarClock, CircleStop, FolderTree, GitBranch, Plus, RotateCcwClock, SquareTerminal, Terminal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Session, Workspace } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
@@ -16,6 +16,8 @@ import { ListGroup, ListSkeleton, listMainClass, listRowClass, staggerDelay } fr
 import { Screen } from '../components/Screen.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { SessionStatusPill } from '../components/SessionStatusPill.js';
+import { SessionMessageMatches, type MessageMatchRow } from '../components/SessionMessageMatches.js';
+import { SessionSearchField } from '../components/SessionSearchField.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { WorkspaceInfoBar } from '../components/WorkspaceInfoBar.js';
 import { Badge } from '@/components/ui/badge';
@@ -24,9 +26,11 @@ import type { Navigator } from '../navigation.js';
 import { formatRelativeTime } from '../relativeTime.js';
 import { sessionTitle } from '../sessionText.js';
 import { visibleSessions } from '../sessionRemoval.js';
+import { filterBySearch, resolveMessageMatches, searchWords } from '../sessionSearch.js';
 import { saveMuted } from '../workspace/saveMuted.js';
 import { notificationsRow } from '../workspace/workspaceMenuRows.js';
 import { useAsync } from '../useAsync.js';
+import { useSessionMessageSearch } from '../useSessionMessageSearch.js';
 
 interface SessionsScreenProps {
   machineName: string;
@@ -61,6 +65,7 @@ export function SessionsScreen({
   const [pendingRemoval, setPendingRemoval] = useState<Session | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeError, setRemoveError] = useState<unknown>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(
     () =>
@@ -81,6 +86,30 @@ export function SessionsScreen({
   const sessions = visibleSessions(list.data ?? [], live, removedIds);
   const agentLabels = new Map((agents.data ?? []).map((agent) => [agent.id, agent.label]));
   const now = Date.now();
+
+  // The sessions of this workspace narrow at once by name, agent, branch and workspace; the messages are asked for after a pause.
+  const searching = searchWords(query).length > 0;
+  const search = useSessionMessageSearch(api, query, workspace.id);
+  const labelOf = (session: Session): string => sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
+  const shown = searching
+    ? filterBySearch(sessions, query, (session) => [
+        labelOf(session),
+        agentLabels.get(session.agent) ?? session.agent,
+        session.worktree?.branch ?? '',
+        workspace.name,
+      ])
+    : sessions;
+  const sessionById = new Map(sessions.map((session) => [session.id, session] as const));
+  const messageRows: MessageMatchRow[] =
+    search.status === 'ready'
+      ? resolveMessageMatches(search.results, (id) => sessionById.get(id)).map((match) => ({
+          workspace,
+          session: match.item,
+          label: labelOf(match.item),
+          snippet: match.snippet,
+          matchedAt: match.matchedAt,
+        }))
+      : [];
 
   /** Remover do app: a sessão some da lista na hora (o servidor também avisa com session_removed). */
   async function removeFromApp(session: Session) {
@@ -147,11 +176,16 @@ export function SessionsScreen({
             >
               <FolderTree aria-hidden="true" />
             </Button>
+            <div data-slot="workspace-schedules-menu">
             <ActionSheetButton
               label={t('sessions.workspaceMenu', { name: workspace.name })}
               title={workspace.name}
-              items={[notificationsRow(muted, (next) => void toggleMuted(next))]}
+              items={[
+                { label: t('title', { ns: 'schedules' }), icon: CalendarClock, onSelect: () => nav.push({ kind: 'schedules', workspace }) },
+                notificationsRow(muted, (next) => void toggleMuted(next)),
+              ]}
             />
+            </div>
           </>
         }
       />
@@ -169,16 +203,28 @@ export function SessionsScreen({
         </Button>
       </div>
 
+      <SessionSearchField value={query} onChange={setQuery} />
+
       <ErrorNotice error={error} onRepair={onRepair} />
 
       {list.data === null && error === null && <ListSkeleton label={t('states.loading', { ns: 'common' })} />}
       {list.data !== null && sessions.length === 0 && (
         <p className="animate-enter pl-1 text-muted-foreground">{t('sessions.empty')}</p>
       )}
+      {list.data !== null &&
+        sessions.length > 0 &&
+        searching &&
+        shown.length === 0 &&
+        messageRows.length === 0 &&
+        (search.status === 'ready' || search.status === 'idle') && (
+          <p className="animate-enter pl-1 text-muted-foreground">
+            {t('search.noMatches', { ns: 'common', query: query.trim() })}
+          </p>
+        )}
 
-      {sessions.length > 0 && (
+      {shown.length > 0 && (
         <ListGroup label={t('sessions.listLabel')}>
-          {sessions.map((session, index) => {
+          {shown.map((session, index) => {
             const label = sessionTitle(session, agentLabels.get(session.agent) ?? session.agent);
             return (
               <li key={session.id} className="animate-enter" style={staggerDelay(index)}>
@@ -234,6 +280,17 @@ export function SessionsScreen({
             );
           })}
         </ListGroup>
+      )}
+
+      {searching && (
+        <SessionMessageMatches
+          state={search}
+          rows={messageRows}
+          showWorkspace={false}
+          selectedSessionId={null}
+          now={now}
+          onOpen={(row) => nav.push({ kind: 'chat', workspace, session: row.session })}
+        />
       )}
 
       {pendingRemoval !== null && (

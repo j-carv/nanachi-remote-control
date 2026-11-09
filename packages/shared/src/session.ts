@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { AgentKindSchema } from './config.js';
+import { AskUserRequestSchema, AskUserResultSchema } from './mcp.js';
+import { FileInfoSchema } from './file.js';
+import { RequestFileRequestSchema, RequestFileResultSchema } from './mcp-files.js';
+import { PreviewCloseReasonSchema, PreviewInfoSchema } from './mcp-preview.js';
+import { LearningNoticeShape } from './learning.js';
 
 /** Workspace = pasta permitida onde as sessões rodam. */
 export const WorkspaceSchema = z.object({
@@ -13,15 +18,25 @@ export const WorkspaceSchema = z.object({
 
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 
-/** Arquivo trocado com o celular (anexo do usuário ou arquivo enviado pelo agente via `phone-send`). */
-export const FileInfoSchema = z.object({
-  fileId: z.string().min(1),
-  name: z.string().min(1),
-  mime: z.string().min(1),
-  size: z.number().int().nonnegative(),
+export const PromptShape = {
+  text: z.string().max(100_000),
+  attachments: z.array(z.string().min(1)).max(10).optional(),
+};
+
+export function hasPromptContent(prompt: { text: string; attachments?: string[] | undefined }): boolean {
+  return prompt.text.trim() !== '' || (prompt.attachments?.length ?? 0) > 0;
+}
+
+export const MAX_QUEUED_PROMPTS = 10;
+
+export const QueuedPromptSchema = z.object({
+  id: z.string().min(1),
+  preview: z.string().max(200),
+  attachments: z.number().int().nonnegative(),
+  failed: z.boolean(),
 });
 
-export type FileInfo = z.infer<typeof FileInfoSchema>;
+export type QueuedPrompt = z.infer<typeof QueuedPromptSchema>;
 
 export const SessionStatusSchema = z.enum([
   'starting',
@@ -92,6 +107,8 @@ export const SessionSchema = z.object({
   status: SessionStatusSchema,
   /** Conta do agente que a sessão usa (`null` = conta principal). Ver PLAN.md, várias contas por agente. */
   accountId: z.string().min(1).nullable().default(null),
+  /** Scheduled executions have their own history and stay out of ordinary conversation lists. */
+  automationRunId: z.string().min(1).optional(),
   /** Worktree git separado da sessão (`null` = roda no cwd do workspace). */
   worktree: z
     .object({
@@ -257,6 +274,50 @@ export const SessionEventSchema = z.discriminatedUnion('kind', [
     kind: z.literal('permission_resolved'),
     requestId: z.string().min(1),
     optionId: z.string().min(1).nullable(),
+  }),
+  AskUserRequestSchema.safeExtend({
+    ...EventMetaShape,
+    kind: z.literal('user_question'),
+    expiresAt: z.number().int().nonnegative(),
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('user_question_resolved'),
+    requestId: z.uuid(),
+    result: AskUserResultSchema,
+  }),
+  RequestFileRequestSchema.safeExtend({
+    ...EventMetaShape,
+    kind: z.literal('file_request'),
+    expiresAt: z.number().int().nonnegative(),
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('file_request_resolved'),
+    requestId: z.uuid(),
+    result: RequestFileResultSchema,
+  }),
+  PreviewInfoSchema.safeExtend({
+    ...EventMetaShape,
+    kind: z.literal('preview'),
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('preview_closed'),
+    previewId: z.uuid(),
+    reason: PreviewCloseReasonSchema,
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('permission_auto_approved'),
+    toolCallId: z.string().min(1),
+    title: z.string(),
+    optionId: z.string().min(1),
+  }),
+  z.object({
+    ...EventMetaShape,
+    kind: z.literal('learning'),
+    ...LearningNoticeShape,
   }),
   z.object({
     ...EventMetaShape,

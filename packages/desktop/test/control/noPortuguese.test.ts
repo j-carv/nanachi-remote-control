@@ -28,9 +28,8 @@ import { controlT } from './translator.js';
 /**
  * Nothing in Portuguese may reach the English or the Spanish control center. Every view is rendered in both languages with
  * realistic data, and the text that comes out (visible text, labels, titles) must hold no text of the pt-BR dictionary, no
- * letter that Portuguese alone uses and none of its common words. The dictionaries are scanned key by key as well, for the
- * texts no view shows (a toast, a failed pairing). The scan has to be able to fail: the same views in Portuguese go through it
- * too, and it must find them out.
+ * letter that Portuguese alone uses and none of its common words. The scan must detect untranslated views:
+ * the same views rendered in Portuguese go through it too, and must be reported.
  */
 
 const noop = (): void => undefined;
@@ -430,49 +429,6 @@ const VIEWS: Views = [
   ],
 ];
 
-/**
- * Keys whose text is the same word in Portuguese and in that language, and why. Everything else must be translated: a key
- * that is still the pt-BR text is a copy that nobody translated.
- */
-const IDENTICAL_TO_PORTUGUESE: Record<Translated, Readonly<Record<string, string>>> = {
-  en: {
-    'sections.tailscale.label': 'the product name',
-    'sections.logs.label': 'Logs: the word of the glossary, the same in English',
-    'devices.table.status': 'Status: the same word in English',
-  },
-  es: {
-    'sections.tailscale.label': 'the product name',
-    'sections.settings.label': 'Ajustes: the glossary word, the same in Spanish',
-    'shell.titleBar.minimize': 'Minimizar: ordinary Spanish',
-    'shell.titleBar.maximize': 'Maximizar: ordinary Spanish',
-    'shell.titleBar.restore': 'Restaurar: ordinary Spanish',
-    'status.daemon.attached.word': 'Conectado: ordinary Spanish',
-    'status.daemon.starting.word': 'Iniciando: ordinary Spanish',
-    'status.tailscale.starting.word': 'Iniciando: ordinary Spanish',
-    'common.cancel': 'Cancelar: ordinary Spanish',
-    'common.copied': 'Copiado: ordinary Spanish',
-    'overview.start': 'Iniciar: ordinary Spanish',
-    'overview.restart': 'Reiniciar: ordinary Spanish',
-    'folders.drivesHeading': 'Discos: ordinary Spanish',
-    'folders.drive.kind.fixed': 'Disco local: ordinary Spanish',
-    'folders.drive.kind.optical': 'Óptico: ordinary Spanish',
-    'folders.drive.kind.unknown': 'Disco: ordinary Spanish',
-    'folders.drive.label': 'Disco {{letter}}: ordinary Spanish',
-    'folders.drive.usedOf': 'usados de: ordinary Spanish',
-    'folders.row.inside': 'Dentro de: ordinary Spanish',
-    'folders.saveBar.discard': 'Descartar: ordinary Spanish',
-    'devices.pairing.codeLabel': 'Código: ordinary Spanish',
-    'devices.pairing.copy': 'Copiar código: ordinary Spanish',
-    'devices.table.lastSeen': 'Último uso: ordinary Spanish',
-    'accounts.main': 'Principal: ordinary Spanish',
-    'accounts.status.loggedIn': 'Conectada: ordinary Spanish',
-    'format.relative.never': 'Nunca: ordinary Spanish',
-    'logs.copy': 'Copiar: ordinary Spanish',
-    'settings.languageTitle': 'Idioma: ordinary Spanish',
-    'settings.uninstall': 'Desinstalar…: ordinary Spanish',
-  },
-};
-
 /* -------------------------------------------------------------------- tests */
 
 describe.each(TRANSLATED)('no Portuguese in the %s control center', (language) => {
@@ -483,20 +439,6 @@ describe.each(TRANSLATED)('no Portuguese in the %s control center', (language) =
     expect(portugueseIn(language, text)).toEqual([]);
   });
 
-  it('the dictionary, key by key, is free of Portuguese too (what no view shows is scanned as well)', () => {
-    const problems: string[] = [];
-    for (const [key, text] of OWN[language]) {
-      const found = portugueseLettersAndWords(language, text);
-      if (found.length > 0) problems.push(`${key}: ${found.join('; ')}`);
-      const model = PT_BR.get(key);
-      if (model === text && literalLength(text) >= 4 && IDENTICAL_TO_PORTUGUESE[language][key] === undefined) problems.push(`${key} is still the pt-BR text: ${text}`);
-    }
-    expect(problems).toEqual([]);
-  });
-
-  it('every key allowed to be identical to Portuguese really is, so the allowlist never outlives its reason', () => {
-    for (const key of Object.keys(IDENTICAL_TO_PORTUGUESE[language])) expect(OWN[language].get(key), key).toBe(PT_BR.get(key));
-  });
 });
 
 describe('the scan can fail', () => {

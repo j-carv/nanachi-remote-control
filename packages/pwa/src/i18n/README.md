@@ -65,7 +65,7 @@ export function offlineNotice(): string { return t('chat:offline'); }   // right
 ```
 
 - A fixed label inside a constant (a preset, a keycap) is a getter, so every read translates again:
-  `{ id: 'free', get label() { return t('files:crop.free'); } }` (`CROP_PRESETS`, `TERMINAL_KEYS`).
+  `{ id: 'free', get label() { return t('files:crop.free'); } }` (`CROP_PRESETS`).
 - State that outlives a render holds the kind, not the sentence. Keep `{ kind: 'offline' }` (or a status, an error
   code, a `LoginStep`) and call `t` while rendering, as `LoginStep` and `UsageState` do. A stored sentence stays in the
   old language after a switch.
@@ -151,9 +151,11 @@ namespace, or in `common` when the infrastructure task adds it.
   go stale.
 - Do not import `i18n/index.ts` (or anything that does, such as `errorMessages.ts` or `forceUpdate.ts`) from
   `sw.ts`: it would bundle i18next and every translation into the service worker.
-- Push notification texts are built by the daemon and stay in Portuguese, and so does the fallback in
-  `push/payload.ts` (the service worker cannot read the app language). The Desktop tray, windows and installer are not
-  translated either, and neither is the manifest `description`, which is a static file.
+- Push notification texts are built by the daemon (`push-text.ts`) in the language the phone sent with its push
+  subscription (`language`, sent on subscribe and again when the language changes); a phone that sent none gets pt-BR.
+  The fallback in `push/payload.ts` stays Portuguese, because the service worker cannot read the app language. The
+  Desktop tray, windows and installer are not translated either, and neither is the manifest `description`, which is a
+  static file.
 - Some Portuguese is data and stays: the notes the daemon appends to a prompt (`chat/promptNotes.ts`), the loop
   markers (`chat/loopMarkers.ts`), the placeholder session title `Nova sessão` (`sessionText.ts`) and the language names
   in the Settings row (`Português (Brasil)`, `English`, `Español`, each in its own language, under the title

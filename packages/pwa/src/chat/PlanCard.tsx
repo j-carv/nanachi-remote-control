@@ -36,7 +36,29 @@ function PlanMark({ status }: { status: PlanEntry['status'] }) {
   );
 }
 
-/** Plano do agente como checklist. */
+/** Shared checklist for the transcript card and the pinned plan above the composer. */
+export function PlanEntries({ entries }: { entries: readonly PlanEntry[] }) {
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {entries.map((entry, index) => (
+        <li
+          key={index}
+          data-slot="plan-item"
+          data-plan-status={entry.status}
+          className={cn(
+            'flex items-start gap-2.5 text-[15px] leading-snug [overflow-wrap:anywhere] transition-colors duration-200 motion-reduce:transition-none',
+            entry.status === 'completed' && 'text-muted-foreground',
+          )}
+        >
+          <PlanMark status={entry.status} />
+          <span className="min-w-0">{entry.content}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Agent plan as a checklist in the transcript. */
 export function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
   const { t } = useTranslation('chat');
   return (
@@ -45,22 +67,7 @@ export function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
         <ListChecks className="size-4" aria-hidden="true" />
         {t('plan.title')}
       </h2>
-      <ul className="flex flex-col gap-2.5">
-        {entries.map((entry, index) => (
-          <li
-            key={index}
-            data-slot="plan-item"
-            data-plan-status={entry.status}
-            className={cn(
-              'flex items-start gap-2.5 text-[15px] leading-snug transition-colors duration-200 motion-reduce:transition-none',
-              entry.status === 'completed' && 'text-muted-foreground',
-            )}
-          >
-            <PlanMark status={entry.status} />
-            <span>{entry.content}</span>
-          </li>
-        ))}
-      </ul>
+      <PlanEntries entries={entries} />
     </section>
   );
 }

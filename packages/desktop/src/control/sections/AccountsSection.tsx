@@ -1,6 +1,7 @@
 import { MessagesSquare, RefreshCw, UserRound } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { agentIcons } from '../../../../shared/assets/agent-icons.js';
 import type { AccountInfo, AgentAccountsInfo } from '../../common/control-api.js';
 import { errorMessage } from '../lib/errors.js';
 import type { Tone } from '../lib/status.js';
@@ -86,13 +87,21 @@ export function AccountsView({ agents, settingActive, onSetActive, onOpenSession
     <>
       {agents.map((agent) => {
         const headingId = `accounts-${agent.agentId}`;
+        const icon = agentIcons.get(agent.agentId);
         return (
           <section key={agent.agentId} aria-labelledby={headingId}>
             <SectionHeading
               id={headingId}
               action={<span className="text-xs text-muted-foreground">{agent.multiAccount ? t('accounts.count', { count: agent.accounts.length }) : t('accounts.onlyMain')}</span>}
             >
-              {agent.agentName}
+              <span className="group inline-flex items-center gap-2">
+                {icon !== undefined && (
+                  <span className={cx('grid size-7 shrink-0 place-items-center rounded-md', agent.agentId === 'omp' ? 'bg-[#161616]' : 'bg-muted')}>
+                    <img src={icon} alt="" className="size-5 object-contain" />
+                  </span>
+                )}
+                {agent.agentName}
+              </span>
             </SectionHeading>
             <Group>
               <ul className="divide-y divide-border" aria-labelledby={headingId}>
