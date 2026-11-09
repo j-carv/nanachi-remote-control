@@ -46,7 +46,7 @@ Your own PC serves the dashboard inside your Tailscale network. **There is no ne
 
 > Your PC must be powered on, connected to the tailnet, and running Nanachi. Your phone is the remote control, not where the agent runs. Scheduling also requires the PC and daemon to stay running.
 
-**Everward Cloud** is a planned optional service for accounts, remote connectivity, and cloud sessions. Local use of Nanachi Remote will continue to work without an Everward Cloud account.
+**Everward Cloud** will offer a relay for remote access without requiring Tailscale.
 
 ### What you can do
 
