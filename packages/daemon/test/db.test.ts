@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -5,6 +6,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db.js';
+import { LearningMemory } from '../src/learning-memory.js';
 import {
   ensureMachine,
   findSessionById,
@@ -37,45 +39,54 @@ function tableNames(database: Database.Database): string[] {
     .map((row) => row.name);
 }
 
-describe('openDatabase', () => {
-  it('creates migrations 1 through 13 and records user_version 13', () => {
-    db = openDatabase(join(dir, 'data.db'));
-    expect(tableNames(db)).toEqual([
-      'agent_accounts',
-      'agent_active_account',
-      'devices',
-      'events',
-      'files',
-      'learning_entries',
-      'learning_history',
-      'learning_review_applied',
-      'learning_review_changes',
-      'learning_reviews',
-      'learning_search',
-      'learning_search_config',
-      'learning_search_content',
-      'learning_search_data',
-      'learning_search_docsize',
-      'learning_search_idx',
-      'learning_tombstones',
-      'loops',
-      'machine',
-      'message_search',
-      'message_search_config',
-      'message_search_content',
-      'message_search_data',
-      'message_search_docsize',
-      'message_search_idx',
-      'pair_codes',
-      'push_subscriptions',
-      'schedule_runs',
-      'schedules',
-      'sessions',
-      'workspaces',
-    ]);
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
-  });
+/** Published version-12 learning schema, also present unchanged in version 13. */
+function createLegacyLearningStore(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE learning_entries (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('memory', 'skill')),
+      title TEXT NOT NULL, content TEXT NOT NULL, content_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('active', 'pending', 'deleted')), version INTEGER NOT NULL,
+      source_session_id TEXT, evidence_seqs TEXT NOT NULL, review_id TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX learning_entries_workspace ON learning_entries (workspace_id, status, kind);
+    CREATE VIRTUAL TABLE learning_search USING fts5(title, content, tokenize = 'unicode61 remove_diacritics 2');
+    CREATE TRIGGER learning_search_ai AFTER INSERT ON learning_entries BEGIN
+      INSERT INTO learning_search (rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+    END;
+    CREATE TRIGGER learning_search_au AFTER UPDATE ON learning_entries BEGIN
+      DELETE FROM learning_search WHERE rowid = OLD.rowid;
+      INSERT INTO learning_search (rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+    END;
+    CREATE TRIGGER learning_search_ad AFTER DELETE ON learning_entries BEGIN
+      DELETE FROM learning_search WHERE rowid = OLD.rowid;
+    END;
+    CREATE TABLE learning_history (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, entry_id TEXT NOT NULL,
+      snapshot TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE learning_tombstones (
+      workspace_id TEXT NOT NULL, kind TEXT NOT NULL, content_hash TEXT NOT NULL,
+      source_session_id TEXT, evidence_seqs TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, kind, content_hash)
+    );
+    CREATE TABLE learning_reviews (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, session_id TEXT NOT NULL,
+      source_turn_seq INTEGER NOT NULL, summary TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected', 'reverted')), created_at INTEGER NOT NULL
+    );
+    CREATE TABLE learning_review_changes (
+      review_id TEXT NOT NULL, proposal_id TEXT NOT NULL, target_id TEXT NOT NULL,
+      before_json TEXT, proposal_json TEXT NOT NULL, PRIMARY KEY (review_id, proposal_id)
+    );
+    CREATE TABLE learning_review_applied (
+      review_id TEXT NOT NULL, entry_id TEXT NOT NULL, before_json TEXT,
+      after_version INTEGER NOT NULL, PRIMARY KEY (review_id, entry_id)
+    );
+  `);
+}
 
+describe('openDatabase', () => {
   it('migration 11: push_subscriptions.language is a nullable TEXT (no language = NULL, pt-BR)', () => {
     db = openDatabase(join(dir, 'data.db'));
     const column = db
@@ -102,7 +113,7 @@ describe('openDatabase', () => {
     legacy.close();
 
     db = openDatabase(file);
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
+    expect(db.pragma('user_version', { simple: true })).toBe(14);
     expect(db.prepare<[], { endpoint: string; language: string | null }>('SELECT endpoint, language FROM push_subscriptions').all()).toEqual([
       { endpoint: 'https://push.example.test/old', language: null },
     ]);
@@ -112,6 +123,7 @@ describe('openDatabase', () => {
     const file = join(dir, 'data.db');
     const legacy = new BetterSqlite3(file);
     legacy.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY); INSERT INTO sessions VALUES ('ordinary');");
+    createLegacyLearningStore(legacy);
     legacy.pragma('user_version = 12');
     legacy.close();
 
@@ -120,7 +132,71 @@ describe('openDatabase', () => {
       { id: 'ordinary', automation_run_id: null },
     ]);
     expect(tableNames(db)).toEqual(expect.arrayContaining(['schedules', 'schedule_runs']));
-    expect(db.pragma('user_version', { simple: true })).toBe(13);
+  });
+
+  it('migration 14 retains legacy rowids, FTS, history and review snapshots while enabling nullable global origins', () => {
+    const file = join(dir, 'data.db');
+    const legacy = new BetterSqlite3(file);
+    createLegacyLearningStore(legacy);
+    legacy.exec(`
+      CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL);
+      INSERT INTO workspaces VALUES ('w1', 'Original project', '/original'), ('w2', 'Other project', '/other');
+      CREATE TABLE sessions (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL);
+      INSERT INTO sessions VALUES ('s2', 'w2');
+      CREATE TABLE events (seq INTEGER PRIMARY KEY, session_id TEXT NOT NULL, kind TEXT NOT NULL);
+      INSERT INTO events VALUES (20, 's2', 'user_message');
+    `);
+    const before = { id: '11111111-1111-4111-8111-111111111111', workspaceId: 'w1', kind: 'memory', title: 'Legacy convention', content: 'Original legacy convention.', status: 'active', version: 3, sourceSessionId: 's1', evidenceSeqs: [10], reviewId: null, createdAt: 1, updatedAt: 2 };
+    const active = { ...before, content: 'Updated legacy convention.', version: 4, reviewId: '22222222-2222-4222-8222-222222222222' };
+    const pending = { ...before, id: '33333333-3333-4333-8333-333333333333', title: 'Legacy procedure', content: 'Pending legacy procedure.', status: 'pending', version: 1, reviewId: '44444444-4444-4444-8444-444444444444' };
+    const deleted = { ...before, id: '55555555-5555-4555-8555-555555555555', content: 'Forgotten legacy convention.', status: 'deleted', version: 8 };
+    const insert = legacy.prepare('INSERT INTO learning_entries (rowid, id, workspace_id, kind, title, content, content_hash, status, version, source_session_id, evidence_seqs, review_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const [rowid, entry] of [[73, active], [91, pending], [110, deleted]] as const) {
+      insert.run(rowid, entry.id, entry.workspaceId, entry.kind, entry.title, entry.content, createHash('sha256').update(entry.content.toLowerCase()).digest('hex'), entry.status, entry.version, entry.sourceSessionId, JSON.stringify(entry.evidenceSeqs), entry.reviewId, entry.createdAt, entry.updatedAt);
+    }
+    const history = legacy.prepare('INSERT INTO learning_history (seq, workspace_id, entry_id, snapshot, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+    history.run(40, 'w1', active.id, JSON.stringify(active), 'review_apply', 2);
+    history.run(41, 'w1', pending.id, JSON.stringify(pending), 'review_pending', 2);
+    legacy.prepare("UPDATE sqlite_sequence SET seq = 100 WHERE name = 'learning_history'").run();
+    const review = legacy.prepare('INSERT INTO learning_reviews VALUES (?, ?, ?, ?, ?, ?, ?)');
+    review.run(active.reviewId, 'w1', 's1', 11, 'Existing applied review', 'applied', 2);
+    review.run(pending.reviewId, 'w1', 's1', 12, 'Existing pending review', 'pending', 2);
+    legacy.prepare('INSERT INTO learning_review_applied VALUES (?, ?, ?, ?)').run(active.reviewId, active.id, JSON.stringify(before), 4);
+    legacy.prepare('INSERT INTO learning_review_changes VALUES (?, ?, ?, ?, ?)').run(pending.reviewId, pending.id, pending.id, null, JSON.stringify(pending));
+    legacy.prepare('INSERT INTO learning_tombstones VALUES (?, ?, ?, ?, ?, ?)').run('w1', 'memory', createHash('sha256').update(deleted.content.toLowerCase()).digest('hex'), 's1', '[10]', 2);
+    const rows = legacy.prepare('SELECT rowid, * FROM learning_entries ORDER BY rowid').all();
+    const historyRows = legacy.prepare('SELECT * FROM learning_history ORDER BY seq').all();
+    const reviewRows = legacy.prepare('SELECT * FROM learning_reviews ORDER BY id').all();
+    const changes = legacy.prepare('SELECT * FROM learning_review_changes').all();
+    const appliedRows = legacy.prepare('SELECT * FROM learning_review_applied').all();
+    legacy.pragma('user_version = 13');
+    legacy.close();
+
+    db = openDatabase(file);
+    expect(db.pragma('user_version', { simple: true })).toBe(14);
+    expect(db.prepare('SELECT rowid, * FROM learning_entries ORDER BY rowid').all()).toEqual(rows);
+    expect(db.prepare('SELECT * FROM learning_history ORDER BY seq').all()).toEqual(historyRows);
+    expect(db.prepare('SELECT * FROM learning_reviews ORDER BY id').all()).toEqual(reviewRows);
+    expect(db.prepare('SELECT * FROM learning_review_changes').all()).toEqual(changes);
+    expect(db.prepare('SELECT * FROM learning_review_applied').all()).toEqual(appliedRows);
+    const memory = new LearningMemory(db);
+    expect(memory.list({ query: 'updated legacy' })).toMatchObject([{ id: active.id, version: 4, sourceWorkspace: { id: 'w1', name: 'Original project', path: '/original' } }]);
+    expect(memory.read(deleted.id)).toMatchObject({ status: 'deleted', version: 8 });
+    const manual = memory.save({ kind: 'skill', title: 'Global owner procedure', content: 'A manual global procedure.', evidenceSeqs: [] });
+    expect(manual).toMatchObject({ workspaceId: null, sourceWorkspace: null });
+    expect(db.prepare<[], { seq: number }>('SELECT MAX(seq) AS seq FROM learning_history').get()?.seq).toBe(101);
+    memory.forget(manual.id, manual.version);
+    expect(() => memory.save({ kind: 'memory', title: 'Forgotten in another project', content: deleted.content, evidenceSeqs: [20] }, { workspaceId: 'w2', sessionId: 's2' })).toThrow();
+    db.prepare("DELETE FROM workspaces WHERE id = 'w1'").run();
+    expect(memory.read(active.id)).toMatchObject({ workspaceId: 'w1', sourceWorkspace: null });
+    expect(memory.manageReview(active.reviewId, 'revert')).toMatchObject({ status: 'reverted' });
+    expect(memory.read(active.id)).toMatchObject({ content: before.content, version: 5, sourceWorkspace: null });
+    expect(memory.manageReview(pending.reviewId, 'approve')).toMatchObject({ status: 'applied' });
+    expect(memory.manageReview(pending.reviewId, 'revert')).toMatchObject({ status: 'reverted' });
+    const edited = memory.save({ id: active.id, expectedVersion: 5, kind: 'memory', title: active.title, content: 'FTS remains synchronized after migration.', evidenceSeqs: [] });
+    expect(memory.list({ query: 'synchronized' })).toMatchObject([{ id: edited.id, workspaceId: 'w1', sourceWorkspace: null }]);
+    memory.forget(edited.id, edited.version);
+    expect(memory.list({ query: 'synchronized' })).toEqual([]);
   });
 
   it('migração 9: sessions.account_id é TEXT anulável (sem conta = NULL, a principal), e as contas de agente são únicas por id', () => {

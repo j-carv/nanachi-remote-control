@@ -43,9 +43,17 @@ export const LearningModelsResponseSchema = z.object({
 export type LearningModelsResponse = z.infer<typeof LearningModelsResponseSchema>;
 
 export const MemoryKindSchema = z.enum(['memory', 'skill']);
+export const MemoryWorkspaceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  path: z.string().min(1),
+}).strict();
+export type MemoryWorkspace = z.infer<typeof MemoryWorkspaceSchema>;
 export const MemoryEntrySchema = z.object({
   id: z.uuid(),
-  workspaceId: z.string().min(1),
+  /** Origin of the learned content, not a retrieval boundary. Null for owner-created global entries. */
+  workspaceId: z.string().min(1).nullable(),
+  sourceWorkspace: MemoryWorkspaceSchema.nullable().default(null),
   kind: MemoryKindSchema,
   title: z.string().trim().min(1).max(160),
   content: z.string().trim().min(1).max(12000),
@@ -59,6 +67,11 @@ export const MemoryEntrySchema = z.object({
 });
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
 export const MemoryEntriesResponseSchema = z.object({ entries: z.array(MemoryEntrySchema) });
+/** Tool callers receive their authenticated current workspace alongside globally shared results. */
+export const MemoryToolResponseSchema = MemoryEntriesResponseSchema.extend({
+  workspace: MemoryWorkspaceSchema,
+}).strict();
+export type MemoryToolResponse = z.infer<typeof MemoryToolResponseSchema>;
 export const MemoryWriteSchema = z.object({
   id: z.uuid().optional(),
   expectedVersion: z.number().int().positive().optional(),

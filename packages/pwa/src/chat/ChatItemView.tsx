@@ -24,7 +24,6 @@ interface ChatItemViewProps {
   node: ChatNode;
   api: ApiClient;
   view: BackgroundView;
-  workspaceId?: string | undefined;
   onManageLearning?: ((reviewId: string, action: 'approve' | 'reject' | 'revert') => Promise<void>) | undefined;
   /** Rendered as a child of a tool card: flat rows, no card of their own. */
   nested?: boolean;
@@ -53,12 +52,12 @@ function UserText({ text }: { text: string }) {
  * Memorizado: o reducer troca só o item que mudou (o último em streaming), então os outros não são
  * reconciliados nem reanalisados a cada chunk.
  */
-export const ChatItemView = memo(function ChatItemView({ node, api, view, nested = false, history, onMessageActions, onOpenPreview, onClosePreview, workspaceId, onManageLearning }: ChatItemViewProps) {
+export const ChatItemView = memo(function ChatItemView({ node, api, view, nested = false, history, onMessageActions, onOpenPreview, onClosePreview, onManageLearning }: ChatItemViewProps) {
   const { t } = useTranslation('chat');
   const { item } = node;
   switch (item.kind) {
     case 'learning':
-      return <LearningNoticeView notice={item} api={api} workspaceId={workspaceId} onManage={onManageLearning} />;
+      return <LearningNoticeView notice={item} api={api} onManage={onManageLearning} />;
 
     case 'user_message': {
       const text = stripPromptNotes(item.text);
@@ -144,7 +143,7 @@ export const ChatItemView = memo(function ChatItemView({ node, api, view, nested
           flat={nested}
           view={view}
           history={history}
-          renderNested={(child) => <ChatItemView node={child} api={api} view={view} nested history={history} onOpenPreview={onOpenPreview} onClosePreview={onClosePreview} workspaceId={workspaceId} onManageLearning={onManageLearning} />}
+          renderNested={(child) => <ChatItemView node={child} api={api} view={view} nested history={history} onOpenPreview={onOpenPreview} onClosePreview={onClosePreview} onManageLearning={onManageLearning} />}
         />
       );
 

@@ -247,6 +247,69 @@ const MIGRATIONS: readonly string[] = [
     WHERE execution_active = 1;
   CREATE INDEX schedule_runs_workspace_active ON schedule_runs (workspace_id, execution_active);
   `,
+  `
+  -- Workspace columns describe origin only. Preserve rowids because FTS refers to them.
+  DROP TRIGGER learning_search_ai;
+  DROP TRIGGER learning_search_au;
+  DROP TRIGGER learning_search_ad;
+  CREATE TABLE learning_entries_global (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('memory', 'skill')),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'pending', 'deleted')),
+    version INTEGER NOT NULL,
+    source_session_id TEXT,
+    evidence_seqs TEXT NOT NULL,
+    review_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  INSERT INTO learning_entries_global (rowid, id, workspace_id, kind, title, content, content_hash, status, version, source_session_id, evidence_seqs, review_id, created_at, updated_at)
+    SELECT rowid, id, workspace_id, kind, title, content, content_hash, status, version, source_session_id, evidence_seqs, review_id, created_at, updated_at FROM learning_entries;
+  DROP TABLE learning_entries;
+  ALTER TABLE learning_entries_global RENAME TO learning_entries;
+  CREATE INDEX learning_entries_global_lookup ON learning_entries (kind, content_hash, status);
+  CREATE INDEX learning_entries_status ON learning_entries (status, updated_at DESC);
+  CREATE TRIGGER learning_search_ai AFTER INSERT ON learning_entries BEGIN
+    INSERT INTO learning_search (rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+  END;
+  CREATE TRIGGER learning_search_au AFTER UPDATE ON learning_entries BEGIN
+    DELETE FROM learning_search WHERE rowid = OLD.rowid;
+    INSERT INTO learning_search (rowid, title, content) VALUES (NEW.rowid, NEW.title, NEW.content);
+  END;
+  CREATE TRIGGER learning_search_ad AFTER DELETE ON learning_entries BEGIN
+    DELETE FROM learning_search WHERE rowid = OLD.rowid;
+  END;
+  CREATE TABLE learning_history_global (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT,
+    entry_id TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  INSERT INTO learning_history_global SELECT * FROM learning_history;
+  UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'learning_history'), 0))
+    WHERE name = 'learning_history_global';
+  DROP TABLE learning_history;
+  ALTER TABLE learning_history_global RENAME TO learning_history;
+  CREATE TABLE learning_tombstones_global (
+    workspace_id TEXT,
+    kind TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    source_session_id TEXT,
+    evidence_seqs TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, kind, content_hash)
+  );
+  INSERT INTO learning_tombstones_global SELECT * FROM learning_tombstones;
+  DROP TABLE learning_tombstones;
+  ALTER TABLE learning_tombstones_global RENAME TO learning_tombstones;
+  CREATE INDEX learning_tombstones_global_lookup ON learning_tombstones (kind, content_hash);
+  `,
 ];
 
 /** Abre (criando a pasta se preciso) o SQLite do daemon e aplica as migrações pendentes. */

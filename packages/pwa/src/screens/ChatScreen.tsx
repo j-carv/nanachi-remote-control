@@ -1269,9 +1269,9 @@ export function ChatScreen({
                       )}
                       {activity ? (
                         <ToolActivity nodes={nodes} view={backgroundView} history={history}
-                          renderNode={(child) => <ChatItemView node={child} api={api} view={backgroundView} nested history={history} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} workspaceId={current.workspaceId} onManageLearning={controller.manageLearningReview} />} />
+                          renderNode={(child) => <ChatItemView node={child} api={api} view={backgroundView} nested history={history} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} onManageLearning={controller.manageLearningReview} />} />
                       ) : (
-                        <ChatItemView node={node} api={api} view={backgroundView} history={history} onMessageActions={setActionsMessage} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} workspaceId={current.workspaceId} onManageLearning={controller.manageLearningReview} />
+                        <ChatItemView node={node} api={api} view={backgroundView} history={history} onMessageActions={setActionsMessage} onOpenPreview={controller.openPreview} onClosePreview={controller.closePreview} onManageLearning={controller.manageLearningReview} />
                       )}
                     </div>
                   );

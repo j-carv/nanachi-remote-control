@@ -3,13 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import type { LearningNotice as Notice, MemoryEntry } from '@nanachi/shared';
 import type { ApiClient } from '../api.js';
-import { MemoryEntries } from '../components/WorkspaceMemory.js';
+import { MemoryEntries } from '../components/GlobalMemory.js';
 import { Button } from '@/components/ui/button';
 
-export function LearningNoticeView({ notice, api, workspaceId, onManage }: {
+export function LearningNoticeView({ notice, api, onManage }: {
   notice: Notice;
   api: ApiClient;
-  workspaceId?: string | undefined;
   onManage?: ((reviewId: string, action: 'approve' | 'reject' | 'revert') => Promise<void>) | undefined;
 }) {
   const { t } = useTranslation('learning');
@@ -28,9 +27,8 @@ export function LearningNoticeView({ notice, api, workspaceId, onManage }: {
     finally { lock.current = false; setBusy(false); }
   }
   async function inspect() {
-    if (workspaceId === undefined) return;
     setLoading(true); setLoadFailed(false);
-    try { const all = await api.listMemories(workspaceId); setEntries(all.filter((entry) => notice.entryIds.includes(entry.id))); }
+    try { setEntries(await Promise.all(notice.entryIds.map((entryId) => api.readMemory(entryId)))); }
     catch { setLoadFailed(true); }
     finally { setLoading(false); }
   }
@@ -46,7 +44,7 @@ export function LearningNoticeView({ notice, api, workspaceId, onManage }: {
       {actionable && <div className="flex flex-wrap gap-2">
         {notice.status === 'pending' ? <><Button variant="ghost" className="h-auto min-h-11 whitespace-normal text-sm" data-slot="learning-approve" disabled={busy} onClick={() => void manage('approve')}>{t('approve')}</Button><Button variant="ghost" className="h-auto min-h-11 whitespace-normal text-sm" data-slot="learning-reject" disabled={busy} onClick={() => void manage('reject')}>{t('reject')}</Button></> : <Button variant="ghost" className="h-auto min-h-11 whitespace-normal text-sm" data-slot="learning-revert" disabled={busy} onClick={() => void manage('revert')}>{t('revert')}</Button>}
       </div>}
-      {workspaceId !== undefined && notice.entryIds.length > 0 && <Button variant="ghost" className="h-auto min-h-11 self-start whitespace-normal text-sm" data-slot="learning-inspect" disabled={loading} onClick={() => void inspect()}>{t('notice.entries')}</Button>}
+      {notice.entryIds.length > 0 && <Button variant="ghost" className="h-auto min-h-11 self-start whitespace-normal text-sm" data-slot="learning-inspect" disabled={loading} onClick={() => void inspect()}>{t('notice.entries')}</Button>}
       {busy && <p role="status">{t('saving')}</p>}
       {failed && <p role="alert">{t('notice.actionFailed')}</p>}
       {loadFailed && <p role="alert">{t('memoryFailed')}</p>}

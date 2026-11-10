@@ -1,5 +1,7 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { LearningSettingsSchema, MemoryEntriesResponseSchema, type SessionEvent } from '@nanachi/shared';
+import { LearningSettingsSchema, MemoryEntriesResponseSchema, type MemoryEntry, type MemoryWorkspace, type SessionEvent } from '@nanachi/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { authHeader, createSession, createWorkspace, fakeAgent, isEvent, listen, pairToken, WsTestClient } from './agent-support.js';
 import { setupDaemonTests, type TestDaemon } from './support.js';
@@ -15,6 +17,8 @@ afterEach(async () => {
 
 interface ReviewData {
   sourceTurnSeq: number;
+  workspace: MemoryWorkspace;
+  memories: Array<Pick<MemoryEntry, 'id' | 'kind' | 'title' | 'content' | 'version' | 'status' | 'workspaceId' | 'sourceWorkspace'>>;
   evidence: Array<{ seq: number; kind: string; text: string }>;
 }
 
@@ -98,8 +102,55 @@ describe('automatic isolated learning', () => {
       expect(calls).toBe(1);
       expect(notices).not.toContain('learning');
       expect(daemon.db.prepare<[], { count: number }>('SELECT COUNT(*) AS count FROM sessions').get()?.count).toBe(1);
-      const memories = await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${workspaceId}/memories`, headers: await authHeader(daemon) });
-      expect(MemoryEntriesResponseSchema.parse(memories.json<unknown>()).entries).toMatchObject([{ title: 'Project tests', status: 'active' }]);
+      const snapshot = JSON.parse(observed.split('DATA:\n')[1] ?? '') as ReviewData;
+      expect(snapshot.workspace).toMatchObject({ id: workspaceId, path: env.home });
+      const memories = await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: await authHeader(daemon) });
+      expect(MemoryEntriesResponseSchema.parse(memories.json<unknown>()).entries).toMatchObject([{ title: 'Project tests', status: 'active', workspaceId, sourceWorkspace: snapshot.workspace }]);
+    } finally { await client.close(); }
+  });
+
+  it('curates global memory from another project with explicit current workspace, origin metadata and session-bound evidence', async () => {
+    const snapshots: ReviewData[] = [];
+    const prompts: string[] = [];
+    const baseUrl = await provider((prompt, response) => {
+      prompts.push(prompt);
+      const data = JSON.parse(prompt.split('DATA:\n')[1] ?? '') as ReviewData;
+      snapshots.push(data);
+      const evidence = data.evidence.find((entry) => entry.kind === 'user_message');
+      const existing = data.memories[0];
+      reply(response, { summary: snapshots.length === 1 ? 'Recorded first project npm convention' : 'Added second project npm evidence', entries: [{
+        kind: 'memory', title: 'Project-specific npm conventions',
+        content: snapshots.length === 1 ? 'The first project uses npm for tests.' : 'The first and second projects use npm for tests.',
+        evidenceSeqs: [evidence?.seq],
+        ...(snapshots.length === 1 ? {} : { id: existing?.id, expectedVersion: existing?.version }),
+      }] });
+    });
+    const { daemon, client, sessionId, workspaceId } = await source(baseUrl, { maxInputChars: 12000 });
+    try {
+      client.send({ type: 'prompt', sessionId, text: 'npm' });
+      await client.waitFor(isEvent('learning'));
+      const auth = await authHeader(daemon);
+      const initial = MemoryEntriesResponseSchema.parse((await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: auth })).json<unknown>()).entries[0];
+      if (initial === undefined) throw new Error('Missing first project memory');
+      const secondPath = join(env.home, 'second-project');
+      await mkdir(secondPath);
+      const secondWorkspaceId = await createWorkspace(daemon, secondPath);
+      const second = await createSession(daemon, { workspaceId: secondWorkspaceId, agent: 'fake' });
+      client.send({ type: 'subscribe', sessionId: second.id, afterSeq: 0 });
+      await client.sync();
+      client.send({ type: 'prompt', sessionId: second.id, text: 'npm' });
+      await client.waitFor((message) => message.type === 'event' && message.event.sessionId === second.id && message.event.kind === 'learning');
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[0]?.workspace).toMatchObject({ id: workspaceId, path: env.home });
+      expect(snapshots[1]?.workspace).toEqual({ id: secondWorkspaceId, name: 'second-project', path: secondPath });
+      expect(snapshots[1]?.memories).toMatchObject([{ id: initial.id, workspaceId, sourceWorkspace: snapshots[0]?.workspace, content: initial.content, version: initial.version }]);
+      const secondEvidence = client.eventsOf(second.id).map((event) => event.seq);
+      expect(snapshots[1]?.evidence.every((entry) => secondEvidence.includes(entry.seq))).toBe(true);
+      expect(prompts.every((prompt) => prompt.length <= 12000)).toBe(true);
+      const current = MemoryEntriesResponseSchema.parse((await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: auth })).json<unknown>()).entries;
+      expect(current).toMatchObject([{ id: initial.id, version: 2, workspaceId: secondWorkspaceId, sourceWorkspace: snapshots[1]?.workspace, sourceSessionId: second.id }]);
+      expect(client.eventsOf(second.id).filter((event) => event.kind === 'user_message')).toMatchObject([{ text: 'npm' }]);
+      expect(client.eventsOf(second.id).filter((event) => event.kind === 'agent_message_chunk')).toMatchObject([{ text: 'Eco: ' }, { text: 'npm' }]);
     } finally { await client.close(); }
   });
 
@@ -111,7 +162,7 @@ describe('automatic isolated learning', () => {
       const evidence = data.evidence.find((entry) => entry.kind === 'user_message');
       reply(response, { summary: 'Proposed test workflow', entries: [{ kind: 'skill', title: 'Test workflow', content: 'Run the focused npm test command after changes.', evidenceSeqs: [evidence?.seq] }] });
     });
-    const { daemon, client, sessionId, workspaceId } = await source(baseUrl, { intervalTurns: 2, approvalRequired: true });
+    const { daemon, client, sessionId } = await source(baseUrl, { intervalTurns: 2, approvalRequired: true });
     try {
       client.send({ type: 'prompt', sessionId, text: 'Use focused npm tests' });
       await client.waitFor(isEvent('turn_end'));
@@ -120,7 +171,7 @@ describe('automatic isolated learning', () => {
       await client.waitFor(isEvent('learning'));
       expect(calls).toBe(1);
       expect(learningEvents(client.eventsOf(sessionId))).toMatchObject([{ status: 'pending', skillCount: 1 }]);
-      const memories = await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${workspaceId}/memories`, headers: await authHeader(daemon) });
+      const memories = await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: await authHeader(daemon) });
       expect(MemoryEntriesResponseSchema.parse(memories.json<unknown>()).entries).toMatchObject([{ status: 'pending' }]);
     } finally { await client.close(); }
   });
@@ -157,12 +208,12 @@ describe('automatic isolated learning', () => {
         entries: [{ kind: 'memory', title: 'Unsafe proposal', content: 'Do not save this.', evidenceSeqs: [invalid === 'evidence' ? data.sourceTurnSeq + 1000 : evidence?.seq] }],
       });
     });
-    const { daemon, client, sessionId, workspaceId } = await source(baseUrl);
+    const { daemon, client, sessionId } = await source(baseUrl);
     try {
       client.send({ type: 'prompt', sessionId, text: 'Use synthetic project evidence only' });
       await client.waitFor(isEvent('learning'));
       expect(learningEvents(client.eventsOf(sessionId))).toMatchObject([{ status: 'failed', entryIds: [] }]);
-      const memories = await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${workspaceId}/memories`, headers: await authHeader(daemon) });
+      const memories = await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: await authHeader(daemon) });
       expect(MemoryEntriesResponseSchema.parse(memories.json<unknown>()).entries).toEqual([]);
     } finally { await client.close(); }
   });
@@ -174,7 +225,7 @@ describe('automatic isolated learning', () => {
     const began = new Promise<void>((resolve) => { started = resolve; });
     const disconnected = new Promise<void>((resolve) => { aborted = resolve; });
     const baseUrl = await provider((_prompt, response) => { pending = response; response.once('close', aborted); started(); });
-    const { daemon, client, sessionId, workspaceId } = await source(baseUrl);
+    const { daemon, client, sessionId } = await source(baseUrl);
     try {
       client.send({ type: 'prompt', sessionId, text: 'Verified test preference' });
       await began;
@@ -183,7 +234,7 @@ describe('automatic isolated learning', () => {
       if (pending !== undefined && !pending.destroyed) reply(pending, { summary: '', entries: [] });
       await client.sync();
       expect(learningEvents(client.eventsOf(sessionId))).toEqual([]);
-      const memories = await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${workspaceId}/memories`, headers: await authHeader(daemon) });
+      const memories = await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: await authHeader(daemon) });
       expect(MemoryEntriesResponseSchema.parse(memories.json<unknown>()).entries).toEqual([]);
     } finally { await client.close(); }
   });

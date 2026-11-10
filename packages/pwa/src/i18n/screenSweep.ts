@@ -39,7 +39,7 @@ import { MachineCard } from '../components/MachineCard.js';
 import { NanachiMcpSectionView } from '../components/NanachiMcpSection.js';
 import { LearningSettingsForm } from '../components/LearningSection.js';
 import { TranscriptionSettingsForm } from '../whisper/TranscriptionSettings.js';
-import { MemoryEntries } from '../components/WorkspaceMemory.js';
+import { GlobalMemory, MemoryEntries } from '../components/GlobalMemory.js';
 import { LearningNoticeView } from '../chat/LearningNotice.js';
 import { ScreenHeader } from '../components/ScreenHeader.js';
 import { SessionStatusPill } from '../components/SessionStatusPill.js';
@@ -358,17 +358,19 @@ export function describeScreenSweep(sweep: ScreenSweep): void {
           modelsLoading: false, modelsFailed: false, onRefresh: noop, onSave: async () => settings,
         })));
       }
+      expectClean('GlobalMemory', html(createElement(GlobalMemory, { api })));
       const entry: MemoryEntry = {
-        id: '22222222-2222-4222-8222-222222222222', workspaceId: workspace.id, kind: 'memory', title: 'Transactions',
+        id: '22222222-2222-4222-8222-222222222222', workspaceId: workspace.id, sourceWorkspace: { id: workspace.id, name: workspace.name, path: workspace.path }, kind: 'memory', title: 'Transactions',
         content: 'Use existing transactions.', status: 'active', version: 1, sourceSessionId: 's1',
         reviewId: '11111111-1111-4111-8111-111111111111', evidenceSeqs: [1], createdAt: NOW, updatedAt: NOW,
       };
       expectClean('MemoryEntries empty', html(createElement(MemoryEntries, { entries: [], api, onChanged: async () => undefined })));
       expectClean('MemoryEntries active and pending', html(createElement(MemoryEntries, { entries: [entry, { ...entry, id: '33333333-3333-4333-8333-333333333333', kind: 'skill', status: 'pending' }], api, onChanged: async () => undefined })));
+      expectClean('MemoryEntries manual and deleted origins', html(createElement(MemoryEntries, { entries: [{ ...entry, workspaceId: null, sourceWorkspace: null }, { ...entry, id: '44444444-4444-4444-8444-444444444444', sourceWorkspace: null }], api, onChanged: async () => undefined })));
       for (const status of ['applied', 'pending', 'failed', 'reverted', 'rejected'] as const) {
         expectClean(`LearningNotice ${status}`, html(createElement(LearningNoticeView, {
           notice: { reviewId: entry.reviewId!, sourceTurnSeq: 3, status, summary: 'Transaction helper', memoryCount: 1, skillCount: 1, entryIds: [entry.id] },
-          api, workspaceId: workspace.id, onManage: async () => undefined,
+          api, onManage: async () => undefined,
         })));
       }
     });

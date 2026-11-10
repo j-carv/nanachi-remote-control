@@ -6,7 +6,7 @@ import { createApiClient } from '../api.js';
 import type { Machine } from '../machines.js';
 import { ErrorNotice } from './ErrorNotice.js';
 import { ListGroup, listRowClass, SectionHeading } from './ListGroup.js';
-import { WorkspaceMemory } from './WorkspaceMemory.js';
+import { GlobalMemory } from './GlobalMemory.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -165,6 +165,6 @@ export function LearningSection({ machine }: { machine: Machine }) {
       }
       return settings;
     }} />}
-    <WorkspaceMemory api={api} />
+    <GlobalMemory api={api} />
   </section>;
 }

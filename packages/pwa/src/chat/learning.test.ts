@@ -55,6 +55,7 @@ describe('learning conversation consumer', () => {
     expect(pending).not.toMatch(/<details[^>]*\sopen/);
     expect(pending).toContain('data-slot="learning-approve"');
     expect(pending).toContain('data-slot="learning-reject"');
+    expect(pending).toContain('data-slot="learning-inspect"');
     expect(pending).not.toContain('<script>');
     expect(pending).not.toContain('data-slot="agent-text"');
     expect(render('applied')).toContain('data-slot="learning-revert"');

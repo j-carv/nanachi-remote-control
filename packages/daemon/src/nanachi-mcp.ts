@@ -9,7 +9,7 @@ import {
   ASK_USER_TIMEOUT_MS, AskUserInputSchema, AskUserResultSchema, PhoneSendToolInputSchema,
   REQUEST_FILE_TIMEOUT_MS, RequestFileInputSchema, RequestFileAgentResultSchema,
   PreviewInputSchema, PreviewInfoSchema, type AskUserResult, type RequestFileAgentResult,
-  MemoryEntriesResponseSchema, MemoryToolInputSchema,
+  MemoryToolResponseSchema, MemoryToolInputSchema,
 } from '@nanachi/shared';
 import { runPhoneSend, type PhoneSendDeps } from './phone-send.js';
 
@@ -183,7 +183,7 @@ export function createNanachiMcpServer(env: NodeJS.ProcessEnv, deps?: PhoneSendD
   });
   for (const kind of ['memory', 'skill'] as const) {
     server.registerTool(kind === 'memory' ? 'memory' : 'skills', {
-      description: `Explicitly search, read, save or forget workspace-local ${kind === 'memory' ? 'memories' : 'procedural skills'}. Retrieval happens only through this tool, never automatic prompt injection. Saves use the latest user message as evidence by default; optional evidenceSeqs must identify authentic events from this session. Updates and forgetting require the last observed expectedVersion; approval may be required. Never store credentials. IDs are scoped by the authenticated session; no workspace or user override is accepted.`,
+      description: `Explicitly search, read, save or forget global ${kind === 'memory' ? 'memories' : 'procedural skills'} shared across this Nanachi installation's workspaces. Each result reports the current workspace automatically from your authenticated session; each entry's sourceWorkspace identifies its origin, not an access restriction. No workspace selection is needed. Keep project-specific facts associated with their origin rather than treating them as universal preferences. Retrieval happens only through this tool, never automatic prompt injection. Saves use the latest user message as evidence by default; optional evidenceSeqs must identify authentic events from this session. Updates and forgetting require the last observed expectedVersion; approval may be required. Never store credentials. Session identity and workspace context cannot be overridden by tool arguments.`,
       inputSchema: MemoryToolInputSchema,
     }, async (input, extra) => {
       const failed = () => ({
@@ -206,7 +206,7 @@ export function createNanachiMcpServer(env: NodeJS.ProcessEnv, deps?: PhoneSendD
         if (!response.ok) return failed();
         const text = await response.text();
         if (text.length > 1_000_000) return failed();
-        const parsed = MemoryEntriesResponseSchema.safeParse(JSON.parse(text));
+        const parsed = MemoryToolResponseSchema.safeParse(JSON.parse(text));
         if (!parsed.success || parsed.data.entries.length > 40 || signal.aborted) return failed();
         return {
           isError: false,

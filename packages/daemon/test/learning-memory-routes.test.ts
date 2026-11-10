@@ -54,28 +54,36 @@ async function clientFor(credentials: NodeJS.ProcessEnv): Promise<Client> {
   return client;
 }
 function entries(response: { json: () => unknown }) { return MemoryEntriesResponseSchema.parse(response.json()).entries; }
-async function list(daemon: TestDaemon, auth: { authorization: string }, workspaceId: string) {
-  const response = await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${workspaceId}/memories`, headers: auth });
+async function list(daemon: TestDaemon, auth: { authorization: string }) {
+  const response = await daemon.app.inject({ method: 'GET', url: '/api/memories', headers: auth });
   expect(response.statusCode).toBe(200);
   return entries(response);
 }
 
 describe('authenticated memory and skills routes and MCP', () => {
-  it('executes both MCP tools against real SQLite/FTS without accepting model-controlled scopes', async () => {
+  it('executes globally shared MCP tools while returning authenticated current workspace separately from origin', async () => {
     const { daemon, auth, first, second, evidence, credentials, headers } = await fixture();
     const client = await clientFor({ ...credentials });
+    const firstWorkspace = { id: first.workspaceId, name: 'one', path: join(base, 'one') };
+    const secondWorkspace = { id: second.workspaceId, name: 'two', path: join(base, 'two') };
     expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('memory');
     expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('skills');
-    expect(await client.callTool({ name: 'memory', arguments: { action: 'save', title: 'Testing preference', content: 'Use focused workspace tests.', evidenceSeqs: [evidence] } })).toMatchObject({ isError: false });
-    expect(await client.callTool({ name: 'skills', arguments: { action: 'save', title: 'Testing procedure', content: 'First run focused tests, then the complete suite.' } })).toMatchObject({ isError: false });
-    expect(await client.callTool({ name: 'skills', arguments: { action: 'search', query: 'focused' } })).toMatchObject({ isError: false, structuredContent: { entries: [expect.objectContaining({ kind: 'skill' })] } });
-    const stored = await list(daemon, auth, first.workspaceId);
+    expect(await client.callTool({ name: 'memory', arguments: { action: 'save', title: 'Testing preference', content: 'Use focused workspace tests.', evidenceSeqs: [evidence] } })).toMatchObject({ isError: false, structuredContent: { workspace: firstWorkspace, entries: [expect.objectContaining({ workspaceId: first.workspaceId, sourceWorkspace: firstWorkspace })] } });
+    expect(await client.callTool({ name: 'skills', arguments: { action: 'save', title: 'Testing procedure', content: 'First run focused tests, then the complete suite.' } })).toMatchObject({ isError: false, structuredContent: { workspace: firstWorkspace } });
+    const stored = await list(daemon, auth);
     expect(stored).toHaveLength(2);
-    expect(await list(daemon, auth, second.workspaceId)).toEqual([]);
     const skill = stored.find((entry) => entry.kind === 'skill');
     if (skill === undefined) throw new Error('Missing saved skill');
     const secondCredentials = await readAgentEnv(pidDir, second.id);
-    expect((await daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers: { 'x-nanachi-session': second.id, 'x-nanachi-agent-token': secondCredentials.NANACHI_AGENT_TOKEN }, payload: { kind: 'skill', input: { action: 'read', id: skill.id } } })).statusCode).toBe(404);
+    const secondClient = await clientFor({ ...secondCredentials });
+    expect(await secondClient.callTool({ name: 'skills', arguments: { action: 'read', id: skill.id } })).toMatchObject({ isError: false, structuredContent: { workspace: secondWorkspace, entries: [expect.objectContaining({ id: skill.id, sourceWorkspace: firstWorkspace })] } });
+    expect(await secondClient.callTool({ name: 'memory', arguments: { action: 'search', query: 'focused' } })).toMatchObject({ isError: false, structuredContent: { workspace: secondWorkspace, entries: [expect.objectContaining({ kind: 'memory', sourceWorkspace: firstWorkspace })] } });
+    const otherEvidence = insertEvent(daemon.db, { sessionId: second.id, ts: 2, kind: 'user_message', payload: '{"text":"Run focused tests for every project before its full suite."}' });
+    expect(await secondClient.callTool({ name: 'skills', arguments: { action: 'save', id: skill.id, expectedVersion: skill.version, title: skill.title, content: 'Run focused tests for every project before its full suite.', evidenceSeqs: [otherEvidence] } })).toMatchObject({ isError: false, structuredContent: { workspace: secondWorkspace, entries: [expect.objectContaining({ id: skill.id, version: 2, workspaceId: second.workspaceId, sourceWorkspace: secondWorkspace, sourceSessionId: second.id })] } });
+    expect(await client.callTool({ name: 'skills', arguments: { action: 'save', id: skill.id, expectedVersion: skill.version, title: skill.title, content: 'A stale first-project update.', evidenceSeqs: [evidence] } })).toMatchObject({ isError: true });
+    expect(await client.callTool({ name: 'skills', arguments: { action: 'forget', id: skill.id, expectedVersion: 2 } })).toMatchObject({ isError: false, structuredContent: { workspace: firstWorkspace, entries: [] } });
+    expect(await secondClient.callTool({ name: 'skills', arguments: { action: 'search' } })).toMatchObject({ isError: false, structuredContent: { workspace: secondWorkspace, entries: [] } });
+    expect(await secondClient.callTool({ name: 'skills', arguments: { action: 'save', title: skill.title, content: 'Run focused tests for every project before its full suite.', evidenceSeqs: [otherEvidence] } })).toMatchObject({ isError: true });
     expect(await client.callTool({ name: 'memory', arguments: { action: 'read', id: skill.id } })).toMatchObject({ isError: true });
     expect(await client.callTool({ name: 'memory', arguments: { action: 'search', workspaceId: second.workspaceId } })).toMatchObject({ isError: true });
     const crossed = await daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers, payload: { kind: 'memory', workspaceId: second.workspaceId, input: { action: 'search' } } });
@@ -93,16 +101,22 @@ describe('authenticated memory and skills routes and MCP', () => {
     expect((await daemon.app.inject({ method: 'PUT', url: '/api/mcp/agents/fake', headers: auth, payload: { enabled: true } })).statusCode).toBe(200);
     expect((await daemon.app.inject({ method: 'PUT', url: '/api/learning/settings', headers: auth, payload: LearningSettingsSchema.parse({}) })).statusCode).toBe(200);
     expect((await daemon.app.inject(request)).statusCode).toBe(403);
-    const manual = await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${first.workspaceId}/memories`, headers: auth, payload: { kind: 'memory', title: 'Owner entry', content: 'Owner-managed content' } });
+    const manual = await daemon.app.inject({ method: 'POST', url: '/api/memories', headers: auth, payload: { kind: 'memory', title: 'Owner entry', content: 'Owner-managed content' } });
     expect(manual.statusCode).toBe(200);
-    expect(entries(manual)).toHaveLength(1);
-    expect((await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${first.workspaceId}/memories` })).statusCode).toBe(401);
+    const entry = entries(manual)[0];
+    expect(entry).toMatchObject({ workspaceId: null, sourceWorkspace: null });
+    if (entry === undefined) throw new Error('Missing manual entry');
+    expect((await daemon.app.inject({ method: 'POST', url: '/api/memories', headers: auth, payload: { kind: 'memory', title: 'Forbidden scope', content: 'Not a workspace selector.', workspaceId: first.workspaceId } })).statusCode).toBe(400);
+    expect((await daemon.app.inject({ method: 'DELETE', url: `/api/memories/${entry.id}`, headers: auth, payload: { expectedVersion: entry.version } })).statusCode).toBe(200);
+    expect(await list(daemon, auth)).toEqual([]);
+    expect((await daemon.app.inject({ method: 'GET', url: '/api/memories' })).statusCode).toBe(401);
+    expect((await daemon.app.inject({ method: 'GET', url: `/api/workspaces/${first.workspaceId}/memories`, headers: auth })).statusCode).toBe(404);
     await daemon.app.inject({ method: 'DELETE', url: `/api/sessions/${first.id}`, headers: auth });
     expect((await daemon.app.inject(request)).statusCode).toBe(401);
   });
 
   it('persists approval, rejection and version conflicts through device actions, not mocked responses', async () => {
-    const { daemon, auth, first, second, evidence, headers } = await fixture(true);
+    const { daemon, auth, first, evidence, headers } = await fixture(true);
     const save = () => daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers, payload: { kind: 'skill', input: { action: 'save', title: 'Safe tests', content: 'Run the isolated test suite.', evidenceSeqs: [evidence] } } });
     const proposed = entries(await save())[0];
     if (proposed === undefined || proposed.reviewId === null) throw new Error('Missing review proposal');
@@ -113,24 +127,57 @@ describe('authenticated memory and skills routes and MCP', () => {
     expect(notices()).toBe(1);
     await save();
     expect(notices()).toBe(1);
-    expect((await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${second.workspaceId}/learning/${proposed.reviewId}/approve`, headers: auth })).statusCode).toBe(404);
-    const approved = await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${first.workspaceId}/learning/${proposed.reviewId}/approve`, headers: auth });
+    const approved = await daemon.app.inject({ method: 'POST', url: `/api/learning/${proposed.reviewId}/approve`, headers: auth });
     expect(approved.json()).toMatchObject({ status: 'applied' });
-    const current = (await list(daemon, auth, first.workspaceId))[0];
+    const current = (await list(daemon, auth))[0];
     if (current === undefined) throw new Error('Missing approved entry');
     expect(current.status).toBe('active');
-    const edit = await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${first.workspaceId}/memories`, headers: auth, payload: { id: current.id, expectedVersion: current.version, kind: current.kind, title: current.title, content: 'Owner changed the procedure.' } });
+    const edit = await daemon.app.inject({ method: 'POST', url: '/api/memories', headers: auth, payload: { id: current.id, expectedVersion: current.version, kind: current.kind, title: current.title, content: 'Owner changed the procedure.' } });
     expect(edit.statusCode).toBe(200);
-    expect((await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${first.workspaceId}/learning/${proposed.reviewId}/revert`, headers: auth })).statusCode).toBe(409);
-    expect((await daemon.app.inject({ method: 'DELETE', url: `/api/workspaces/${first.workspaceId}/memories/${current.id}`, headers: auth, payload: { expectedVersion: current.version } })).statusCode).toBe(409);
-    expect((await list(daemon, auth, first.workspaceId))[0]?.content).toBe('Owner changed the procedure.');
+    expect(entries(edit)[0]).toMatchObject({ workspaceId: first.workspaceId, sourceWorkspace: { id: first.workspaceId } });
+    expect((await daemon.app.inject({ method: 'POST', url: `/api/learning/${proposed.reviewId}/revert`, headers: auth })).statusCode).toBe(409);
+    expect((await daemon.app.inject({ method: 'DELETE', url: `/api/memories/${current.id}`, headers: auth, payload: { expectedVersion: current.version } })).statusCode).toBe(409);
+    expect((await list(daemon, auth))[0]?.content).toBe('Owner changed the procedure.');
     const rejectedProposal = entries(await save())[0];
     if (rejectedProposal === undefined || rejectedProposal.reviewId === null) throw new Error('Missing rejection proposal');
-    const rejected = await daemon.app.inject({ method: 'POST', url: `/api/workspaces/${first.workspaceId}/learning/${rejectedProposal.reviewId}/reject`, headers: auth });
+    const rejected = await daemon.app.inject({ method: 'POST', url: `/api/learning/${rejectedProposal.reviewId}/reject`, headers: auth });
     expect(rejected.statusCode).toBe(200);
     expect(rejected.json()).toMatchObject({ reviewId: rejectedProposal.reviewId, status: 'rejected', entryIds: [] });
-    expect(await list(daemon, auth, first.workspaceId)).toHaveLength(1);
+    expect(await list(daemon, auth)).toHaveLength(1);
     const latestNotice = daemon.db.prepare<[string], { payload: string }>("SELECT payload FROM events WHERE session_id = ? AND kind = 'learning' ORDER BY seq DESC LIMIT 1").get(first.id);
     expect(JSON.parse(latestNotice?.payload ?? '{}')).toMatchObject({ reviewId: rejectedProposal.reviewId, status: 'rejected' });
+  });
+
+  it('reads older review entries by ID beyond the global search result cap', async () => {
+    const { daemon, auth, evidence, headers } = await fixture();
+    const saved = entries(await daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers, payload: { kind: 'memory', input: { action: 'save', title: 'Older reviewed entry', content: 'Retain this older reviewed project fact.', evidenceSeqs: [evidence] } } }))[0];
+    if (saved === undefined) throw new Error('Missing older entry');
+    for (let index = 0; index < 45; index++) {
+      expect((await daemon.app.inject({ method: 'POST', url: '/api/memories', headers: auth, payload: { kind: 'memory', title: `New entry ${index}`, content: `New global fact ${index}.` } })).statusCode).toBe(200);
+    }
+    expect((await list(daemon, auth)).some((entry) => entry.id === saved.id)).toBe(false);
+    const read = await daemon.app.inject({ method: 'GET', url: `/api/memories/${saved.id}`, headers: auth });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toMatchObject({ id: saved.id, sourceWorkspace: saved.sourceWorkspace });
+    expect((await daemon.app.inject({ method: 'GET', url: `/api/memories/${saved.id}` })).statusCode).toBe(401);
+    expect((await daemon.app.inject({ method: 'GET', url: '/api/memories/missing', headers: auth })).statusCode).toBe(404);
+  });
+
+  it.each(['approve', 'reject', 'revert'] as const)('manages %s globally after deleting the source workspace without appending source events', async (action) => {
+    const { daemon, auth, first, second, evidence, headers } = await fixture(action !== 'revert');
+    const proposed = entries(await daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers, payload: { kind: 'memory', input: { action: 'save', title: 'Retained project fact', content: 'A durable fact from the original project.', evidenceSeqs: [evidence] } } }))[0];
+    if (proposed === undefined || proposed.reviewId === null) throw new Error('Missing retained review');
+    expect((await daemon.app.inject({ method: 'DELETE', url: `/api/workspaces/${first.workspaceId}`, headers: auth })).statusCode).toBe(204);
+    expect((await daemon.app.inject({ method: 'DELETE', url: `/api/sessions/${first.id}`, headers: auth })).statusCode).toBe(204);
+    expect(await list(daemon, auth)).toMatchObject([{ id: proposed.id, workspaceId: first.workspaceId, sourceWorkspace: null }]);
+    const sourceEvents = daemon.db.prepare<[string], { seq: number }>('SELECT seq FROM events WHERE session_id = ? ORDER BY seq').all(first.id);
+    const managed = await daemon.app.inject({ method: 'POST', url: `/api/learning/${proposed.reviewId}/${action}`, headers: auth });
+    expect(managed.statusCode).toBe(200);
+    expect(managed.json()).toMatchObject({ status: action === 'approve' ? 'applied' : action === 'reject' ? 'rejected' : 'reverted' });
+    expect(daemon.db.prepare<[string], { seq: number }>('SELECT seq FROM events WHERE session_id = ? ORDER BY seq').all(first.id)).toEqual(sourceEvents);
+    const secondCredentials = await readAgentEnv(pidDir, second.id);
+    const result = await daemon.app.inject({ method: 'POST', url: '/api/agent/memory', headers: { 'x-nanachi-session': second.id, 'x-nanachi-agent-token': secondCredentials.NANACHI_AGENT_TOKEN }, payload: { kind: 'memory', input: { action: 'search' } } });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ workspace: { id: second.workspaceId }, entries: action === 'approve' ? [expect.objectContaining({ id: proposed.id, sourceWorkspace: null })] : [] });
   });
 });

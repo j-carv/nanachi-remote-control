@@ -26,13 +26,13 @@ import {
   LearningModelsResponseSchema,
   LearningNoticeSchema,
   MemoryEntriesResponseSchema,
+  MemoryEntrySchema,
   MemoryWriteSchema,
   UpdateLearningSettingsSchema,
   type LearningSettingsResponse,
   type LearningModelsResponse,
   type LearningNotice,
   type MemoryEntry,
-  type MemoryWrite,
   type UpdateLearningSettings,
   LoopResponseSchema,
   NanachiMcpResponseSchema,
@@ -395,11 +395,12 @@ export interface ApiClient {
   learningSettings(): Promise<LearningSettingsResponse>;
   saveLearningSettings(input: UpdateLearningSettings): Promise<LearningSettingsResponse>;
   learningModels(): Promise<LearningModelsResponse>;
-  listMemories(workspaceId: string, options?: { query?: string; kind?: MemoryEntry['kind']; status?: MemoryEntry['status'] }): Promise<MemoryEntry[]>;
-  saveMemory(workspaceId: string, input: MemoryWrite): Promise<MemoryEntry[]>;
-  forgetMemory(workspaceId: string, entryId: string, expectedVersion: number): Promise<void>;
-  manageLearningReview(workspaceId: string, reviewId: string, action: 'approve' | 'revert'): Promise<LearningNotice>;
-  rejectLearningReview(workspaceId: string, reviewId: string): Promise<LearningNotice>;
+  listMemories(options?: { query?: string; kind?: MemoryEntry['kind']; status?: MemoryEntry['status'] }): Promise<MemoryEntry[]>;
+  readMemory(entryId: string): Promise<MemoryEntry>;
+  saveMemory(input: z.input<typeof MemoryWriteSchema>): Promise<MemoryEntry[]>;
+  forgetMemory(entryId: string, expectedVersion: number): Promise<void>;
+  manageLearningReview(reviewId: string, action: 'approve' | 'revert'): Promise<LearningNotice>;
+  rejectLearningReview(reviewId: string): Promise<LearningNotice>;
   /** Adds an account to an agent that supports them (`label`: 1 to 40 characters, trimmed). It starts logged out. */
   createAgentAccount(agentId: string, label: string): Promise<AgentProfile>;
   /** Renames an extra account. The principal (`default`) has no editable name: the daemon answers 400. */
@@ -784,32 +785,36 @@ export function createApiClient(options: ApiClientOptions, fetchFn: FetchLike = 
       return getJson(LearningModelsResponseSchema, '/api/learning/models');
     },
 
-    async listMemories(workspaceId, options = {}) {
+    async listMemories(options = {}) {
       const query = new URLSearchParams();
       if (options.query !== undefined) query.set('query', options.query);
       if (options.kind !== undefined) query.set('kind', options.kind);
       if (options.status !== undefined) query.set('status', options.status);
       const suffix = query.size > 0 ? `?${query}` : '';
-      return (await getJson(MemoryEntriesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/memories${suffix}`)).entries;
+      return (await getJson(MemoryEntriesResponseSchema, `/api/memories${suffix}`)).entries;
     },
 
-    async saveMemory(workspaceId, input) {
+    async readMemory(entryId) {
+      return getJson(MemoryEntrySchema, `/api/memories/${pathId(entryId)}`);
+    },
+
+    async saveMemory(input) {
       const request = MemoryWriteSchema.safeParse(input);
       if (!request.success) throw new ApiError('invalid_input');
-      return (await postJson(MemoryEntriesResponseSchema, `/api/workspaces/${pathId(workspaceId)}/memories`, request.data)).entries;
+      return (await postJson(MemoryEntriesResponseSchema, '/api/memories', input)).entries;
     },
 
-    async forgetMemory(workspaceId, entryId, expectedVersion) {
+    async forgetMemory(entryId, expectedVersion) {
       if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new ApiError('invalid_input');
-      await readBody(await call('DELETE', `/api/workspaces/${pathId(workspaceId)}/memories/${pathId(entryId)}`, { expectedVersion }), MemoryEntriesResponseSchema);
+      await readBody(await call('DELETE', `/api/memories/${pathId(entryId)}`, { expectedVersion }), MemoryEntriesResponseSchema);
     },
 
-    async manageLearningReview(workspaceId, reviewId, action) {
-      return postJson(LearningNoticeSchema, `/api/workspaces/${pathId(workspaceId)}/learning/${pathId(reviewId)}/${action}`, {});
+    async manageLearningReview(reviewId, action) {
+      return postJson(LearningNoticeSchema, `/api/learning/${pathId(reviewId)}/${action}`, {});
     },
 
-    async rejectLearningReview(workspaceId, reviewId) {
-      return postJson(LearningNoticeSchema, `/api/workspaces/${pathId(workspaceId)}/learning/${pathId(reviewId)}/reject`, {});
+    async rejectLearningReview(reviewId) {
+      return postJson(LearningNoticeSchema, `/api/learning/${pathId(reviewId)}/reject`, {});
     },
 
     async fetchRoots() {

@@ -1,14 +1,14 @@
 <div align="center">
   <img src="packages/pwa/public/icon-512.png" alt="Nanachi Remote logo" width="160" />
 
-  <h1>Nanachi Remote · Desktop 1.0.0</h1>
+  <h1>Nanachi Remote · Desktop 1.0.1</h1>
   <p>By <strong>Everward Research</strong></p>
 
   <p><strong>Control the coding agents on your Windows PC from your phone.</strong></p>
   <p>Nanachi Desktop runs the local control center and tray app. The mobile web app lets you continue chats, review changes, send files, and answer your agents over your private Tailscale network.</p>
 
   <p>
-    <a href="https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Desktop-1.0.0-8B5CF6?style=flat-square" alt="Desktop 1.0.0" /></a>
+    <a href="https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.1"><img src="https://img.shields.io/badge/Desktop-1.0.1-8B5CF6?style=flat-square" alt="Desktop 1.0.1" /></a>
     <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Desktop-Windows%20x64-0078D4?style=flat-square" alt="Windows x64 Desktop" /></a>
     <a href="#install-on-your-phone"><img src="https://img.shields.io/badge/PWA-Android%20%2B%20iPhone-8B5CF6?style=flat-square&logo=pwa&logoColor=white" alt="Web app for Android and iPhone" /></a>
     <a href="https://www.tailscale.com/"><img src="https://img.shields.io/badge/Network-Tailscale-242424?style=flat-square&logo=tailscale&logoColor=white" alt="Connection through Tailscale" /></a>
@@ -22,7 +22,7 @@
 
 ---
 
-**Windows x64:** [Nanachi Desktop 1.0.0 release page](https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.0) · [Download `Nanachi-Setup-1.0.0.exe`](https://github.com/j-carv/nanachi-remote-control/releases/download/v1.0.0/Nanachi-Setup-1.0.0.exe)
+**Windows x64:** [Nanachi Desktop 1.0.1 release page](https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.1) · [Download `Nanachi-Setup-1.0.1.exe`](https://github.com/j-carv/nanachi-remote-control/releases/download/v1.0.1/Nanachi-Setup-1.0.1.exe)
 
 > **Windows x64 · unsigned installer.** Windows may show an unknown-publisher or SmartScreen warning. Clean-Windows installation and physical-phone testing have not been completed. Read [Desktop limits](#desktop-limits) before installing.
 
@@ -56,7 +56,7 @@ Your own PC serves the dashboard inside your Tailscale network. **There is no ne
 - **Resume PC sessions** when the agent supports listing and reopening its history, and search saved sessions and messages.
 - **Keep several logins** for Claude Code and Codex and [switch accounts](#agent-accounts) per session. Inspect usage and [saved rate-limit resets](#saved-rate-limit-resets) where supported.
 - **Send photos and files**, and opt into [Nanachi MCP](#photos-files-and-screenshots) for PC screenshots, files sent back to your phone, explicit questions, requested uploads and [private project previews](#open-a-private-project-preview).
-- **Keep workspace memory and reusable procedures** in local SQLite. [Automatic learning](#memory-and-automatic-learning) is opt-in, with configurable reviewers, optional approval and reversal; agents decide when to retrieve memory rather than having it injected into every prompt.
+- **Keep global memory and reusable procedures** in local SQLite, shared across the PC's workspaces with automatic source-project identification. [Automatic learning](#memory-and-automatic-learning) is opt-in, with configurable reviewers, optional approval and reversal; agents decide when to retrieve memory rather than having it injected into every prompt.
 - **Dictate a draft** with [local Whisper or a configured transcription API](#dictate-a-chat-message), review it, then send. Voice dictation does not send messages automatically.
 - **Schedule workspace tasks** as [agent runs or direct shell commands](#schedule-workspace-tasks), with timezone-aware timing, pause/manual execution, deadlines, cancellation and separate execution history.
 - **View Git changes and commit history**, and open sessions in separate worktrees. Git must be installed for these operations.
@@ -95,9 +95,9 @@ In the [Tailscale admin console](https://login.tailscale.com/admin/dns), enable 
 
 ## Get started on your PC
 
-### Recommended: install Nanachi Desktop 1.0.0
+### Recommended: install Nanachi Desktop 1.0.1
 
-1. Open the [v1.0.0 release page](https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.0) and download [`Nanachi-Setup-1.0.0.exe`](https://github.com/j-carv/nanachi-remote-control/releases/download/v1.0.0/Nanachi-Setup-1.0.0.exe) for **Windows x64**.
+1. Open the [v1.0.1 release page](https://github.com/j-carv/nanachi-remote-control/releases/tag/v1.0.1) and download [`Nanachi-Setup-1.0.1.exe`](https://github.com/j-carv/nanachi-remote-control/releases/download/v1.0.1/Nanachi-Setup-1.0.1.exe) for **Windows x64**.
 2. Run the installer, choose **Instalar** (Install), then **Abrir o Nanachi** (Open Nanachi). The app is unsigned; Windows may show an unknown-publisher or SmartScreen warning. Download only from the project's release page and decide whether you trust it. See [install options and uninstall](#install-and-uninstall).
 3. In **Pastas e discos** (Folders and drives), choose the folders where sessions may open, then **Salvar** (Save). This is workspace selection, **not a sandbox** for agent tools.
 4. Prepare your agent's local sign-in and required binaries, then open **Sessões** (Sessions) to use the app on this PC. To add supported extra Claude Code/Codex logins, use **Ajustes → Contas dos agentes** inside the sessions app; Desktop's **Contas dos agentes** sidebar section chooses the account for new sessions. Neither supplies provider access.
@@ -299,7 +299,7 @@ Message search matches the start of words, so `test` finds `testing`. All the wo
 
 Use the paperclip in chat to attach photos or files. Images are sent as images when the agent accepts that input type; otherwise, it receives the file path.
 
-Nanachi includes an optional MCP server with `phone_send` for files and PC screenshots, `ask_user` for explicit decisions, `request_file` for a file from your phone, `open_preview` for a private local-app preview, and opt-in `memory`/`skills` tools for workspace knowledge. Open **Ajustes → Nanachi MCP** (Settings → Nanachi MCP) on the selected PC and enable only the agents you want. **All agents start disabled.** Only configured ACP agents appear; terminal sessions cannot connect through MCP.
+Nanachi includes an optional MCP server with `phone_send` for files and PC screenshots, `ask_user` for explicit decisions, `request_file` for a file from your phone, `open_preview` for a private local-app preview, and opt-in `memory`/`skills` tools for globally shared knowledge with automatic workspace context. Open **Ajustes → Nanachi MCP** (Settings → Nanachi MCP) on the selected PC and enable only the agents you want. **All agents start disabled.** Only configured ACP agents appear; terminal sessions cannot connect through MCP.
 
 The choice applies when an agent process next starts: a new session, an imported PC session, or a stopped session that is resumed. Already-running sessions keep their current tools until stopped, so changing a switch does not interrupt work. The selection is saved per PC in `<NANACHI_HOME>/mcp.json`; it does not install global MCP configuration or store session credentials there.
 
@@ -320,9 +320,11 @@ The former automatic `phone-send` prompt hint and its `phoneSendHint` option hav
 
 Open **Ajustes → Memória e aprendizado** (Settings → Memory and learning) on the selected PC. Learning starts disabled: enable it explicitly and choose which agents may participate. Existing Nanachi MCP opt-ins remain independent; the foreground agent needs both opt-ins to use `memory` and `skills`.
 
-Memories and reusable procedures live in the daemon's SQLite database, with FTS5 search. They are shared only within the same workspace and PC. The foreground agent decides when to search, read, save or forget through MCP. Nanachi does **not** inject retrieved memories into its prompts, modify instruction files, or run a hidden review turn in the foreground conversation.
+Memories and reusable procedures live in one global store in the daemon's SQLite database, with FTS5 search. All workspaces in the same Nanachi data folder share them; there is no workspace selector in memory management. Existing memories retain their IDs, versions, review history and source provenance when upgraded.
 
-After the configured number of successful turns, an independent reviewer receives a bounded snapshot of the source work and existing workspace knowledge. Its proposed changes must cite source-session evidence. A review that makes no changes stays silent. Confirmed changes produce one collapsed **Aprendizado atualizado** (Learning updated) line beside the source turn, not extra user/agent messages. Expand it to inspect entries or **Reverter aprendizado** (Revert learning). Reversal refuses to overwrite later edits.
+Every successful `memory`/`skills` tool call returns the current workspace's ID, name and path from the authenticated session, separately from each entry's source workspace. Neither the user nor the model needs to select a project. Project-specific facts retain their origin rather than becoming universal preferences. The foreground agent decides when to search, read, save or forget through MCP. Nanachi does **not** inject retrieved memories into its prompts, modify instruction files, or run a hidden review turn in the foreground conversation.
+
+After the configured number of successful turns, an independent reviewer receives a bounded snapshot of the source work, its current workspace and relevant global knowledge with origin metadata. Its proposed changes must cite source-session evidence. A review that makes no changes stays silent. Confirmed changes produce one collapsed **Aprendizado atualizado** (Learning updated) line beside the source turn, not extra user/agent messages. Expand it to inspect entries or **Reverter aprendizado** (Revert learning). Reversal refuses to overwrite later edits.
 
 The reviewer choices are:
 
@@ -338,13 +340,13 @@ For a new endpoint, leave learning disabled, save the connection, choose **Atual
 
 The currently supported installed-agent review paths are OMP's `auth-gateway stdio` and Claude's inference-only SDK. Codex, Antigravity, terminal agents and unsupported command overrides are not offered as usable reviewer targets. An unsupported same-model selection produces an actionable quiet failure instead of executing tools or changing provider/account silently. Claude's unresolved `default` selector is not guessed: choose an explicit advertised model. Explicit family aliases are forwarded unchanged; the provider controls their underlying revision.
 
-**Exigir aprovação antes de aplicar** (Require approval before applying) keeps proposals pending. Approve or reject them from the learning notice or the workspace-memory list. **Memória do workspace** (Workspace memory) supports search, inspection, editing and confirmed forgetting. Updates use versions so another device's later edit is not overwritten silently.
+**Exigir aprovação antes de aplicar** (Require approval before applying) keeps proposals pending. Approve or reject them from the learning notice or the global memory list. **Memória global** (Global memory) loads automatically and supports search, inspection, editing and confirmed forgetting across all workspaces. Each entry shows its source project when available; manually created global entries and removed source projects are identified separately. Updates use versions so another device's later edit is not overwritten silently.
 
-Forgetting excludes an entry from normal retrieval and suppresses relearning the same forgotten lesson. It is not secure erasure: source conversations, local history and tombstones remain. Removing a workspace revokes its reviews but retains its inaccessible local memory/history; a newly created workspace has a different identity and does not inherit that knowledge. There is no automatic memory synchronization between PCs.
+Forgetting excludes an entry from retrieval across all workspaces and suppresses relearning the same forgotten lesson elsewhere. It is not secure erasure: source conversations, local history and tombstones remain. Removing a workspace cancels its in-flight learning but does not delete global knowledge or its review history; retained entries remain manageable without selecting or recreating the source project. There is no automatic memory synchronization between PCs or separate Nanachi data folders.
 
 Review frequency, input-character budget, output-token limit and timeout are configurable. Disabling learning, changing its configuration, cancelling/stopping the source session, deleting its workspace or shutting down the daemon cancels outstanding work before it can apply late changes. Already-issued provider requests may still incur charges.
 
-**Privacy:** reviews can send conversation excerpts and workspace knowledge to the configured model service. Recognizable secrets are filtered, but detection cannot guarantee removal of novel, unlabelled, split or encoded secrets. Choose a trusted local endpoint for sensitive work. Settings and the optional API key are stored in `<NANACHI_HOME>/learning.json`, outside the repository; the key is not returned to the PWA or stored in browser storage. Changing the provider destination clears an omitted old key rather than forwarding it to a different endpoint. Protect the daemon home and its backups; this file is not an encrypted secrets vault.
+**Privacy:** enabled agents and reviewers can access retained knowledge from other workspaces in this installation. Reviews can send conversation excerpts, workspace metadata and global knowledge to the configured model service. Recognizable secrets are filtered, but detection cannot guarantee removal of novel, unlabelled, split or encoded secrets. Choose a trusted local endpoint for sensitive work. Settings and the optional API key are stored in `<NANACHI_HOME>/learning.json`, outside the repository; the key is not returned to the PWA or stored in browser storage. Changing the provider destination clears an omitted old key rather than forwarding it to a different endpoint. Protect the daemon home and its backups; this file is not an encrypted secrets vault.
 
 
 ### Answer an agent's question
@@ -546,7 +548,7 @@ To follow activity in the terminal, use `npm run supervise`. Ctrl+C stops the su
 
 ## Nanachi Desktop
 
-Nanachi Desktop 1.0.0 is the Windows x64 installer path described in [Get started on your PC](#get-started-on-your-pc). It bundles the daemon, mobile web app, Node.js runtime and optional Tailscale sidecar, with a tray icon and local control center. Agent setup and Git-dependent features still have their own prerequisites. The installer is unsigned; see [Desktop limits](#desktop-limits).
+Nanachi Desktop 1.0.1 is the Windows x64 installer path described in [Get started on your PC](#get-started-on-your-pc). It bundles the daemon, mobile web app, Node.js runtime and optional Tailscale sidecar, with a tray icon and local control center. Agent setup and Git-dependent features still have their own prerequisites. The installer is unsigned; see [Desktop limits](#desktop-limits).
 
 ### What it does
 
@@ -587,7 +589,7 @@ The root `npm run build` does not build Desktop, so a Desktop build problem cann
 
 ### Install and uninstall
 
-Run `Nanachi-Setup-1.0.0.exe` for this release (`Nanachi-Setup-<version>.exe` for other versions). It opens its own window instead of a Windows wizard: **Instalar** (Install), a progress bar, then **Abrir o Nanachi** (Open Nanachi). **Opções** (Options) changes the install folder, the desktop shortcut, and start with Windows; the last two are on by default. If Nanachi Desktop is running, the installer asks to close it.
+Run `Nanachi-Setup-1.0.1.exe` for this release (`Nanachi-Setup-<version>.exe` for other versions). It opens its own window instead of a Windows wizard: **Instalar** (Install), a progress bar, then **Abrir o Nanachi** (Open Nanachi). **Opções** (Options) changes the install folder, the desktop shortcut, and start with Windows; the last two are on by default. If Nanachi Desktop is running, the installer asks to close it.
 
 The install is per user and does not ask for administrator rights. The default folder is `%LOCALAPPDATA%\Programs\Nanachi`. It creates a Start Menu shortcut, a desktop shortcut unless you turn that off, and an uninstall entry for your user.
 
@@ -614,7 +616,7 @@ On start, Desktop asks GitHub for the latest release of this repository (without
 - **Windows x64 only.**
 - **Support logs stay in Portuguese.** `desktop-daemon.log` and the installer log are written in Portuguese, for support; everything you read in a window, the tray, or a dialog follows [Desktop's language](#nanachi-desktop).
 - **The local panel needs an empty `allowedTailscaleLogins`.** With that list set, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`, so it shows an explanation page instead of the app. Desktop's own `config.json` (in `.nanachi-desktop`) has no allowlist unless you add one, and the daemon's authentication is unchanged. An empty list accepts any tailnet login that Tailscale forwards, but a device token is still required. Read [Security](#security-without-the-fine-print) before relying on that, and keep the list empty only in Desktop's folder.
-- **Not validated on a clean Windows installation or physical Android/iPhone devices.** Automated tests and smoke scripts use controlled environments, temporary data and test doubles where applicable; browser phone viewports are not physical-phone evidence. Clean-machine installation, SmartScreen behavior, real-phone Tailscale login/HTTPS/push, and launch after a Windows reboot remain unverified. Version 1.0.0 does not remove these limitations.
+- **Not validated on a clean Windows installation or physical Android/iPhone devices.** Automated tests and smoke scripts use controlled environments, temporary data and test doubles where applicable; browser phone viewports are not physical-phone evidence. Clean-machine installation, SmartScreen behavior, real-phone Tailscale login/HTTPS/push, and launch after a Windows reboot remain unverified. Version 1.0.1 does not remove these limitations.
 
 ## More than one PC
 

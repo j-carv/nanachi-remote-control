@@ -282,8 +282,8 @@ export function useChat({ api, connection, storage, session: initial }: ChatOpti
     resumeError,
     async manageLearningReview(reviewId, action) {
       const result = action === 'reject'
-        ? await api.rejectLearningReview(session.workspaceId, reviewId)
-        : await api.manageLearningReview(session.workspaceId, reviewId, action);
+        ? await api.rejectLearningReview(reviewId)
+        : await api.manageLearningReview(reviewId, action);
       setChat((previous) => withLearningNotice(previous, result));
     },
 
