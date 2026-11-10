@@ -616,8 +616,7 @@ On start, Desktop asks GitHub for the latest release of this repository (without
 - **Windows x64 only.**
 - **Support logs stay in Portuguese.** `desktop-daemon.log` and the installer log are written in Portuguese, for support; everything you read in a window, the tray, or a dialog follows [Desktop's language](#nanachi-desktop).
 - **The local panel needs an empty `allowedTailscaleLogins`.** With that list set, the daemon refuses requests that carry no Tailscale identity, and the panel comes from `127.0.0.1`, so it shows an explanation page instead of the app. Desktop's own `config.json` (in `.nanachi-desktop`) has no allowlist unless you add one, and the daemon's authentication is unchanged. An empty list accepts any tailnet login that Tailscale forwards, but a device token is still required. Read [Security](#security-without-the-fine-print) before relying on that, and keep the list empty only in Desktop's folder.
-- **Not validated on a clean Windows installation or physical Android/iPhone devices.** Automated tests and smoke scripts use controlled environments, temporary data and test doubles where applicable; browser phone viewports are not physical-phone evidence. Clean-machine installation, SmartScreen behavior, real-phone Tailscale login/HTTPS/push, and launch after a Windows reboot remain unverified. Version 1.0.1 does not remove these limitations.
-
+- 
 ## More than one PC
 
 Each PC has its own daemon and data. Install the web app once, then add your other machines to it.
